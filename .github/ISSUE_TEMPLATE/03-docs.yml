@@ -1,0 +1,17 @@
+name: Docs
+description: Something in docs/, CLAUDE.md, or contracts.md is missing, wrong, or unclear
+labels: [docs]
+body:
+  - type: textarea
+    id: location
+    attributes:
+      label: Location
+      description: File and section
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What's wrong or missing
+    validations:
+      required: true

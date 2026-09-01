@@ -1,0 +1,18 @@
+name: Feature request
+description: Propose a change to a tool, runtime, rubric, or the harness itself
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is missing or awkward today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What would change, and which contract(s) in docs/contracts.md it touches
+    validations:
+      required: true

@@ -23,7 +23,21 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/recon"]
 
+[tool.ruff]
+extend-exclude = ["*.md"]
+
 [tool.pytest.ini_options]
+addopts = "--strict-markers"
 markers = [
     "llm: marks tests that call a model (excluded from CI)",
+    "unit: fast, hermetic tests with no external services",
+    "integration: multi-component tests using local infra (DuckDB, Postgres, k3d)",
+    "e2e: golden-path verification, typically run via the docker/k3d stack",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+    "pre-commit>=4.6.2",
+    "types-pyyaml>=6.0.12.20260815",
 ]
