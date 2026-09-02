@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: read
       id-token: write
     steps:
@@ -20,7 +20,40 @@ jobs:
       - uses: anthropics/claude-code-action@8251c103ac8c1d761882c86aba1412c7f583c844 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
-          plugins: "code-review@claude-code-plugins"
-          prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
-          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
+          # Re-review runs happen when the implement agent pushes a fix commit
+          # (a "synchronize" event authored by claude[bot]) - without this the
+          # human-actor check would reject that run and the loop would stall.
+          allowed_bots: "claude[bot]"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR: #${{ github.event.pull_request.number }}
+
+            Review this pull request as a senior engineer. Look for correctness
+            bugs, missing edge cases, and security issues, but also weigh in on
+            design and best-practice tradeoffs: is this the right approach, is
+            there a simpler or more idiomatic way, does it fit the rest of the
+            codebase. Where you're not certain something is wrong, say so and
+            ask rather than asserting it as a defect - the goal is a genuine
+            back-and-forth on the best solution, not a lint pass.
+
+            Steps:
+            1. Use mcp__github__get_pull_request_reviews to list existing reviews
+               on this PR. Count how many were submitted by a "claude" actor with
+               state CHANGES_REQUESTED - call this N (0 if none). This run is
+               round N+1.
+            2. Use mcp__github__get_pull_request_diff and mcp__github__get_pull_request
+               to read the actual diff and the PR description/linked issue.
+            3. Create a pending review with mcp__github__create_pending_pull_request_review,
+               add inline comments with mcp__github__add_pull_request_review_comment_to_pending_review
+               for anything specific enough to anchor to a line, then submit it
+               with mcp__github__submit_pending_pull_request_review:
+               - Round N+1 <= 3 and you have unresolved correctness or design
+                 concerns: submit with event REQUEST_CHANGES. In the review body,
+                 explain your overall reasoning, not just a list of nits.
+               - No unresolved concerns: submit with event APPROVE.
+               - Round N+1 > 3 and concerns remain: do NOT use REQUEST_CHANGES.
+                 Submit with event COMMENT, summarize what's still unresolved,
+                 and say plainly: "Reached the automatic review cap (3 rounds) -
+                 this needs a human to weigh in."
+          claude_args: |
+            --allowedTools "mcp__github__get_pull_request_reviews,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_files,mcp__github__create_pending_pull_request_review,mcp__github__add_pull_request_review_comment_to_pending_review,mcp__github__submit_pending_pull_request_review"
