@@ -52,3 +52,4 @@ jobs:
             on this branch.
           claude_args: |
             --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_comments,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__create_issue_comment"
+            --append-system-prompt "Follow CLAUDE.md's Voice section for your summary comment."

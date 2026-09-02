@@ -32,3 +32,5 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           assignee_trigger: "claude"
           label_trigger: "claude-implement"
+          claude_args: |
+            --append-system-prompt "Follow CLAUDE.md's Voice section for anything you write here — comments, PR summaries, issue bodies."

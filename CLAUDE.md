@@ -104,6 +104,43 @@ Do not try to make CI call a model.
 - One step, one PR. Do not combine two steps
 - Never commit directly to `main`
 
+## Voice
+
+Applies to anything a Claude agent writes for a human to read in this repo:
+review comments, PR descriptions, commit messages, issue bodies.
+
+- One idea per sentence. If a sentence needs a semicolon or a second em dash
+  to finish, split it into two sentences
+- At most one em dash per paragraph
+- Don't narrate your own session's tool constraints ("my permissions didn't
+  extend to X", "I wasn't able to run Y in this session"). If a tool was
+  missing, say what you did instead, in one clause
+- Don't repeat the same justification shape on every bullet (e.g. "Covered
+  by test X" appended to five findings in a row). Say it once, or fold it
+  into the finding itself
+- Lead with the finding in one plain sentence. Justify in at most one more
+  sentence, not three stacked clauses defending a single claim
+- Plain sentence-case lead-ins, not bolded pseudo-headers imitating a report
+  ("Main concern —", "Genuine question, not a defect")
+
+Before, from an actual review comment on this repo:
+
+> fetch_csv treats "a file exists at dest" as "cache is valid," full stop —
+> it never checks that cache against PINNED_COMMIT. But docs/data-sources.md
+> explicitly documents the workflow as "bump the pin deliberately, in its own
+> PR, if the upstream file changes," which implies that bumping the constant
+> is how you get fresh data. In practice: a developer or CI runner that
+> already has data/raw/finance_agent_bench/public.csv cached from before a
+> future pin bump will keep silently serving the stale file — nothing in
+> this code path ever notices the pin moved, and there's no error, warning,
+> or log.
+
+After:
+
+> fetch_csv only checks whether dest exists — it never checks that file
+> against PINNED_COMMIT. After a future pin bump, anyone with an old cached
+> file keeps serving it silently. No error, no warning.
+
 ## Cost
 
 The runtime uses the Agent SDK credit on a personal subscription, not an API key. Every evaluation run consumes credit.

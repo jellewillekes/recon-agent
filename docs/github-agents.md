@@ -51,6 +51,10 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
 - **Write-access check.** Anyone triggering `@claude` via a comment, assignment,
   or label needs write access to the repo (the action's default check) — this
   isn't a public-facing surface.
+- **Voice.** Every workflow adds `--append-system-prompt` pointing at
+  `CLAUDE.md`'s Voice section, so review comments, PR summaries, and issue
+  bodies follow the same house style instead of reading like a generated
+  report.
 
 ## Where a human steps in
 
