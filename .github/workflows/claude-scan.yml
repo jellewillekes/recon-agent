@@ -39,3 +39,4 @@ jobs:
               unlabeled for a human to triage.
           claude_args: |
             --allowedTools "mcp__github__search_issues,mcp__github__create_issue,mcp__github__list_issues"
+            --append-system-prompt "Follow CLAUDE.md's Voice section for every issue title and body you write."
