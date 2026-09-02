@@ -46,7 +46,7 @@ Claim the Agent SDK credit in your Claude account. Turn off extra usage.
 
 ---
 
-## Step 2 — load the dataset (1 hour)
+## Step 2 — load the dataset (1 hour) → **done**
 
 > Fetch the public validation set of the finance agent benchmark from `github.com/vals-ai/finance-agent`. **Inspect the actual CSV schema and report it back to me before writing any code.**
 >
@@ -56,11 +56,31 @@ Claim the Agent SDK credit in your Claude account. Turn off extra usage.
 
 **Verify:** `uv run python -m recon.cli dataset --stats` → table with case count and tag distribution.
 
+**Revised after inspection — the real schema doesn't match the assumption above.**
+`public.csv` is `Question, Answer, Question Type, Expert time (mins), Rubric`: pure
+Q&A with a per-question grading rubric, graded by an LLM judge on the vals.ai
+platform. There is no `expected_tool_path` and no native case ID or structured
+`context` (documents/tickers). Full mapping, license, attribution, and the pinned
+commit are in `docs/data-sources.md`. Two things this changes downstream:
+
+- **Step 5**: every `Case` from this source has `expected_tool_path = None`. The
+  harness must treat that as "not applicable" for `tool_path_exact` /
+  `tool_path_equivalent`, not score it as a miss.
+- **Step 3**: the tool set can't be derived from this dataset's `context` — it's
+  intentionally sparse. Decide the tool set from what we actually make available
+  locally, not from what this benchmark's own agent used (`web_search`,
+  `edgar_search`, live SEC lookups).
+
 ---
 
 ## Step 3 — MCP tools (2 hours)
 
 > Build `src/recon/tools/server.py` as an MCP server over stdio. **Determine which tools the dataset requires from the `context` fields of the loaded cases and propose them to me before implementing.**
+>
+> Note from step 2: `finance-agent-bench`'s `context` is sparse by design (no
+> documents/tickers, just `question_type`, `expert_time_minutes`, and a
+> per-question rubric) — the tool set has to come from what we make available
+> locally, not from inspecting `context`. See `docs/data-sources.md`.
 >
 > Every tool returns `ToolResult` and implements all five statuses from `docs/contracts.md`. `MAX_ROWS = 500`, `TIMEOUT_S = 30`. Pydantic input schemas, and tool descriptions that make clear when to use the tool and when not to. Queries go through DuckDB, read-only.
 >
@@ -85,6 +105,10 @@ Claim the Agent SDK credit in your Claude account. Turn off extra usage.
 ## Step 5 — evaluation harness (2.5 hours) → **POC**
 
 > Build `src/recon/eval/`. Metrics per `docs/contracts.md`: task completion, answer score from rubric, tool path exact and equivalent, tool-call accuracy, cost, latency.
+>
+> Note from step 2: `finance-agent-bench` never populates `expected_tool_path` —
+> `tool_path_exact`/`tool_path_equivalent` need an explicit "not applicable" state
+> for this source rather than scoring absence as a failure.
 >
 > Rubrics from `config/rubrics/*.yaml` as assertions, not free-form judgement. Write at least three: `answer_correctness`, `evidence_grounding`, `tool_efficiency`.
 >
