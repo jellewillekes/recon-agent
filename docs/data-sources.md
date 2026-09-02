@@ -64,3 +64,16 @@ ticker/period fields) to query locally. Step 3's own tool set has to be decided
 against what's actually available to us (e.g. local SEC filing data, DuckDB tables we
 populate ourselves), not assumed from this dataset's `context`, which is sparse by
 design.
+
+## Step 3's tool data: synthetic fixture, not real filings
+
+`src/recon/tools/fixtures.py` seeds three tables (`companies`, `financial_facts`,
+`filings`) into an in-memory DuckDB connection at server startup. Every company,
+fact, and filing summary in it is fictional — it exists to exercise the
+`ToolResult` contract end to end, not to answer finance-agent-bench questions
+correctly. Tool answers against the real benchmark stay near-zero until a real
+data source replaces or extends this fixture; that's tracked as its own,
+separate GitHub issue (fetching structured XBRL facts from SEC EDGAR's public
+API for the tickers the 50 questions actually reference). Qualitative
+questions — board membership, KPI narratives — stay out of reach regardless,
+until step 13 (RAG) exists.
