@@ -1,0 +1,4 @@
+Question,Answer,Question Type,Expert time (mins),Rubric
+What was the revenue trend for the retailer described in the filing?,"Revenue grew steadily each quarter, driven by higher unit sales.",Trends,12,"[{""operator"": ""correctness"", ""criteria"": ""Revenue grew each quarter""}]"
+How did the manufacturer's operating margin change year over year?,Operating margin improved by roughly two percentage points.,Numerical Reasoning,8,"[{""operator"": ""correctness"", ""criteria"": ""Margin improved year over year""}, {""operator"": ""contradiction"", ""criteria"": ""Margin declined year over year""}]"
+What synergies were expected from the proposed merger of the two logistics firms?,Management expected cost savings from combined distribution networks and shared administrative functions.,Market Analysis,15.5,"[{""operator"": ""correctness"", ""criteria"": ""Cost savings expected from combined distribution networks""}]"
