@@ -20,3 +20,11 @@ contracts, tools, or runtimes implemented yet.
 uv sync
 uv run pytest
 ```
+
+## Repo automation
+
+Issues in this repo can be implemented and opened as PRs by Claude, and those PRs
+are then reviewed — and iterated on — by a separate Claude review agent before a
+human merges. This is repo tooling, not the investigator agent under evaluation.
+See [`docs/github-agents.md`](docs/github-agents.md) for how the agents are
+wired together, how they communicate, and where a human is required to step in.
