@@ -4,10 +4,17 @@ import argparse
 from collections import Counter
 from pathlib import Path
 
-from recon.adapters.finance_agent_bench import fetch_csv, load_cases
+from recon.adapters.finance_agent_bench import (
+    DEFAULT_CACHE_FILENAME,
+    fetch_csv,
+    load_cases,
+)
 from recon.contracts import Case
 
-DEFAULT_DATASET_PATH = Path("data/raw/finance_agent_bench/public.csv")
+# Filename carries the pinned commit, so bumping the pin in the adapter also
+# changes the default fetch destination here — an old pin's cached file is
+# never mistaken for the current one.
+DEFAULT_DATASET_PATH = Path("data/raw/finance_agent_bench") / DEFAULT_CACHE_FILENAME
 
 
 def compute_dataset_stats(cases: list[Case]) -> dict[str, object]:
@@ -35,6 +42,8 @@ def _cmd_dataset(args: argparse.Namespace) -> None:
     cases = load_cases(csv_path)
     if args.stats:
         _print_dataset_stats(compute_dataset_stats(cases))
+    else:
+        print(f"Loaded {len(cases)} cases from {csv_path}")
 
 
 def build_parser() -> argparse.ArgumentParser:

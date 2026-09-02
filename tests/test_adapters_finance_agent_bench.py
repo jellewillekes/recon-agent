@@ -15,7 +15,9 @@ from pydantic import ValidationError
 
 from recon.adapters.finance_agent_bench import (
     ATTRIBUTION,
+    DEFAULT_CACHE_FILENAME,
     LICENSE,
+    PINNED_COMMIT,
     RAW_CSV_URL,
     fetch_csv,
     load_cases,
@@ -24,6 +26,8 @@ from recon.adapters.finance_agent_bench import (
 FIXTURES = Path(__file__).parent / "fixtures"
 SAMPLE_CSV = FIXTURES / "finance_agent_bench_sample.csv"
 MISSING_ANSWER_CSV = FIXTURES / "finance_agent_bench_missing_answer.csv"
+MALFORMED_RUBRIC_CSV = FIXTURES / "finance_agent_bench_malformed_rubric.csv"
+MISSING_COLUMN_CSV = FIXTURES / "finance_agent_bench_missing_column.csv"
 
 
 @pytest.mark.unit
@@ -73,6 +77,25 @@ def test_missing_answer_and_no_tool_path_is_rejected() -> None:
 
 
 @pytest.mark.unit
+def test_malformed_rubric_json_raises_with_line_context() -> None:
+    with pytest.raises(ValueError, match=r"line 2.*Rubric"):
+        load_cases(MALFORMED_RUBRIC_CSV)
+
+
+@pytest.mark.unit
+def test_missing_column_raises_with_line_context() -> None:
+    with pytest.raises(ValueError, match=r"line 2.*Expert time \(mins\)"):
+        load_cases(MISSING_COLUMN_CSV)
+
+
+@pytest.mark.unit
+def test_default_cache_filename_is_keyed_on_the_pin() -> None:
+    """A future pin bump must change the default cache path (see cli.py's
+    DEFAULT_DATASET_PATH), or a stale cached file would be reused silently."""
+    assert DEFAULT_CACHE_FILENAME == f"public-{PINNED_COMMIT[:12]}.csv"
+
+
+@pytest.mark.unit
 def test_fetch_csv_downloads_via_mocked_transport(tmp_path: Path) -> None:
     requested_urls = []
 
@@ -102,3 +125,31 @@ def test_fetch_csv_skips_request_when_already_cached(tmp_path: Path) -> None:
     fetch_csv(dest, client=client)
 
     assert dest.read_bytes() == b"cached content"
+
+
+@pytest.mark.unit
+def test_fetch_csv_leaves_no_partial_file_on_failure(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    dest = tmp_path / "public.csv"
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        fetch_csv(dest, client=client)
+
+    assert not dest.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.unit
+def test_fetch_csv_leaves_no_temp_file_behind_on_success(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=SAMPLE_CSV.read_bytes())
+
+    dest = tmp_path / "public.csv"
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    fetch_csv(dest, client=client)
+
+    assert list(tmp_path.iterdir()) == [dest]

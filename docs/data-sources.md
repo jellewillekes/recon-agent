@@ -5,7 +5,10 @@
 - **Source**: [`vals-ai/finance-agent`](https://github.com/vals-ai/finance-agent), file `data/public.csv`
 - **Pinned commit**: `8ba65f81ab759a8e0d44e72aabc5a47cf839d563` (`main`, 2026-07-21). The
   adapter fetches this exact commit, not `main`, so the schema can't shift under it.
-  Bump the pin deliberately, in its own PR, if the upstream file changes.
+  Bump the pin deliberately, in its own PR, if the upstream file changes. The default
+  local cache filename (`public-<pin prefix>.csv`) is derived from the pin, so bumping
+  it changes the path a fresh fetch lands at — an older pin's cached file is never
+  silently reused as if it were current.
 - **License**: MIT. Copyright (c) 2025 Vals AI, Inc.
 - **Required attribution**: `Data from vals-ai/finance-agent (MIT License), Copyright
   (c) 2025 Vals AI, Inc. https://github.com/vals-ai/finance-agent — benchmark details
