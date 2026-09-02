@@ -1,0 +1,54 @@
+name: Claude Respond to Review
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  respond:
+    if: |
+      github.event.review.state == 'changes_requested' &&
+      contains(github.event.pull_request.user.login, 'claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@8251c103ac8c1d761882c86aba1412c7f583c844 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Lets the reviewer bot's own "changes requested" event trigger this
+          # job - see the matching note in claude-code-review.yml.
+          allowed_bots: "claude[bot]"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR: #${{ github.event.pull_request.number }}
+
+            A reviewer just requested changes on this pull request you opened.
+            Use mcp__github__get_pull_request_reviews and
+            mcp__github__get_pull_request_comments to read the review body and
+            its inline comments.
+
+            For each point raised, decide on its merits:
+            - Real bug, missing edge case, or clear improvement: fix it in the
+              code and commit the change.
+            - You disagree, or think the reviewer's suggestion is worse than the
+              current approach: don't just comply - explain your reasoning and
+              propose your preferred solution. Pushing back with a concrete
+              argument is fine and expected.
+            - Ambiguous: say what you'd do and why, and note the tradeoff.
+
+            Post one summary comment on the PR (mcp__github__create_issue_comment,
+            issue number = PR number) covering what you changed and, for anything
+            you didn't change, why. Then push any code changes as a new commit
+            on this branch.
+          claude_args: |
+            --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_comments,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__create_issue_comment"
