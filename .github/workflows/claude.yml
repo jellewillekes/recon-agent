@@ -33,4 +33,4 @@ jobs:
           assignee_trigger: "claude"
           label_trigger: "claude-implement"
           claude_args: |
-            --append-system-prompt "Follow CLAUDE.md's Voice section for anything you write here — comments, PR summaries, issue bodies."
+            --append-system-prompt "Follow CLAUDE.md's Voice section for anything you write here — comments, commit messages, PR summaries, issue bodies."
