@@ -89,9 +89,10 @@ commit are in `docs/data-sources.md`. Two things this changes downstream:
 **Verify:** `uv run pytest tests/test_tools.py -q` → at least 5 tests per tool.
 
 **Revised after inspection — the dataset's `context` couldn't drive this either.**
-Sampling the actual questions (e.g. *"How many basis points did MU beat or miss
-its Q3 2024 GAAP gross margin guidance?"*) showed they need real filing facts
-about real, named companies, which we have zero local data for. Building that
+Sampling the actual questions (e.g. a "Beat or Miss"-category question asking by
+how many basis points a named company's quarterly GAAP gross margin beat or
+missed its own guidance) showed they need real filing facts about real, named
+companies, which we have zero local data for. Building that
 (SEC EDGAR's structured XBRL API, cached locally) is a separate, bigger piece
 of work than this ticket, and qualitative questions need real document search
 regardless, which is deferred to step 13 (RAG). Asked which way to take step 3;

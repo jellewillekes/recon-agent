@@ -21,15 +21,26 @@ def conn() -> duckdb.DuckDBPyConnection:
 
 
 class _SlowConnection:
-    """Wraps a real connection so `execute` takes longer than TIMEOUT_S."""
+    """Wraps a real connection so a query takes longer than TIMEOUT_S.
+
+    Mimics the bit of the DuckDB connection API `_run_bounded` relies on:
+    `.cursor()` returns something `execute`-able, and `.interrupt()` exists
+    so the timeout path's cancellation call doesn't blow up on this double.
+    """
 
     def __init__(self, real: duckdb.DuckDBPyConnection, delay_s: float) -> None:
         self._real = real
         self._delay_s = delay_s
 
+    def cursor(self) -> "_SlowConnection":
+        return self
+
     def execute(self, sql: str, params: list[object]) -> duckdb.DuckDBPyConnection:
         time.sleep(self._delay_s)
         return self._real.execute(sql, params)
+
+    def interrupt(self) -> None:
+        pass
 
 
 # --- list_companies ---------------------------------------------------------
