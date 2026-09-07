@@ -62,5 +62,5 @@ jobs:
             code changes as a new commit on this branch.
           claude_args: |
             --model claude-sonnet-5
-            --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_comments,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__create_issue_comment"
+            --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),Bash(uv run pytest:*),Bash(uv run ruff:*),mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_comments,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__create_issue_comment"
             --append-system-prompt "Follow CLAUDE.md's Voice section for your summary comment."
