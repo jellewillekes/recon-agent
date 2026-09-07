@@ -51,7 +51,11 @@ jobs:
                state CHANGES_REQUESTED - call this N (0 if none). This run is
                round N+1.
             2. Use mcp__github__get_pull_request_diff and mcp__github__get_pull_request
-               to read the actual diff and the PR description/linked issue.
+               to read the actual diff and the PR description/linked issue. These tools
+               only show the PR's own diff against its merge base - a file that arrived
+               on this branch via merging main won't appear there even though it's
+               genuinely present in the final tree. Don't call such a file "missing"
+               without checking whether it actually exists.
             3. Some concerns are not the implementer's to resolve automatically,
                regardless of round number: anything in CLAUDE.md's "Forbidden
                without explicit permission" list (golden-set/expected-answer
