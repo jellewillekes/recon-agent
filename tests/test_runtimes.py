@@ -4,9 +4,13 @@ Monkeypatches `claude_agent_sdk.query` with a fabricated message stream — no
 real model call, no network, no cost — and asserts the parsing: tool-call
 ordering and status/elapsed_ms extraction, cost conversion, and that any
 failure surfaces as `AgentResult.error` rather than propagating, per the
-`Runtime` protocol contract.
+`Runtime` protocol contract. Also covers `run_async` directly, including
+that cancelling it actually reaches `query()`'s own cleanup (the property
+`run()` + `asyncio.to_thread` couldn't provide — see
+`docs/adr/0006-api-timeout-cancellation-fixed.md`).
 """
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -477,3 +481,80 @@ def test_run_options_failure_populates_error_not_raise(
 
     assert result.error is not None
     assert "models.yaml" in result.error
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_run_async_success_parses_tool_calls_and_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`run_async` must produce the same result as `run` for the same
+    message stream — it's the same logic, just awaited directly instead of
+    bridged through `asyncio.run()`.
+    """
+    _patch_options(monkeypatch)
+    _patch_query(
+        monkeypatch,
+        [
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="tu1",
+                        name="mcp__recon-tools__list_companies_tool",
+                        input={"sector": None},
+                    )
+                ],
+                model="claude-sonnet-5",
+            ),
+            _tool_result_message("tu1", status="ok", elapsed_ms=12),
+            _result_message(),
+        ],
+    )
+
+    result = await agent_sdk.AgentSdkRuntime().run_async(CASE)
+
+    assert result.error is None
+    assert result.answer == "Industrials"
+    assert result.tool_calls[0].tool == "list_companies"
+    assert result.cost_eur == pytest.approx(0.01 * 0.9)
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_run_async_cancellation_stops_the_underlying_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bug `run_async` exists to fix: a timeout must actually stop the
+    run, not just abandon the wrapper around it. Simulates `query()` hanging
+    forever (as it would on a slow/stuck subprocess) and asserts that
+    cancelling the awaiting coroutine (via `asyncio.wait_for`, the same
+    mechanism `api/main.py` uses) reaches all the way into `query()`'s own
+    cleanup — proving the cancellation signal actually propagates instead of
+    being stranded in a separate event loop the way `run()` + `to_thread`
+    would strand it.
+    """
+    _patch_options(monkeypatch)
+    cleanup_ran = []
+
+    async def hanging_query(
+        *, prompt: str, options: ClaudeAgentOptions | None = None
+    ) -> AsyncIterator[object]:
+        try:
+            await asyncio.Event().wait()
+            yield object()  # pragma: no cover - unreachable, keeps this an async generator
+        finally:
+            cleanup_ran.append(True)
+
+    monkeypatch.setattr(agent_sdk, "query", hanging_query)
+
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(
+            agent_sdk.AgentSdkRuntime().run_async(CASE), timeout=0.05
+        )
+
+    assert cleanup_ran == [True]

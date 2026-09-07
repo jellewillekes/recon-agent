@@ -16,3 +16,9 @@ class Runtime(Protocol):
     def run(self, case: Case) -> AgentResult:
         """Answer `case`. Never raises — a failed run populates `error` instead."""
         ...
+
+    async def run_async(self, case: Case) -> AgentResult:
+        """Same contract as `run`, but a real coroutine: cancelling the await
+        actually stops the underlying work, not just the wrapper around it.
+        """
+        ...

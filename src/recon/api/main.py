@@ -135,18 +135,22 @@ async def investigate(request: Request, body: InvestigateRequest) -> Response:
             INVESTIGATE_IN_FLIGHT.inc()
             try:
                 result = await asyncio.wait_for(
-                    asyncio.to_thread(_runtime.run, case), timeout=REQUEST_TIMEOUT_S
+                    _runtime.run_async(case), timeout=REQUEST_TIMEOUT_S
                 )
             finally:
                 INVESTIGATE_IN_FLIGHT.dec()
     except TimeoutError:
-        # wait_for only cancels the await, not _runtime.run's underlying
-        # thread/subprocess (see docs/adr/0005-api-timeout-cancellation-deferred.md) -
-        # the run keeps executing after this response goes out, so log it as
-        # the operational signal that a real fix still needs.
+        # run_async is a real coroutine (unlike run(), which bridges through
+        # its own asyncio.run() in a worker thread), so this cancellation
+        # actually reaches query() and the SDK's own shielded subprocess
+        # teardown - see docs/adr/0006-api-timeout-cancellation-fixed.md.
+        # wait_for waits for that teardown to finish (bounded ~20s worst
+        # case by the SDK) before raising, so this response can be delayed
+        # by cleanup - a deliberate tradeoff over an instant 504 that leaves
+        # an orphaned run behind.
         logger.warning(
-            "request_id=%s timed out after %.1fs; the underlying run may "
-            "still be executing in the background (case_id=%s)",
+            "request_id=%s timed out after %.1fs; the run was cancelled and "
+            "its subprocess torn down (case_id=%s)",
             request_id,
             REQUEST_TIMEOUT_S,
             case.case_id,
