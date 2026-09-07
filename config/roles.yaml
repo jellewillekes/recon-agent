@@ -1,14 +1,22 @@
 # Role configuration for multi-agent mode (`runtimes/multi_agent.py`).
 # Mirrors models.yaml's per-role-key shape. `tools:` is the structural tool
 # subset for that role - it drives ClaudeAgentOptions.allowed_tools directly,
-# not a prompt instruction. supervisor/critic omit it entirely: they get no
-# MCP server attached at all, not just an empty allowlist.
+# not a prompt instruction. critic omits it entirely: it gets no MCP server
+# attached at all, not just an empty allowlist.
 
 supervisor:
   model: claude-sonnet-5
-  # Called twice per case (decompose, then synthesize) - no tool use in
-  # either call, so a small turn budget is enough for both.
-  max_turns: 4
+  # Called twice per case (decompose, then synthesize) - no research tool use
+  # in either call. flag_case_for_review is the one tool it has
+  # (docs/contracts.md section 6: "supervisor only"), used via a 3-call
+  # protocol (dry_run, unconfirmed pause, confirmed) per prompts/supervisor.md.
+  # A call that escalates needs those 3 tool turns plus 1 more to still
+  # produce its required structured output (subtasks or answer) - 4 would
+  # leave zero slack and risks _run_query's hard RuntimeError on a stream
+  # that ends without one. 8 leaves real room for that plus a turn or two of
+  # reasoning around it.
+  max_turns: 8
+  tools: [flag_case_for_review]
 
 worker_lookup:
   model: claude-sonnet-5

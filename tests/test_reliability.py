@@ -383,7 +383,7 @@ async def test_multi_mode_stops_the_run_on_token_budget_breach(
     async def fake_query(
         *, prompt: str, options: ClaudeAgentOptions | None = None
     ) -> Any:
-        if prompt.startswith("Decompose"):
+        if "Decompose this question" in prompt:
             yield _result_message(
                 structured_output={
                     "subtasks": [
@@ -445,7 +445,7 @@ async def test_multi_mode_preserves_the_synthesized_answer_on_a_late_token_budge
     async def fake_query(
         *, prompt: str, options: ClaudeAgentOptions | None = None
     ) -> Any:
-        if prompt.startswith("Decompose"):
+        if "Decompose this question" in prompt:
             yield _result_message(
                 structured_output={
                     "subtasks": [
@@ -460,7 +460,7 @@ async def test_multi_mode_preserves_the_synthesized_answer_on_a_late_token_budge
                     "evidence": ["fact:sector=Industrials"],
                 }
             )
-        elif prompt.startswith("Original question"):
+        elif "Original question" in prompt:
             yield _result_message(
                 structured_output={
                     "answer": "Industrials",

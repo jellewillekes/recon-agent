@@ -275,6 +275,54 @@ def test_run_excludes_read_from_tool_calls(monkeypatch: pytest.MonkeyPatch) -> N
     assert result.tool_calls == []
 
 
+@pytest.mark.unit
+def test_run_parses_status_from_result_without_elapsed_ms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`ReviewFlagResult` (a write, not a timed read) has no `elapsed_ms`
+    field — a real `status` like "confirmation_required" must still come
+    through, not fall back to the generic "unknown".
+    """
+    _patch_options(monkeypatch)
+    _patch_query(
+        monkeypatch,
+        [
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="tu1",
+                        name="mcp__recon-tools__flag_case_for_review_tool",
+                        input={"case_id": "case-001", "dry_run": False},
+                    )
+                ],
+                model="claude-sonnet-5",
+            ),
+            UserMessage(
+                content=[
+                    ToolResultBlock(
+                        tool_use_id="tu1",
+                        content=json.dumps(
+                            {
+                                "status": "confirmation_required",
+                                "flag": None,
+                                "message": "Call again with confirmed=True.",
+                            }
+                        ),
+                    )
+                ]
+            ),
+            _result_message(),
+        ],
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is None
+    assert result.tool_calls[0].tool == "flag_case_for_review"
+    assert result.tool_calls[0].status == "confirmation_required"
+    assert result.tool_calls[0].elapsed_ms == 0
+
+
 def _offload_notice(path: Path) -> str:
     return (
         f"Error: result (53,048 characters) exceeds maximum allowed tokens. "

@@ -21,6 +21,7 @@ from recon.contracts import (
     CaseScore,
     EvalRun,
     ReviewFlag,
+    ReviewFlagResult,
     ToolCall,
     ToolResult,
 )
@@ -78,6 +79,13 @@ VALID_REVIEW_FLAG: dict[str, Any] = {
     "created_at": datetime.now(UTC),
 }
 
+VALID_REVIEW_FLAG_RESULT: dict[str, Any] = {
+    "status": "created",
+    "flag": ReviewFlag(**VALID_REVIEW_FLAG),
+    "message": "review flag created",
+    "preview_token": None,
+}
+
 VALID_CASE_SCORE: dict[str, Any] = {
     "case_id": "case-001",
     "task_completion": True,
@@ -113,6 +121,7 @@ MODEL_CASES: list[tuple[type[BaseModel], dict[str, Any]]] = [
     (ToolCall, VALID_TOOL_CALL),
     (AgentResult, VALID_AGENT_RESULT),
     (ReviewFlag, VALID_REVIEW_FLAG),
+    (ReviewFlagResult, VALID_REVIEW_FLAG_RESULT),
     (CaseScore, VALID_CASE_SCORE),
     (EvalRun, VALID_EVAL_RUN),
 ]
@@ -252,6 +261,7 @@ DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "ToolCall": ToolCall,
     "AgentResult": AgentResult,
     "ReviewFlag": ReviewFlag,
+    "ReviewFlagResult": ReviewFlagResult,
     "CaseScore": CaseScore,
     "EvalRun": EvalRun,
 }

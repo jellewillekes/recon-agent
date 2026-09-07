@@ -46,7 +46,11 @@ CASE = Case(
 )
 
 ROLES_CONFIG: dict[str, Any] = {
-    "supervisor": {"model": "claude-sonnet-5", "max_turns": 4},
+    "supervisor": {
+        "model": "claude-sonnet-5",
+        "max_turns": 4,
+        "tools": ["flag_case_for_review"],
+    },
     "worker_lookup": {
         "model": "claude-sonnet-5",
         "max_turns": 8,
@@ -100,7 +104,7 @@ def _accepting_critic_query(
     *, prompt: str, options: ClaudeAgentOptions | None = None
 ) -> Any:
     async def gen() -> Any:
-        if prompt.startswith("Decompose"):
+        if "Decompose this question" in prompt:
             yield _result_message(
                 structured_output={
                     "subtasks": [
@@ -171,6 +175,89 @@ async def test_run_multi_success_full_flow(monkeypatch: pytest.MonkeyPatch) -> N
     assert result.cost_eur == pytest.approx(0.001 * 0.9 * 4)
 
 
+def _flagging_supervisor_query(
+    *, prompt: str, options: ClaudeAgentOptions | None = None
+) -> Any:
+    """Same shape as `_accepting_critic_query`, but the supervisor's
+    decompose call also calls `flag_case_for_review_tool` before returning
+    its structured output - the supervisor is the only role that can reach
+    this tool, so this is the only call site that can prove its result makes
+    it into `AgentResult.tool_calls`.
+    """
+
+    async def gen() -> Any:
+        if "Decompose this question" in prompt:
+            yield AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="tu-flag",
+                        name="mcp__recon-tools__flag_case_for_review_tool",
+                        input={"case_id": CASE.case_id, "dry_run": True},
+                    )
+                ],
+                model="claude-sonnet-5",
+            )
+            yield UserMessage(
+                content=[
+                    ToolResultBlock(
+                        tool_use_id="tu-flag",
+                        content='{"status": "would_write", "message": "preview"}',
+                    )
+                ]
+            )
+            yield _result_message(
+                structured_output={
+                    "subtasks": [
+                        {
+                            "worker": "worker_lookup",
+                            "instruction": "find FIRM-001's sector",
+                        }
+                    ]
+                }
+            )
+        elif "Synthesize a final answer" in prompt:
+            yield _result_message(
+                structured_output={
+                    "answer": "Industrials",
+                    "evidence": ["FIRM-001 is in Industrials"],
+                    "confidence": "high",
+                }
+            )
+        elif "Does the evidence support" in prompt:
+            yield _result_message(
+                structured_output={"accepted": True, "reason": "well supported"}
+            )
+        else:
+            yield _result_message(
+                structured_output={
+                    "findings": "FIRM-001 is in Industrials",
+                    "evidence": ["FIRM-001 sector=Industrials"],
+                }
+            )
+
+    return gen()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_run_multi_includes_supervisor_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_accumulate` folds in every `_QueryResult.tool_calls`, not just the
+    worker loop's - a review-flag write only the supervisor can make must
+    not vanish from `AgentResult.tool_calls`.
+    """
+    _patch_roles_and_models(monkeypatch)
+    monkeypatch.setattr(agent_sdk, "query", _flagging_supervisor_query)
+
+    result = await multi_agent.run_multi_async(
+        CASE, roles_config_path=Path("unused"), prompts_dir=Path("prompts")
+    )
+
+    assert [call.tool for call in result.tool_calls] == ["flag_case_for_review"]
+    assert result.tool_calls[0].status == "would_write"
+
+
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_run_multi_routes_to_both_workers_in_one_case(
@@ -187,7 +274,7 @@ async def test_run_multi_routes_to_both_workers_in_one_case(
         *, prompt: str, options: ClaudeAgentOptions | None = None
     ) -> Any:
         async def gen() -> Any:
-            if prompt.startswith("Decompose"):
+            if "Decompose this question" in prompt:
                 yield _result_message(
                     structured_output={
                         "subtasks": [
@@ -240,7 +327,7 @@ async def test_critic_rejection_forces_confidence_low(
         *, prompt: str, options: ClaudeAgentOptions | None = None
     ) -> Any:
         async def gen() -> Any:
-            if prompt.startswith("Decompose"):
+            if "Decompose this question" in prompt:
                 yield _result_message(
                     structured_output={
                         "subtasks": [
@@ -300,9 +387,16 @@ def test_worker_options_exclude_tools_outside_subset() -> None:
     )
     assert "mcp__recon-tools__search_filings_tool" not in lookup_options.allowed_tools
     assert "mcp__recon-tools__list_companies_tool" in lookup_options.allowed_tools
+    assert (
+        "mcp__recon-tools__flag_case_for_review_tool"
+        not in lookup_options.allowed_tools
+    )
 
     assert facts_options.allowed_tools is not None
     assert "mcp__recon-tools__list_companies_tool" not in facts_options.allowed_tools
+    assert (
+        "mcp__recon-tools__flag_case_for_review_tool" not in facts_options.allowed_tools
+    )
     assert (
         "mcp__recon-tools__list_financial_concepts_tool"
         not in facts_options.allowed_tools
@@ -311,9 +405,22 @@ def test_worker_options_exclude_tools_outside_subset() -> None:
 
 
 @pytest.mark.unit
-def test_supervisor_and_critic_get_no_mcp_server_at_all() -> None:
-    """Not just an empty allowlist - no MCP server attached, so the tool is
-    structurally absent from these roles' clients, not merely refused.
+def test_critic_gets_no_mcp_server_at_all() -> None:
+    """Not just an empty allowlist - no MCP server attached, so no tool is
+    structurally absent from the critic's client, not merely refused.
+    """
+    critic_options = multi_agent._build_role_options(
+        "critic", ROLES_CONFIG["critic"], Path("prompts"), multi_agent._CRITIC_SCHEMA
+    )
+
+    assert critic_options.mcp_servers == {}
+    assert critic_options.allowed_tools == []
+
+
+@pytest.mark.unit
+def test_supervisor_gets_only_the_flag_tool() -> None:
+    """The supervisor's one tool is flag_case_for_review (docs/contracts.md
+    section 6: "supervisor only") - none of the workers' read tools.
     """
     supervisor_options = multi_agent._build_role_options(
         "supervisor",
@@ -321,11 +428,15 @@ def test_supervisor_and_critic_get_no_mcp_server_at_all() -> None:
         Path("prompts"),
         multi_agent._DECOMPOSE_SCHEMA,
     )
-    critic_options = multi_agent._build_role_options(
-        "critic", ROLES_CONFIG["critic"], Path("prompts"), multi_agent._CRITIC_SCHEMA
-    )
 
-    assert supervisor_options.mcp_servers == {}
-    assert supervisor_options.allowed_tools == []
-    assert critic_options.mcp_servers == {}
-    assert critic_options.allowed_tools == []
+    assert supervisor_options.allowed_tools == [
+        "mcp__recon-tools__flag_case_for_review_tool",
+        "Read",
+    ]
+    for read_tool in (
+        "list_companies_tool",
+        "list_financial_concepts_tool",
+        "get_financial_fact_tool",
+        "search_filings_tool",
+    ):
+        assert f"mcp__recon-tools__{read_tool}" not in supervisor_options.allowed_tools

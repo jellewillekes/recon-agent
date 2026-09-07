@@ -9,6 +9,7 @@ model, turn budget, and USD→EUR rate this reads.
 import asyncio
 import contextlib
 import json
+import os
 import re
 import sys
 import time
@@ -39,8 +40,17 @@ _TOOL_NAMES = (
     "list_financial_concepts_tool",
     "get_financial_fact_tool",
     "search_filings_tool",
+    # Single mode has no worker/supervisor split - the one agent acts as
+    # supervisor, so it gets the write path too (docs/contracts.md section 6:
+    # "supervisor only").
+    "flag_case_for_review_tool",
 )
 ALLOWED_TOOLS = [f"mcp__{MCP_SERVER_NAME}__{name}" for name in _TOOL_NAMES] + ["Read"]
+
+# Passed to the MCP server subprocess's environment so flag_case_for_review_tool
+# can populate ReviewFlag.created_by ("runtime + mode", docs/contracts.md section
+# 6) without the agent having to self-report it as a tool argument.
+_CREATED_BY = f"{RUNTIME_NAME}:single"
 
 DEFAULT_MODELS_CONFIG_PATH = Path("config/models.yaml")
 DEFAULT_PROMPT_PATH = Path("prompts/investigator.md")
@@ -190,6 +200,7 @@ def _build_options(
             MCP_SERVER_NAME: McpStdioServerConfig(
                 command=sys.executable,
                 args=["-m", "recon.tools.mcp_server"],
+                env={**os.environ, "RECON_CREATED_BY": _CREATED_BY},
             )
         },
         allowed_tools=ALLOWED_TOOLS,
@@ -256,6 +267,10 @@ def _parse_tool_result(content: str | list[dict[str, Any]] | None) -> tuple[str,
     `("unknown", 0)` for anything else — genuinely undeterminable, which is a
     different claim than `ToolResult`'s own `"unavailable"` ("source down,
     timeout, circuit open" per `docs/contracts.md`).
+
+    `elapsed_ms` is optional in the payload: `ToolResult` always has it, but
+    `ReviewFlagResult` (a write, not a timed read) doesn't, and a missing
+    timing shouldn't erase a real `status`.
     """
     text: str | None = content if isinstance(content, str) else None
     if text is None and isinstance(content, list):
@@ -275,7 +290,7 @@ def _parse_tool_result(content: str | list[dict[str, Any]] | None) -> tuple[str,
         payload = _parse_offloaded_result(text)
         if payload is None:
             return "unknown", 0
-    status, elapsed_ms = payload.get("status"), payload.get("elapsed_ms")
+    status, elapsed_ms = payload.get("status"), payload.get("elapsed_ms", 0)
     if not isinstance(status, str) or not isinstance(elapsed_ms, int):
         return "unknown", 0
     return status, elapsed_ms
