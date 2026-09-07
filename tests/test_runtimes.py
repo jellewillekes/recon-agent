@@ -178,6 +178,91 @@ def test_run_preserves_tool_call_order(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
+def test_run_parses_list_shaped_tool_result_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`ToolResultBlock.content` types as `str | list[dict[str, Any]] | None` —
+    real MCP round trips observed so far always send the plain-string form,
+    but the list-of-text-block form is part of the SDK's own declared type
+    and must parse the same way.
+    """
+    _patch_options(monkeypatch)
+    payload = {
+        "status": "ok",
+        "data": [{"company_id": "FIRM-001"}],
+        "row_count": 1,
+        "message": "ok",
+        "elapsed_ms": 9,
+    }
+    list_shaped_result = UserMessage(
+        content=[
+            ToolResultBlock(
+                tool_use_id="tu1",
+                content=[{"type": "text", "text": json.dumps(payload)}],
+            )
+        ]
+    )
+    _patch_query(
+        monkeypatch,
+        [
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="tu1",
+                        name="mcp__recon-tools__list_companies_tool",
+                        input={"sector": None},
+                    )
+                ],
+                model="claude-sonnet-5",
+            ),
+            list_shaped_result,
+            _result_message(),
+        ],
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is None
+    assert result.tool_calls[0].status == "ok"
+    assert result.tool_calls[0].elapsed_ms == 9
+
+
+@pytest.mark.unit
+def test_run_excludes_read_from_tool_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`Read` is kept only for the CLI's own oversized-result recovery — it
+    isn't one of tools/server.py's tools and its content doesn't match
+    ToolResult's shape, so it must never end up in `AgentResult.tool_calls`.
+    """
+    _patch_options(monkeypatch)
+    _patch_query(
+        monkeypatch,
+        [
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="tu1",
+                        name="Read",
+                        input={"file_path": "/tmp/offloaded-result.txt"},
+                    )
+                ],
+                model="claude-sonnet-5",
+            ),
+            UserMessage(
+                content=[
+                    ToolResultBlock(tool_use_id="tu1", content="file contents here")
+                ]
+            ),
+            _result_message(),
+        ],
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is None
+    assert result.tool_calls == []
+
+
+@pytest.mark.unit
 def test_run_no_result_message_populates_error_not_raise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

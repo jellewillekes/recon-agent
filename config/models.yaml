@@ -4,8 +4,10 @@
 
 investigator:
   model: claude-sonnet-5
-  price_usd_per_1m_input: 3.0
-  price_usd_per_1m_output: 15.0
+  # Bounds a single case's turn count. Every run spends real Agent SDK
+  # credit (CLAUDE.md's Cost section) — this stops a confused run from
+  # retrying tool calls indefinitely.
+  max_turns: 20
 
 # Static, manually-updated approximation — not a live lookup. A runtime call
 # must not depend on network access beyond the Agent SDK itself, and a fixed

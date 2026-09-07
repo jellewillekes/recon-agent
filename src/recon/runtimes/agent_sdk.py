@@ -3,7 +3,7 @@
 Spawns `recon.tools.mcp_server` as a stdio subprocess per run and drives
 `claude_agent_sdk.query()` against it. See `prompts/investigator.md` for the
 system prompt (never inline, per CLAUDE.md) and `config/models.yaml` for the
-model and pricing this reads.
+model, turn budget, and USD→EUR rate this reads.
 """
 
 import asyncio
@@ -88,6 +88,9 @@ def _build_options(
     investigator = config["investigator"]
     options = ClaudeAgentOptions(
         model=investigator["model"],
+        # Every run spends real Agent SDK credit (CLAUDE.md's Cost section) —
+        # a case that confuses the model into a retry loop must still stop.
+        max_turns=investigator["max_turns"],
         system_prompt={"type": "file", "path": str(prompt_path.resolve())},
         # Read is the one built-in tool kept: when an MCP tool result is too
         # large to hand back inline, the CLI offloads it to a file and tells
@@ -148,10 +151,20 @@ async def _run_async(
     pending: dict[str, tuple[str, dict[str, Any]]] = {}
     result_message: ResultMessage | None = None
 
+    mcp_prefix = f"mcp__{MCP_SERVER_NAME}__"
     async for message in query(prompt=case.question, options=options):
         if isinstance(message, AssistantMessage):
             for block in message.content:
-                if isinstance(block, ToolUseBlock):
+                # Only our four MCP tools are `tool_calls` in the AgentResult
+                # sense. `Read` (kept for the CLI's own oversized-result
+                # recovery, see _build_options) isn't one of tools/server.py's
+                # tools and its result doesn't match ToolResult's shape —
+                # recording it here would mislabel a successful recovery read
+                # as ToolResult status "unavailable" (contracts.md section 3:
+                # "source down, timeout, circuit open").
+                if isinstance(block, ToolUseBlock) and block.name.startswith(
+                    mcp_prefix
+                ):
                     pending[block.id] = (_strip_tool_name(block.name), block.input)
         elif isinstance(message, UserMessage) and isinstance(message.content, list):
             for block in message.content:
