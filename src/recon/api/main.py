@@ -70,7 +70,7 @@ app.add_middleware(_RequestIDMiddleware)
 
 @app.exception_handler(RequestValidationError)
 async def _on_validation_error(
-    _request: Request, exc: RequestValidationError
+    request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """400, "invalid input, with the offending field named" — for a body that
     fails schema validation itself (missing or mistyped fields). FastAPI's
@@ -78,6 +78,7 @@ async def _on_validation_error(
     for a schema-valid body this build can't process.
     """
     fields = [".".join(str(p) for p in err["loc"][1:]) for err in exc.errors()]
+    REQUEST_COUNT.labels(route=request.url.path, status="400").inc()
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={"detail": "invalid input", "fields": fields},
@@ -122,13 +123,19 @@ async def investigate(request: Request, body: InvestigateRequest) -> Response:
         return _unprocessable("runtime", f"unsupported runtime {body.runtime!r}")
 
     case = _build_case(request_id, body)
-    INVESTIGATE_IN_FLIGHT.inc()
     start = time.monotonic()
     try:
         async with _semaphore:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(_runtime.run, case), timeout=REQUEST_TIMEOUT_S
-            )
+            # Counted only once a concurrency slot is held, matching
+            # metrics.py's "requests currently running" — not requests
+            # still queued behind the semaphore.
+            INVESTIGATE_IN_FLIGHT.inc()
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(_runtime.run, case), timeout=REQUEST_TIMEOUT_S
+                )
+            finally:
+                INVESTIGATE_IN_FLIGHT.dec()
     except TimeoutError:
         REQUEST_COUNT.labels(route="/investigate", status="504").inc()
         return JSONResponse(
@@ -136,7 +143,6 @@ async def investigate(request: Request, body: InvestigateRequest) -> Response:
             content={"detail": f"run exceeded the {REQUEST_TIMEOUT_S}s timeout"},
         )
     finally:
-        INVESTIGATE_IN_FLIGHT.dec()
         INVESTIGATE_LATENCY.observe(time.monotonic() - start)
 
     REQUEST_COUNT.labels(route="/investigate", status="200").inc()

@@ -50,7 +50,9 @@ async def check_postgres(
             conn = await asyncpg.connect(database_url)
             await conn.fetchval("SELECT 1")
         return True, "ok"
-    except (TimeoutError, OSError, asyncpg.PostgresError) as exc:
+    except (TimeoutError, OSError, ValueError, asyncpg.PostgresError) as exc:
+        # ValueError: asyncpg.connect raises it for a malformed DSN, before
+        # any connection is attempted.
         return False, f"Postgres unreachable: {exc}"
     finally:
         if conn is not None:

@@ -5,6 +5,8 @@ server, no real agent run: `_runtime.run` and the two `health.py` checks are
 monkeypatched, so nothing here calls a model or a network service.
 """
 
+import re
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -139,6 +141,17 @@ async def test_investigate_missing_question_is_400() -> None:
 
     assert resp.status_code == 400
     assert "question" in resp.json()["fields"]
+
+
+async def test_investigate_400_is_counted_in_metrics() -> None:
+    async with await _client() as client:
+        await client.post("/investigate", json={"context": {}})
+        resp = await client.get("/metrics")
+
+    assert re.search(
+        r'recon_api_requests_total\{route="/investigate",status="400"\} [1-9]',
+        resp.text,
+    )
 
 
 async def test_investigate_empty_question_is_422() -> None:
