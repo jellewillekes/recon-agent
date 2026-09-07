@@ -93,7 +93,7 @@ def _accepting_critic_query(
     *, prompt: str, options: ClaudeAgentOptions | None = None
 ) -> Any:
     async def gen() -> Any:
-        if prompt.startswith("Decompose"):
+        if "Decompose this question" in prompt:
             yield _result_message(
                 structured_output={
                     "subtasks": [
@@ -180,7 +180,7 @@ async def test_run_multi_routes_to_both_workers_in_one_case(
         *, prompt: str, options: ClaudeAgentOptions | None = None
     ) -> Any:
         async def gen() -> Any:
-            if prompt.startswith("Decompose"):
+            if "Decompose this question" in prompt:
                 yield _result_message(
                     structured_output={
                         "subtasks": [
@@ -233,7 +233,7 @@ async def test_critic_rejection_forces_confidence_low(
         *, prompt: str, options: ClaudeAgentOptions | None = None
     ) -> Any:
         async def gen() -> Any:
-            if prompt.startswith("Decompose"):
+            if "Decompose this question" in prompt:
                 yield _result_message(
                     structured_output={
                         "subtasks": [

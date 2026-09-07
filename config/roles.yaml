@@ -7,9 +7,15 @@
 supervisor:
   model: claude-sonnet-5
   # Called twice per case (decompose, then synthesize) - no research tool use
-  # in either call, so a small turn budget is enough for both. flag_case_for_review
-  # is the one tool it has (docs/contracts.md section 6: "supervisor only").
-  max_turns: 4
+  # in either call. flag_case_for_review is the one tool it has
+  # (docs/contracts.md section 6: "supervisor only"), used via a 3-call
+  # protocol (dry_run, unconfirmed pause, confirmed) per prompts/supervisor.md.
+  # A call that escalates needs those 3 tool turns plus 1 more to still
+  # produce its required structured output (subtasks or answer) - 4 would
+  # leave zero slack and risks _run_query's hard RuntimeError on a stream
+  # that ends without one. 8 leaves real room for that plus a turn or two of
+  # reasoning around it.
+  max_turns: 8
   tools: [flag_case_for_review]
 
 worker_lookup:

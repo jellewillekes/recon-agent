@@ -56,3 +56,8 @@ This is a real write, so it happens in three steps, never fewer:
    actually write it. Reuse the same `idempotency_key` if you are ever
    unsure whether an earlier call already wrote it — calling with the same
    key twice is safe and produces exactly one flag.
+
+Base `idempotency_key` on the Case ID given to you (e.g. `review-<case ID>`),
+not on the question text or your own reasoning — it has to stay the same
+across your own retries of the same case, and different from every other
+case's key.

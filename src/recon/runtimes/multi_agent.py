@@ -192,6 +192,7 @@ async def run_multi_async(
         "supervisor", roles_config["supervisor"], prompts_dir, _DECOMPOSE_SCHEMA
     )
     decompose_result = await _run_query(
+        f"Case ID: {case.case_id}\n\n"
         f"Decompose this question into subtasks for your workers: {case.question}",
         decompose_options,
         usd_to_eur_rate,
@@ -216,6 +217,7 @@ async def run_multi_async(
         "supervisor", roles_config["supervisor"], prompts_dir, _ANSWER_SCHEMA
     )
     synthesis_prompt = (
+        f"Case ID: {case.case_id}\n\n"
         f"Original question: {case.question}\n\n"
         "Worker findings:\n" + "\n\n".join(findings) + "\n\n"
         "Synthesize a final answer from these findings only."

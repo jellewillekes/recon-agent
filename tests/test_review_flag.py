@@ -181,6 +181,41 @@ async def test_different_idempotency_keys_produce_separate_rows(
     assert len(fake_postgres) == 2
 
 
+@pytest.mark.anyio
+async def test_idempotency_key_collision_across_different_cases_is_flagged(
+    fake_postgres: dict[str, dict[str, Any]],
+) -> None:
+    """idempotency_key is freeform LLM-chosen text, not derived from case_id
+    by anything structural - two different cases could pick the same one.
+    That must not silently report case-002's caller as "already_exists"
+    against case-001's row without saying so.
+    """
+    first = await review_flag.flag_case_for_review(
+        "postgresql://unused",
+        "case-001",
+        "reason a",
+        "shared-key",
+        "agent_sdk:single",
+        confirmed=True,
+    )
+    second = await review_flag.flag_case_for_review(
+        "postgresql://unused",
+        "case-002",
+        "reason b",
+        "shared-key",
+        "agent_sdk:single",
+        confirmed=True,
+    )
+
+    assert first.status == "created"
+    assert second.status == "already_exists"
+    assert second.flag is not None
+    assert second.flag.case_id == "case-001"  # the row that actually exists
+    assert "different case" in second.message
+    assert "case-002" in second.message
+    assert len(fake_postgres) == 1
+
+
 def test_review_flag_result_model_accepts_every_documented_status() -> None:
     for status in ("would_write", "confirmation_required", "created", "already_exists"):
         ReviewFlagResult(status=status, flag=None, message="ok")  # type: ignore[arg-type]

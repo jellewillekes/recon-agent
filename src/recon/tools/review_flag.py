@@ -120,9 +120,27 @@ async def flag_case_for_review(
                 f"idempotency_key {idempotency_key!r} conflicted on insert but no "
                 "row was found on the follow-up read."
             )
+        existing_flag = _flag_from_row(existing)
+        # idempotency_key is freeform text an agent chooses, not derived from
+        # case_id by anything structural - two different cases could pick the
+        # same key. That's not this function's job to prevent (nothing here
+        # can tell "same case, retried" from "different case, collided"
+        # apart), but a caller silently told "already_exists" for a case that
+        # isn't theirs needs to know, not just get back someone else's row.
+        if existing_flag.case_id != case_id:
+            return ReviewFlagResult(
+                status="already_exists",
+                flag=existing_flag,
+                message=(
+                    f"idempotency_key {idempotency_key!r} already exists but for a "
+                    f"different case ({existing_flag.case_id!r}, not {case_id!r}) - "
+                    "likely a collision, not a retry. No write was performed for "
+                    "this case; call again with a more specific idempotency_key."
+                ),
+            )
         return ReviewFlagResult(
             status="already_exists",
-            flag=_flag_from_row(existing),
+            flag=existing_flag,
             message="A review flag with this idempotency_key already exists.",
         )
     finally:
