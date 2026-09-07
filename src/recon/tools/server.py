@@ -13,6 +13,7 @@ are called directly in tests, with no MCP transport and no LLM involved.
 import concurrent.futures
 import random
 import time
+import weakref
 from typing import Any, Literal
 
 import duckdb
@@ -83,9 +84,19 @@ class _CircuitBreaker:
 # One breaker per DuckDB connection, keyed by identity rather than a single
 # global: production holds one long-lived `conn` for the server process's
 # lifetime, while each test gets its own fresh `duckdb.connect(":memory:")` -
-# keying by id(conn) gives every test an independent breaker automatically,
-# with no explicit reset needed between them.
-_BREAKERS: dict[int, _CircuitBreaker] = {}
+# keying by the connection object itself gives every test an independent
+# breaker automatically, with no explicit reset needed between them.
+#
+# A plain `dict[int, _CircuitBreaker]` keyed by id(conn) would be unsafe here:
+# CPython frees an object's memory as soon as its refcount hits zero, and a
+# same-sized allocation right after can reuse that address - exactly the
+# pattern of short-lived per-test connections. A `WeakKeyDictionary` instead
+# drops the entry itself once `conn` is garbage-collected, so a reused id
+# never resolves to a stale breaker, and the registry can't grow without
+# bound either.
+_BREAKERS: "weakref.WeakKeyDictionary[duckdb.DuckDBPyConnection, _CircuitBreaker]" = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def _breaker_for(conn: duckdb.DuckDBPyConnection) -> _CircuitBreaker:
@@ -93,9 +104,9 @@ def _breaker_for(conn: duckdb.DuckDBPyConnection) -> _CircuitBreaker:
     # own default arguments (bound once at class-definition time) - so a test
     # monkeypatching _BREAKER_THRESHOLD/_BREAKER_COOLDOWN_S actually takes
     # effect for breakers created afterward.
-    if id(conn) not in _BREAKERS:
-        _BREAKERS[id(conn)] = _CircuitBreaker(_BREAKER_THRESHOLD, _BREAKER_COOLDOWN_S)
-    return _BREAKERS[id(conn)]
+    if conn not in _BREAKERS:
+        _BREAKERS[conn] = _CircuitBreaker(_BREAKER_THRESHOLD, _BREAKER_COOLDOWN_S)
+    return _BREAKERS[conn]
 
 
 def _elapsed_ms(start: float) -> int:

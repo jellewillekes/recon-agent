@@ -18,12 +18,14 @@ raised on a `duckdb.Error` or a `TIMEOUT_S` timeout). Wrapping it there means no
 four public tool functions, or `_run_and_classify`/`_check_company`, need to change at
 all — they already just catch `_ToolUnavailable` and build `status="unavailable"`.
 
-**Circuit breaker scope and recovery.** Scoped **per DuckDB connection**, keyed by
-`id(conn)` in a module-level dict — production holds one long-lived connection for the
-server process's lifetime, and each test gets its own fresh
-`duckdb.connect(":memory:")`, so this gives every test an independent breaker
-automatically with no explicit reset needed. A first implementation opened the breaker
-after three consecutive failed *calls* and simply never tried again — a real bug, caught
+**Circuit breaker scope and recovery.** Scoped **per DuckDB connection**, keyed by the
+connection object itself in a module-level `weakref.WeakKeyDictionary` — production holds
+one long-lived connection for the server process's lifetime, and each test gets its own
+fresh `duckdb.connect(":memory:")`, so this gives every test an independent breaker
+automatically with no explicit reset needed, and no stale entry once a connection is
+garbage-collected (a plain `id(conn)`-keyed dict would risk a later test reusing a freed
+connection's address and inheriting its breaker state). A first implementation opened the
+breaker after three consecutive failed *calls* and simply never tried again — a real bug, caught
 before shipping: an open breaker that never attempts a query again can also never observe
 a success, so it can never close. Fixed with a cooldown: the breaker stays open for
 `_BREAKER_COOLDOWN_S` after its most recent failure, then lets exactly one probe call
@@ -34,7 +36,8 @@ another failure re-opens it and restarts the cooldown clock.
 sees the full sequence of tool calls, tokens, and wall-clock time across a whole case;
 one tool call doesn't. `RunBudget`/`_BudgetTracker`/`_BudgetExceeded` live in
 `runtimes/agent_sdk.py`, shared by single mode (one `_run_query` call) and multi mode (up
-to five, `runtimes/multi_agent.py`) since both already funnel through `_run_query`.
+to seven — decompose, up to four workers, synthesis, critic —
+`runtimes/multi_agent.py`) since both already funnel through `_run_query`.
 Tool-call and wall-clock budgets are checked **mid-stream**, inside `_run_query`'s
 message loop — a breach there needs to actually stop an in-flight `query()` call, not
 just refuse to start the next one. Token usage is only known once a call's
@@ -87,8 +90,3 @@ only one.
 - `RunBudget` numbers (30 tool calls, 300k tokens, 100s) are estimates with no production
   traffic to tune them against yet — generous enough not to constrain a normal run, tight
   enough to catch a genuine runaway. Revisit once real usage data exists.
-- The breaker registry (`_BREAKERS`, keyed by `id(conn)`) grows one entry per distinct
-  connection object for the life of the process; in production there's exactly one
-  connection, so this never grows. Test suites create many short-lived connections, so the
-  dict grows across a long test run, though each entry is small and this was judged
-  acceptable rather than adding explicit teardown machinery for it.

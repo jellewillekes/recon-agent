@@ -81,8 +81,9 @@ class _Outcome:
 class RunBudget:
     """Per-run ceilings, read from `config/models.yaml`'s `run_budget:`
     section. "Per run" means the whole case, not one `query()` call — single
-    mode makes one call so the distinction doesn't show, but multi mode's
-    four-to-five calls (`runtimes/multi_agent.py`) share one budget.
+    mode makes one call so the distinction doesn't show, but multi mode's up
+    to seven calls (decompose, up to four workers, synthesis, critic —
+    `runtimes/multi_agent.py`) share one budget.
     """
 
     max_tool_calls: int
@@ -106,7 +107,10 @@ class _BudgetTracker:
         return time.monotonic() - self._start
 
     def breach_reason(self) -> str | None:
-        if self.tool_calls_used > self.budget.max_tool_calls:
+        # >=, not >: this is checked right after tool_calls_used is
+        # incremented for the call that just completed, so max_tool_calls is
+        # the actual ceiling on calls that get to run, not one more than it.
+        if self.tool_calls_used >= self.budget.max_tool_calls:
             return f"tool-call budget of {self.budget.max_tool_calls} exceeded"
         if self.elapsed_s() > self.budget.max_wall_clock_s:
             return f"wall-clock budget of {self.budget.max_wall_clock_s}s exceeded"

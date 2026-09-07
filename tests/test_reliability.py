@@ -221,8 +221,8 @@ def test_run_stops_and_returns_partial_result_on_tool_call_budget_breach(
 
     assert result.error is not None
     assert "tool-call budget" in result.error
-    # Stopped as soon as the budget (1) was crossed, not after all 5.
-    assert len(result.tool_calls) == 2
+    # Stopped as soon as the budget (1) was reached, not after all 5.
+    assert len(result.tool_calls) == 1
     assert result.confidence == "low"
 
 
