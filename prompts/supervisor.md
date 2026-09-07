@@ -61,3 +61,9 @@ Base `idempotency_key` on the Case ID given to you (e.g. `review-<case ID>`),
 not on the question text or your own reasoning — it has to stay the same
 across your own retries of the same case, and different from every other
 case's key.
+
+Flagging never replaces the structured output this call still owes: on a
+decompose call, still return `subtasks` (route the case to a worker as
+normal); on a synthesize call, still return `answer`/`evidence`/`confidence`
+built from whatever your workers reported. The flag records that a human
+should look at this case — it does not end the case.

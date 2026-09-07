@@ -179,6 +179,10 @@ def _parse_tool_result(content: str | list[dict[str, Any]] | None) -> tuple[str,
     `("unknown", 0)` for anything else — genuinely undeterminable, which is a
     different claim than `ToolResult`'s own `"unavailable"` ("source down,
     timeout, circuit open" per `docs/contracts.md`).
+
+    `elapsed_ms` is optional in the payload: `ToolResult` always has it, but
+    `ReviewFlagResult` (a write, not a timed read) doesn't, and a missing
+    timing shouldn't erase a real `status`.
     """
     text: str | None = content if isinstance(content, str) else None
     if text is None and isinstance(content, list):
@@ -198,7 +202,7 @@ def _parse_tool_result(content: str | list[dict[str, Any]] | None) -> tuple[str,
         payload = _parse_offloaded_result(text)
         if payload is None:
             return "unknown", 0
-    status, elapsed_ms = payload.get("status"), payload.get("elapsed_ms")
+    status, elapsed_ms = payload.get("status"), payload.get("elapsed_ms", 0)
     if not isinstance(status, str) or not isinstance(elapsed_ms, int):
         return "unknown", 0
     return status, elapsed_ms

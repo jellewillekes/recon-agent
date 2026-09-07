@@ -187,6 +187,7 @@ async def run_multi_async(
         tokens_in += result.tokens_in
         tokens_out += result.tokens_out
         cost_eur += result.cost_eur
+        tool_calls.extend(result.tool_calls)
 
     decompose_options = _build_role_options(
         "supervisor", roles_config["supervisor"], prompts_dir, _DECOMPOSE_SCHEMA
@@ -208,7 +209,6 @@ async def run_multi_async(
         worker_result = await _run_query(instruction, worker_options, usd_to_eur_rate)
         _accumulate(worker_result)
         worker_findings, worker_evidence = _validate_worker(worker_result.structured)
-        tool_calls.extend(worker_result.tool_calls)
         findings.append(
             f"[{worker}] findings: {worker_findings}\nevidence: {worker_evidence}"
         )

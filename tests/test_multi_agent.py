@@ -164,6 +164,89 @@ async def test_run_multi_success_full_flow(monkeypatch: pytest.MonkeyPatch) -> N
     assert result.cost_eur == pytest.approx(0.001 * 0.9 * 4)
 
 
+def _flagging_supervisor_query(
+    *, prompt: str, options: ClaudeAgentOptions | None = None
+) -> Any:
+    """Same shape as `_accepting_critic_query`, but the supervisor's
+    decompose call also calls `flag_case_for_review_tool` before returning
+    its structured output - the supervisor is the only role that can reach
+    this tool, so this is the only call site that can prove its result makes
+    it into `AgentResult.tool_calls`.
+    """
+
+    async def gen() -> Any:
+        if "Decompose this question" in prompt:
+            yield AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="tu-flag",
+                        name="mcp__recon-tools__flag_case_for_review_tool",
+                        input={"case_id": CASE.case_id, "dry_run": True},
+                    )
+                ],
+                model="claude-sonnet-5",
+            )
+            yield UserMessage(
+                content=[
+                    ToolResultBlock(
+                        tool_use_id="tu-flag",
+                        content='{"status": "would_write", "message": "preview"}',
+                    )
+                ]
+            )
+            yield _result_message(
+                structured_output={
+                    "subtasks": [
+                        {
+                            "worker": "worker_lookup",
+                            "instruction": "find FIRM-001's sector",
+                        }
+                    ]
+                }
+            )
+        elif "Synthesize a final answer" in prompt:
+            yield _result_message(
+                structured_output={
+                    "answer": "Industrials",
+                    "evidence": ["FIRM-001 is in Industrials"],
+                    "confidence": "high",
+                }
+            )
+        elif "Does the evidence support" in prompt:
+            yield _result_message(
+                structured_output={"accepted": True, "reason": "well supported"}
+            )
+        else:
+            yield _result_message(
+                structured_output={
+                    "findings": "FIRM-001 is in Industrials",
+                    "evidence": ["FIRM-001 sector=Industrials"],
+                }
+            )
+
+    return gen()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_run_multi_includes_supervisor_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_accumulate` folds in every `_QueryResult.tool_calls`, not just the
+    worker loop's - a review-flag write only the supervisor can make must
+    not vanish from `AgentResult.tool_calls`.
+    """
+    _patch_roles_and_models(monkeypatch)
+    monkeypatch.setattr(agent_sdk, "query", _flagging_supervisor_query)
+
+    result = await multi_agent.run_multi_async(
+        CASE, roles_config_path=Path("unused"), prompts_dir=Path("prompts")
+    )
+
+    assert [call.tool for call in result.tool_calls] == ["flag_case_for_review"]
+    assert result.tool_calls[0].status == "would_write"
+
+
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_run_multi_routes_to_both_workers_in_one_case(
