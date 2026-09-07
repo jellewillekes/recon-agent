@@ -21,3 +21,18 @@ judge:
 # rate keeps cost_eur reproducible across runs. Bump deliberately, in its own
 # PR, if it drifts too far from the real rate.
 usd_to_eur_rate: 0.92
+
+# Per-run ceilings (the whole case, not one query() call — multi mode's
+# four-to-five calls share these). A breach ends the run gracefully with a
+# partial AgentResult instead of hanging or crashing (issue #13).
+run_budget:
+  # Generous for a normal run (multi mode's two workers, a few tool calls
+  # each) but well short of a genuine retry/routing loop.
+  max_tool_calls: 30
+  # Well above a typical run's usage; catches a runaway loop, not normal cost.
+  max_tokens: 300000
+  # A bit under api/main.py's own RECON_API_REQUEST_TIMEOUT_S default (120s):
+  # on a breach the run still ends with this budget's graceful partial
+  # AgentResult instead of the API's blunter 504 with no body. CLI/eval
+  # callers have no other wall-clock bound at all, so this is their only one.
+  max_wall_clock_s: 100

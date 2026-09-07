@@ -89,11 +89,20 @@ def _patch_query(monkeypatch: pytest.MonkeyPatch, messages: list[object]) -> Non
     monkeypatch.setattr(agent_sdk, "query", fake_query)
 
 
+def _generous_budget() -> agent_sdk.RunBudget:
+    """High enough that no fake message stream in this file trips it by
+    accident — budget-breach behavior gets its own dedicated tests below.
+    """
+    return agent_sdk.RunBudget(
+        max_tool_calls=1000, max_tokens=10_000_000, max_wall_clock_s=3600.0
+    )
+
+
 def _patch_options(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_build_options(
         models_config_path: Path, prompt_path: Path
-    ) -> tuple[ClaudeAgentOptions, float]:
-        return ClaudeAgentOptions(), 0.9
+    ) -> tuple[ClaudeAgentOptions, float, agent_sdk.RunBudget]:
+        return ClaudeAgentOptions(), 0.9, _generous_budget()
 
     monkeypatch.setattr(agent_sdk, "_build_options", fake_build_options)
 
@@ -472,7 +481,7 @@ def test_run_options_failure_populates_error_not_raise(
 ) -> None:
     def fake_build_options(
         models_config_path: Path, prompt_path: Path
-    ) -> tuple[ClaudeAgentOptions, float]:
+    ) -> tuple[ClaudeAgentOptions, float, agent_sdk.RunBudget]:
         raise FileNotFoundError("config/models.yaml not found")
 
     monkeypatch.setattr(agent_sdk, "_build_options", fake_build_options)

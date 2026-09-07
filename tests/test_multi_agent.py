@@ -77,11 +77,22 @@ def _result_message(**overrides: Any) -> ResultMessage:
     return ResultMessage(**defaults)
 
 
+_GENEROUS_RUN_BUDGET: dict[str, Any] = {
+    "max_tool_calls": 1000,
+    "max_tokens": 10_000_000,
+    "max_wall_clock_s": 3600.0,
+}
+
+
 def _patch_roles_and_models(
     monkeypatch: pytest.MonkeyPatch, **model_overrides: Any
 ) -> None:
     monkeypatch.setattr(multi_agent, "_load_roles_config", lambda path: ROLES_CONFIG)
-    model_config = {"usd_to_eur_rate": 0.9, **model_overrides}
+    model_config = {
+        "usd_to_eur_rate": 0.9,
+        "run_budget": _GENEROUS_RUN_BUDGET,
+        **model_overrides,
+    }
     monkeypatch.setattr(multi_agent, "_load_model_config", lambda path: model_config)
 
 
