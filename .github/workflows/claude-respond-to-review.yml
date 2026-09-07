@@ -30,8 +30,11 @@ jobs:
           # bot-authored review event actually trigger this job - see the
           # matching note in claude-code-review.yml.
           allowed_bots: "claude[bot]"
-          # TEMP: diagnosing issue #35 (missing summary comment / no-op runs).
-          # Remove once fixed.
+          # TEMP: verifying the mcp__github__get_pull_request_review_comments
+          # fix below (root cause of issue #35 - the model was denied on
+          # every attempt to read review comments under the old, nonexistent
+          # tool name mcp__github__get_pull_request_comments, burned its turn
+          # budget retrying, and gave up silently). Remove once confirmed.
           show_full_output: "true"
           prompt: |
             REPO: ${{ github.repository }}
@@ -39,7 +42,7 @@ jobs:
 
             A reviewer just requested changes on this pull request you opened.
             Use mcp__github__get_pull_request_reviews and
-            mcp__github__get_pull_request_comments to read the review body and
+            mcp__github__get_pull_request_review_comments to read the review body and
             its inline comments.
 
             For each point raised, decide on its merits:
@@ -65,5 +68,5 @@ jobs:
             code changes as a new commit on this branch.
           claude_args: |
             --model claude-sonnet-5
-            --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),Bash(uv run pytest:*),Bash(uv run ruff:*),mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_comments,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__create_issue_comment"
+            --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),Bash(uv run pytest:*),Bash(uv run ruff:*),mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_review_comments,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__create_issue_comment"
             --append-system-prompt "Follow CLAUDE.md's Voice section for your summary comment."
