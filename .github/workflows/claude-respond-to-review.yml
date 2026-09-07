@@ -47,9 +47,9 @@ jobs:
             - Ambiguous: say what you'd do and why, and note the tradeoff.
 
             Post one summary comment on the PR (mcp__github__create_issue_comment,
-            issue number = PR number) covering what you changed and, for anything
-            you didn't change, why. Then push any code changes as a new commit
-            on this branch.
+            issue number = PR number): one bullet per point raised, covering what
+            you changed and, for anything you didn't change, why. Then push any
+            code changes as a new commit on this branch.
           claude_args: |
             --model claude-sonnet-5
             --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_comments,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__create_issue_comment"
