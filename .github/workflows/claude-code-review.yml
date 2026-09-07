@@ -24,6 +24,9 @@ jobs:
           # (a "synchronize" event authored by claude[bot]) - without this the
           # human-actor check would reject that run and the loop would stall.
           allowed_bots: "claude[bot]"
+          # TEMP: diagnosing why inline review comments never post (see PR
+          # description). Remove before merging.
+          show_full_output: "true"
           prompt: |
             REPO: ${{ github.repository }}
             PR: #${{ github.event.pull_request.number }}
@@ -43,13 +46,15 @@ jobs:
                round N+1.
             2. Use mcp__github__get_pull_request_diff and mcp__github__get_pull_request
                to read the actual diff and the PR description/linked issue.
-            3. Create a pending review with mcp__github__create_pending_pull_request_review,
-               add inline comments with mcp__github__add_pull_request_review_comment_to_pending_review
-               for anything specific enough to anchor to a line, then submit it
-               with mcp__github__submit_pending_pull_request_review:
+            3. Create a pending review with mcp__github__create_pending_pull_request_review.
+               Every correctness or design concern that ties to specific code is an
+               inline comment via mcp__github__add_pull_request_review_comment_to_pending_review
+               - the review body is not a place to restate them. Use the body only for
+               a short overall summary, plus (round N+1 > 1) a compact status list:
+               one line each for Open / Resolved / New, before any other prose. Then
+               submit with mcp__github__submit_pending_pull_request_review:
                - Round N+1 <= 3 and you have unresolved correctness or design
-                 concerns: submit with event REQUEST_CHANGES. In the review body,
-                 explain your overall reasoning, not just a list of nits.
+                 concerns: submit with event REQUEST_CHANGES.
                - No unresolved concerns: submit with event APPROVE.
                - Round N+1 > 3 and concerns remain: do NOT use REQUEST_CHANGES.
                  Submit with event COMMENT, summarize what's still unresolved,

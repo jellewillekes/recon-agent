@@ -123,6 +123,19 @@ review comments, PR descriptions, commit messages, issue bodies.
 - Plain sentence-case lead-ins, not bolded pseudo-headers imitating a report
   ("Main concern —", "Genuine question, not a defect")
 
+### Reviews specifically
+
+- One finding, one bullet. Never blend two concerns into the same paragraph
+- Bullet shape: `file:line` first, then the finding in one sentence, then at
+  most one more sentence for why it matters or what to do. Two sentences max
+- Tag each finding's severity at the start of the bullet: `Blocking:`,
+  `Question:`, or `Note:` (non-blocking observation)
+- Anything that anchors to a line is an inline comment, not review-body
+  prose. The body holds only a short overall summary plus, from round 2
+  onward, a status list — never a restatement of each inline comment
+- Round 2+ review bodies open with a status list, one line per item:
+  `Open:`, `Resolved:`, `New:`. No prose recap paragraph before it
+
 Before, from an actual review comment on this repo:
 
 > fetch_csv treats "a file exists at dest" as "cache is valid," full stop —
@@ -140,6 +153,24 @@ After:
 > fetch_csv only checks whether dest exists — it never checks that file
 > against PINNED_COMMIT. After a future pin bump, anyone with an old cached
 > file keeps serving it silently. No error, no warning.
+
+A review body with several findings, each anchored inline, uses the body only
+for the summary and status list:
+
+> Round 2. Core mechanism still sound.
+>
+> **Open:** tool_calls ordering under parallel tool use (agent_sdk.py:151)
+> **Resolved:** max_turns bound, dead pricing config
+> **New:** `_find_case`'s not-found branch has no test (cli.py:54)
+>
+> Inline comments have the specifics.
+
+Each inline comment on the lines above stays to one bullet:
+
+> **Blocking:** `_parse_tool_result`'s list-branch is untested — every
+> fixture in the suite uses the string path. `tool_calls` feeds the eval
+> harness, so a silent fallback to `status="unavailable"` here would go
+> unnoticed.
 
 ## Cost
 
