@@ -90,6 +90,13 @@ self-reporting it, rather than being structurally determined by which runtime is
   raises — there's no `ReviewFlagResult` status for "write failed," unlike `ToolResult`'s
   `unavailable`. This is a deliberate gap: the issue's requirements don't describe a
   write-side outage case, and inventing one now would be speculative.
+- Raising rather than returning a status is also how a `preview_token` mismatch on a
+  `confirmed=True` call is signaled (round 4 of PR #43's review asked about this
+  consistency directly). Both cases are "this call cannot proceed as made" — missing
+  config, or the caller skipped the pause — not a legitimate outcome of attempting a
+  write, which is what `ReviewFlagResult.status` exists to describe. Adding statuses for
+  every way a call can be malformed would grow the contract for little benefit: a raised
+  exception already surfaces as a failed tool call to the agent calling it.
 - No live Postgres exists anywhere yet (`docker/compose.yaml` is step 10) — this path is
   exercised in tests against a fake `asyncpg` connection (`tests/test_review_flag.py`),
   not a real database. It has not been run against real Postgres.

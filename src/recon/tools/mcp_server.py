@@ -22,6 +22,34 @@ from recon.tools.server import (
 )
 
 
+async def _call_flag_case_for_review(
+    case_id: str,
+    reason: str,
+    idempotency_key: str,
+    dry_run: bool,
+    confirmed: bool,
+    preview_token: str | None,
+) -> dict[str, Any]:
+    """The env-var-reading part of `flag_case_for_review_tool`, pulled out
+    of the `@server.tool()` closure so it's directly callable in a test - the
+    closure itself isn't exercised by anything, per this module's own
+    docstring, so a typo'd `RECON_CREATED_BY`/`DATABASE_URL` name on either
+    runtime's side would otherwise fall back silently with nothing to catch it.
+    """
+    created_by = os.environ.get("RECON_CREATED_BY", "agent_sdk:unknown")
+    result = await flag_case_for_review(
+        os.environ.get("DATABASE_URL"),
+        case_id,
+        reason,
+        idempotency_key,
+        created_by,
+        dry_run=dry_run,
+        confirmed=confirmed,
+        preview_token=preview_token,
+    )
+    return result.model_dump(mode="json")
+
+
 def build_server(conn: duckdb.DuckDBPyConnection) -> MCPServer:
     """Wire the tool functions in `server.py` to an `MCPServer` bound to `conn`."""
     server = MCPServer(name="recon-tools")
@@ -80,18 +108,9 @@ def build_server(conn: duckdb.DuckDBPyConnection) -> MCPServer:
         `confirmed=True` without the matching token from a prior call is
         refused; the pause cannot be skipped.
         """
-        created_by = os.environ.get("RECON_CREATED_BY", "agent_sdk:unknown")
-        result = await flag_case_for_review(
-            os.environ.get("DATABASE_URL"),
-            case_id,
-            reason,
-            idempotency_key,
-            created_by,
-            dry_run=dry_run,
-            confirmed=confirmed,
-            preview_token=preview_token,
+        return await _call_flag_case_for_review(
+            case_id, reason, idempotency_key, dry_run, confirmed, preview_token
         )
-        return result.model_dump(mode="json")
 
     return server
 

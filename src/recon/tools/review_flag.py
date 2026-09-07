@@ -7,9 +7,10 @@ wired to the supervisor role only (see `config/roles.yaml` and
 directly here for tests, no MCP transport involved.
 
 No migration tooling in the project (adding one needs approval per
-CLAUDE.md) — `_ensure_schema` issues its own idempotent DDL the first time a
-write is attempted, mirroring `api/health.py:check_postgres`'s "connect per
-call, no pool" simplicity. Call volume is low: one flag per escalated case.
+CLAUDE.md) — `flag_case_for_review` issues its own idempotent
+`CREATE TABLE IF NOT EXISTS` the first time a write is attempted, mirroring
+`api/health.py:check_postgres`'s "connect per call, no pool" simplicity.
+Call volume is low: one flag per escalated case.
 """
 
 import hashlib
