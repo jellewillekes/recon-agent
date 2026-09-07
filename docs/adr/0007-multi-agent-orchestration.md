@@ -40,9 +40,10 @@ call in this repo's own GitHub Actions runs — not a prompt convention, and it'
 directly unit-testable without a live model: assert on the constructed
 `ClaudeAgentOptions.allowed_tools`/`mcp_servers` for a role (see
 `tests/test_multi_agent.py::test_worker_options_exclude_tools_outside_subset` and
-`::test_supervisor_and_critic_get_no_mcp_server_at_all`). Supervisor and critic get no
-`mcp_servers` attached at all, not just an empty `allowed_tools` — the strongest form of
-"structurally absent," reserved for the two roles that need zero tools by design.
+`::test_critic_gets_no_mcp_server_at_all`). Critic gets no `mcp_servers` attached at all,
+not just an empty `allowed_tools` — the strongest form of "structurally absent," reserved
+for the one role that needs zero tools by design. (Supervisor originally had none either;
+ADR-0008 gives it exactly one — `flag_case_for_review` — while keeping the same mechanism.)
 
 ## Decision
 

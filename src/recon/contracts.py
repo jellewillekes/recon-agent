@@ -115,6 +115,24 @@ class ReviewFlag(BaseModel):
     created_at: datetime
 
 
+class ReviewFlagResult(BaseModel):
+    """What `flag_case_for_review` returns. Not a `ToolResult` — this is a
+    state operation, not a read tool (docs/contracts.md section 2), and its
+    real states (preview / paused for confirmation / written / already
+    written) don't fit ToolResult's five read statuses.
+
+    `preview_token` makes the confirmation pause structurally required, not
+    just a prompt convention: it is returned only by the unconfirmed
+    ("confirmation_required") call, and a `confirmed=True` call must present
+    the matching token or the write is refused. `None` for every other status.
+    """
+
+    status: Literal["would_write", "confirmation_required", "created", "already_exists"]
+    flag: ReviewFlag | None
+    message: str
+    preview_token: str | None
+
+
 class CaseScore(BaseModel):
     """Per-case evaluation result."""
 

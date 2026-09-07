@@ -1,22 +1,53 @@
-"""Wires the tool functions in `server.py` to an `MCPServer` over stdio.
+"""Wires the tool functions in `server.py` (and the write path in
+`review_flag.py`) to an `MCPServer` over stdio.
 
 Kept separate from `server.py` so that module stays focused on the tool
 contract itself; nothing here is exercised by `tests/test_tools.py`, which
 calls the plain functions directly.
 """
 
+import os
 from typing import Any, Literal
 
 import duckdb
 from mcp.server.mcpserver import MCPServer
 
 from recon.tools.fixtures import seed
+from recon.tools.review_flag import flag_case_for_review
 from recon.tools.server import (
     get_financial_fact,
     list_companies,
     list_financial_concepts,
     search_filings,
 )
+
+
+async def _call_flag_case_for_review(
+    case_id: str,
+    reason: str,
+    idempotency_key: str,
+    dry_run: bool,
+    confirmed: bool,
+    preview_token: str | None,
+) -> dict[str, Any]:
+    """The env-var-reading part of `flag_case_for_review_tool`, pulled out
+    of the `@server.tool()` closure so it's directly callable in a test - the
+    closure itself isn't exercised by anything, per this module's own
+    docstring, so a typo'd `RECON_CREATED_BY`/`DATABASE_URL` name on either
+    runtime's side would otherwise fall back silently with nothing to catch it.
+    """
+    created_by = os.environ.get("RECON_CREATED_BY", "agent_sdk:unknown")
+    result = await flag_case_for_review(
+        os.environ.get("DATABASE_URL"),
+        case_id,
+        reason,
+        idempotency_key,
+        created_by,
+        dry_run=dry_run,
+        confirmed=confirmed,
+        preview_token=preview_token,
+    )
+    return result.model_dump(mode="json")
 
 
 def build_server(conn: duckdb.DuckDBPyConnection) -> MCPServer:
@@ -56,6 +87,30 @@ def build_server(conn: duckdb.DuckDBPyConnection) -> MCPServer:
         return search_filings(
             conn, company_id, keyword, form_type, fiscal_year
         ).model_dump()
+
+    @server.tool()
+    async def flag_case_for_review_tool(
+        case_id: str,
+        reason: str,
+        idempotency_key: str,
+        dry_run: bool = False,
+        confirmed: bool = False,
+        preview_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Flag a case for human review. Supervisor only (docs/contracts.md
+        section 6) — restricted structurally via `config/roles.yaml` and
+        `agent_sdk.ALLOWED_TOOLS`, not by this tool refusing a caller.
+
+        Call with `dry_run=True` to preview the write without performing it.
+        Otherwise call once to see the preview, pause for confirmation, and
+        get a `preview_token` back — then call a third time with
+        `confirmed=True` and that exact `preview_token` to actually write it.
+        `confirmed=True` without the matching token from a prior call is
+        refused; the pause cannot be skipped.
+        """
+        return await _call_flag_case_for_review(
+            case_id, reason, idempotency_key, dry_run, confirmed, preview_token
+        )
 
     return server
 

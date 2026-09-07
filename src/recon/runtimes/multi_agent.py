@@ -9,6 +9,7 @@ role's own `ClaudeAgentOptions.allowed_tools`/`mcp_servers` rather than in
 `tools/mcp_server.py`.
 """
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from recon.runtimes.agent_sdk import (
     _ANSWER_SCHEMA,
     DEFAULT_MODELS_CONFIG_PATH,
     MCP_SERVER_NAME,
+    RUNTIME_NAME,
     _load_model_config,
     _Outcome,
     _QueryResult,
@@ -33,6 +35,13 @@ DEFAULT_ROLES_CONFIG_PATH = Path("config/roles.yaml")
 DEFAULT_PROMPTS_DIR = Path("prompts")
 
 WORKER_NAMES = ("worker_lookup", "worker_facts")
+
+# See agent_sdk._CREATED_BY - same purpose, multi mode's value. Set on every
+# role's MCP subprocess that gets one attached, though only the supervisor's
+# roles.yaml tool subset ever actually includes flag_case_for_review. Built
+# from RUNTIME_NAME rather than hardcoded, so it can't drift from
+# agent_sdk._CREATED_BY's single-mode equivalent if RUNTIME_NAME ever changes.
+_CREATED_BY = f"{RUNTIME_NAME}:multi"
 
 _DECOMPOSE_SCHEMA: dict[str, Any] = {
     "type": "json_schema",
@@ -117,6 +126,7 @@ def _build_role_options(
         mcp_servers[MCP_SERVER_NAME] = McpStdioServerConfig(
             command=sys.executable,
             args=["-m", "recon.tools.mcp_server"],
+            env={**os.environ, "RECON_CREATED_BY": _CREATED_BY},
         )
         allowed_tools = [f"mcp__{MCP_SERVER_NAME}__{name}_tool" for name in tool_names]
         allowed_tools.append("Read")
@@ -180,11 +190,13 @@ async def run_multi_async(
         tokens_in += result.tokens_in
         tokens_out += result.tokens_out
         cost_eur += result.cost_eur
+        tool_calls.extend(result.tool_calls)
 
     decompose_options = _build_role_options(
         "supervisor", roles_config["supervisor"], prompts_dir, _DECOMPOSE_SCHEMA
     )
     decompose_result = await _run_query(
+        f"Case ID: {case.case_id}\n\n"
         f"Decompose this question into subtasks for your workers: {case.question}",
         decompose_options,
         usd_to_eur_rate,
@@ -200,7 +212,6 @@ async def run_multi_async(
         worker_result = await _run_query(instruction, worker_options, usd_to_eur_rate)
         _accumulate(worker_result)
         worker_findings, worker_evidence = _validate_worker(worker_result.structured)
-        tool_calls.extend(worker_result.tool_calls)
         findings.append(
             f"[{worker}] findings: {worker_findings}\nevidence: {worker_evidence}"
         )
@@ -209,6 +220,7 @@ async def run_multi_async(
         "supervisor", roles_config["supervisor"], prompts_dir, _ANSWER_SCHEMA
     )
     synthesis_prompt = (
+        f"Case ID: {case.case_id}\n\n"
         f"Original question: {case.question}\n\n"
         "Worker findings:\n" + "\n\n".join(findings) + "\n\n"
         "Synthesize a final answer from these findings only."
