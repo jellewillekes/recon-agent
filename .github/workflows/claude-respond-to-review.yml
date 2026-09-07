@@ -8,7 +8,7 @@ jobs:
   respond:
     if: |
       github.event.review.state == 'changes_requested' &&
-      contains(github.event.pull_request.user.login, 'claude')
+      contains(github.event.review.user.login, 'claude')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -25,8 +25,10 @@ jobs:
       - uses: anthropics/claude-code-action@d75b94d5ad426cb8546e6628b6f5f19b84e5cce1 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Lets the reviewer bot's own "changes requested" event trigger this
-          # job - see the matching note in claude-code-review.yml.
+          # The job's own `if:` only fires for a REQUEST_CHANGES review
+          # submitted by the reviewer bot itself. allowed_bots then lets that
+          # bot-authored review event actually trigger this job - see the
+          # matching note in claude-code-review.yml.
           allowed_bots: "claude[bot]"
           prompt: |
             REPO: ${{ github.repository }}
@@ -44,7 +46,15 @@ jobs:
               current approach: don't just comply - explain your reasoning and
               propose your preferred solution. Pushing back with a concrete
               argument is fine and expected.
-            - Ambiguous: say what you'd do and why, and note the tradeoff.
+            - Falls under CLAUDE.md's "Forbidden without explicit permission"
+              list (golden-set/expected-answer content, evaluation thresholds,
+              new dependencies, repository layout or module boundaries,
+              secrets/API keys), or the PR description itself already flags the
+              point as a draft or a judgement call pending review: this is not
+              yours to resolve. Don't touch the code for it - say plainly in
+              the summary comment that it needs the user's decision.
+            - Ambiguous, and not one of the above: say what you'd do and why,
+              and note the tradeoff.
 
             Post one summary comment on the PR (mcp__github__create_issue_comment,
             issue number = PR number): one bullet per point raised, covering what

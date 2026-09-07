@@ -13,7 +13,7 @@ Everything on this page is repo tooling, not product code.
 | `.github/workflows/claude.yml` | `@claude` mention on an issue/PR comment; issue assigned to `claude`; issue labeled `claude-implement` | **Implementer.** Reads the issue, writes the fix, pushes a branch, opens a PR. |
 | `.github/workflows/claude-scan.yml` | Weekly cron (Mondays 06:00 UTC) + manual `workflow_dispatch` | **Scanner.** Looks for concrete bugs/TODOs/tech debt, dedupes against open issues, files up to 5 new ones per run. Labels safely-fixable ones `claude-implement`. |
 | `.github/workflows/claude-code-review.yml` | PR opened / synchronized / reopened / marked ready for review | **Reviewer.** Reads the diff, submits a formal GitHub review (`APPROVE` / `REQUEST_CHANGES` / `COMMENT`) covering correctness and design tradeoffs. |
-| `.github/workflows/claude-respond-to-review.yml` | A review on a Claude-authored PR is submitted with `REQUEST_CHANGES` | **Implementer, again.** Reads the review, fixes what it agrees with, argues back on what it doesn't, pushes a new commit. |
+| `.github/workflows/claude-respond-to-review.yml` | The reviewer bot submits a review with `REQUEST_CHANGES` | **Implementer, again.** Reads the review, fixes what it agrees with, argues back on what it doesn't, pushes a new commit. |
 
 ## The loop
 
@@ -37,6 +37,15 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   submits a `COMMENT`-type review summarizing what's unresolved and says
   explicitly that a human is needed. This bounds the implement/review exchange;
   it does not run forever.
+- **Human-decision escalation, independent of the round cap.** A concern that
+  falls under CLAUDE.md's "Forbidden without explicit permission" list (golden-
+  set/expected-answer content, evaluation thresholds, new dependencies,
+  repository layout or module boundaries, secrets), or one the PR description
+  itself already flags as a draft or a judgement call pending review, isn't the
+  loop's to resolve at any round. The reviewer calls it out as a distinct
+  "Needs a human decision" item instead of driving `REQUEST_CHANGES` on it
+  alone, and the responder leaves it out of its commit and says so in its
+  summary comment rather than guessing.
 - **Formal review state, not just comments.** The reviewer uses
   `mcp__github__create_pending_pull_request_review` /
   `submit_pending_pull_request_review` so `REQUEST_CHANGES` vs `APPROVE` is a
@@ -65,6 +74,11 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
 - **Breaking ties.** After 3 review rounds without resolution, the loop stops
   itself and hands the PR back with a comment explaining what's still
   unresolved.
+- **Anything the loop isn't allowed to decide on its own.** Golden-set content,
+  evaluation thresholds, new dependencies, repo layout, secrets, or a point a
+  PR description already flagged as not finalized — the reviewer and responder
+  both route these to a human immediately rather than looping on them, per the
+  guardrail above.
 - **Merging.** No workflow merges a PR. `APPROVE` from the reviewer is a
   signal, not a merge — a human always clicks merge.
 - **Adjusting the setup.** Scan cadence (`claude-scan.yml`'s cron), the round
