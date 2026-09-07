@@ -30,11 +30,13 @@ jobs:
           # bot-authored review event actually trigger this job - see the
           # matching note in claude-code-review.yml.
           allowed_bots: "claude[bot]"
-          # TEMP: verifying the mcp__github__get_pull_request_review_comments
-          # fix below (root cause of issue #35 - the model was denied on
-          # every attempt to read review comments under the old, nonexistent
-          # tool name mcp__github__get_pull_request_comments, burned its turn
-          # budget retrying, and gave up silently). Remove once confirmed.
+          # TEMP: verifying two tool-name fixes below (root cause of issue
+          # #35): mcp__github__get_pull_request_comments (for reading review
+          # comments) and mcp__github__create_issue_comment (for posting the
+          # summary comment) are both nonexistent tool names the model was
+          # silently denied on - the second one found live on PR #41's own
+          # round-1 review, after the first fix alone still left the
+          # responder unable to complete its job. Remove once confirmed.
           show_full_output: "true"
           prompt: |
             REPO: ${{ github.repository }}
@@ -62,11 +64,11 @@ jobs:
             - Ambiguous, and not one of the above: say what you'd do and why,
               and note the tradeoff.
 
-            Post one summary comment on the PR (mcp__github__create_issue_comment,
+            Post one summary comment on the PR (mcp__github__add_issue_comment,
             issue number = PR number): one bullet per point raised, covering what
             you changed and, for anything you didn't change, why. Then push any
             code changes as a new commit on this branch.
           claude_args: |
             --model claude-sonnet-5
-            --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),Bash(uv run pytest:*),Bash(uv run ruff:*),mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_review_comments,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__create_issue_comment"
+            --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),Bash(uv run pytest:*),Bash(uv run ruff:*),mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_review_comments,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__add_issue_comment"
             --append-system-prompt "Follow CLAUDE.md's Voice section for your summary comment."
