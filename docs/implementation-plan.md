@@ -73,7 +73,7 @@ commit are in `docs/data-sources.md`. Two things this changes downstream:
 
 ---
 
-## Step 3 — MCP tools (2 hours)
+## Step 3 — MCP tools (2 hours) → **done**
 
 > Build `src/recon/tools/server.py` as an MCP server over stdio. **Determine which tools the dataset requires from the `context` fields of the loaded cases and propose them to me before implementing.**
 >
@@ -87,6 +87,19 @@ commit are in `docs/data-sources.md`. Two things this changes downstream:
 > `tests/test_tools.py` calls each tool directly with no LLM and covers all five statuses per tool. Network mocked.
 
 **Verify:** `uv run pytest tests/test_tools.py -q` → at least 5 tests per tool.
+
+**Revised after inspection — the dataset's `context` couldn't drive this either.**
+Sampling the actual questions (e.g. a "Beat or Miss"-category question asking by
+how many basis points a named company's quarterly GAAP gross margin beat or
+missed its own guidance) showed they need real filing facts about real, named
+companies, which we have zero local data for. Building that
+(SEC EDGAR's structured XBRL API, cached locally) is a separate, bigger piece
+of work than this ticket, and qualitative questions need real document search
+regardless, which is deferred to step 13 (RAG). Asked which way to take step 3;
+the choice was a synthetic, fixture-backed tool server now, so steps 4-6 have a
+real tool server to build against, with "answers the actual benchmark well"
+left as an explicit, separate gap. See `docs/data-sources.md` for the fixture
+and the follow-up ticket for real data.
 
 ---
 
