@@ -11,10 +11,11 @@ build plan this repo follows.
 
 ## Status
 
-Steps 1-5 of the implementation plan are done: contracts, the finance-agent-bench
-dataset adapter, the synthetic-fixture MCP tool server, the Agent SDK runtime, and the
-evaluation harness (`recon.cli eval`) all run end to end. No baseline score is recorded
-yet — that's a separate, explicitly-requested run (see `docs/implementation-plan.md`).
+Steps 1-6 of the implementation plan are done: contracts, the finance-agent-bench
+dataset adapter, the synthetic-fixture MCP tool server, the Agent SDK runtime, the
+evaluation harness (`recon.cli eval`), and the FastAPI service (`recon.api.main`) all
+run end to end. No baseline score is recorded yet — that's a separate, explicitly-
+requested run (see `docs/implementation-plan.md`).
 
 ## Setup
 
