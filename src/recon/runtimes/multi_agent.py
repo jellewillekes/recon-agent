@@ -42,6 +42,13 @@ _DECOMPOSE_SCHEMA: dict[str, Any] = {
             "subtasks": {
                 "type": "array",
                 "minItems": 1,
+                # Structural cap on paid worker calls per case - not just the
+                # prompt's "as few subtasks as it genuinely needs" - since a
+                # worker's own max_turns already bounds one call's cost, but
+                # nothing bounded how many calls one decomposition could
+                # produce. 4 covers a two-company comparison (lookup + fact
+                # per company) with room to spare.
+                "maxItems": 4,
                 "items": {
                     "type": "object",
                     "properties": {

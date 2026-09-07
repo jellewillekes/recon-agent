@@ -162,6 +162,64 @@ async def test_run_multi_success_full_flow(monkeypatch: pytest.MonkeyPatch) -> N
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_run_multi_routes_to_both_workers_in_one_case(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The success-path test above only routes to one worker - this exercises
+    the loop body's second iteration, proving two different roles' restricted
+    options each get built and called, in the decomposition's order.
+    """
+    _patch_roles_and_models(monkeypatch)
+    worker_prompts: list[str] = []
+
+    def two_worker_query(
+        *, prompt: str, options: ClaudeAgentOptions | None = None
+    ) -> Any:
+        async def gen() -> Any:
+            if prompt.startswith("Decompose"):
+                yield _result_message(
+                    structured_output={
+                        "subtasks": [
+                            {"worker": "worker_lookup", "instruction": "find FIRM-001"},
+                            {
+                                "worker": "worker_facts",
+                                "instruction": "get its revenue",
+                            },
+                        ]
+                    }
+                )
+            elif "Synthesize a final answer" in prompt:
+                yield _result_message(
+                    structured_output={
+                        "answer": "Industrials, revenue reported",
+                        "evidence": ["FIRM-001 sector", "FIRM-001 revenue"],
+                        "confidence": "high",
+                    }
+                )
+            elif "Does the evidence support" in prompt:
+                yield _result_message(
+                    structured_output={"accepted": True, "reason": "supported"}
+                )
+            else:
+                worker_prompts.append(prompt)
+                yield _result_message(
+                    structured_output={"findings": f"found: {prompt}", "evidence": []}
+                )
+
+        return gen()
+
+    monkeypatch.setattr(agent_sdk, "query", two_worker_query)
+
+    result = await multi_agent.run_multi_async(
+        CASE, roles_config_path=Path("unused"), prompts_dir=Path("prompts")
+    )
+
+    assert worker_prompts == ["find FIRM-001", "get its revenue"]
+    assert result.answer == "Industrials, revenue reported"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_critic_rejection_forces_confidence_low(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
