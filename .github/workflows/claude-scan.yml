@@ -38,5 +38,6 @@ jobs:
               be confident fixing it yourself with no further input; otherwise leave it
               unlabeled for a human to triage.
           claude_args: |
+            --model claude-sonnet-5
             --allowedTools "mcp__github__search_issues,mcp__github__create_issue,mcp__github__list_issues"
             --append-system-prompt "Follow CLAUDE.md's Voice section for every issue title and body you write."
