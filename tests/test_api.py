@@ -1,8 +1,9 @@
 """Tests for `api/main.py`. `docs/contracts.md` section 5.
 
 `httpx.AsyncClient` against the app in-process via `ASGITransport` — no real
-server, no real agent run: `_runtime.run` and the two `health.py` checks are
-monkeypatched, so nothing here calls a model or a network service.
+server, no real agent run: `_runtime.run_async` (what `investigate()` actually
+awaits) and the two `health.py` checks are monkeypatched, so nothing here
+calls a model or a network service.
 """
 
 import re
@@ -100,11 +101,11 @@ async def test_investigate_success_echoes_request_id(
 ) -> None:
     captured: dict[str, Case] = {}
 
-    def fake_run(case: Case) -> AgentResult:
+    async def fake_run_async(case: Case) -> AgentResult:
         captured["case"] = case
         return _agent_result(case.case_id)
 
-    monkeypatch.setattr(api_main._runtime, "run", fake_run)
+    monkeypatch.setattr(api_main._runtime, "run_async", fake_run_async)
 
     async with await _client() as client:
         resp = await client.post(
@@ -123,9 +124,10 @@ async def test_investigate_success_echoes_request_id(
 async def test_investigate_generates_request_id_when_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        api_main._runtime, "run", lambda case: _agent_result(case.case_id)
-    )
+    async def fake_run_async(case: Case) -> AgentResult:
+        return _agent_result(case.case_id)
+
+    monkeypatch.setattr(api_main._runtime, "run_async", fake_run_async)
 
     async with await _client() as client:
         resp = await client.post("/investigate", json={"question": "q"})
@@ -185,13 +187,18 @@ async def test_investigate_unsupported_runtime_is_422() -> None:
 async def test_investigate_timeout_is_504(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    import time
+    import asyncio
 
-    def slow_run(case: Case) -> AgentResult:
-        time.sleep(0.2)
-        return _agent_result(case.case_id)
+    cleanup_ran = []
 
-    monkeypatch.setattr(api_main._runtime, "run", slow_run)
+    async def hanging_run_async(case: Case) -> AgentResult:
+        try:
+            await asyncio.Event().wait()
+            return _agent_result(case.case_id)  # pragma: no cover - unreachable
+        finally:
+            cleanup_ran.append(True)
+
+    monkeypatch.setattr(api_main._runtime, "run_async", hanging_run_async)
     monkeypatch.setattr(api_main, "REQUEST_TIMEOUT_S", 0.01)
 
     with caplog.at_level("WARNING", logger="recon.api.main"):
@@ -199,9 +206,11 @@ async def test_investigate_timeout_is_504(
             resp = await client.post("/investigate", json={"question": "q"})
 
     assert resp.status_code == 504
-    # The underlying thread isn't actually cancelled (see
-    # docs/adr/0005-api-timeout-cancellation-deferred.md) - the warning is
-    # the only signal that a run kept executing past its timeout.
+    # run_async is a real coroutine, so wait_for's cancellation actually
+    # reaches it (see docs/adr/0006-api-timeout-cancellation-fixed.md) -
+    # unlike the old run()-in-a-thread bridge, cleanup genuinely runs before
+    # this response goes out, not just the warning log.
+    assert cleanup_ran == [True]
     assert "timed out" in caplog.text
 
 

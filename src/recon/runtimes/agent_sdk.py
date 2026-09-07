@@ -327,26 +327,36 @@ class AgentSdkRuntime:
         """Answer `case`. Never raises — the SDK/subprocess/schema failure modes
         this wraps are numerous and case-specific; the `Runtime` contract requires
         every one of them to surface as `AgentResult.error` instead of propagating.
+
+        Sync wrapper for callers with no event loop of their own (CLI, eval
+        harness). A caller that can await directly — the API — should use
+        `run_async` instead: this method's own `asyncio.run()` gives it a
+        second, disconnected event loop that an outer `asyncio.wait_for`
+        cannot reach in to cancel.
+        """
+        return asyncio.run(self.run_async(case))
+
+    async def run_async(self, case: Case) -> AgentResult:
+        """Same contract as `run`, but a real coroutine: cancelling the await
+        (e.g. via `asyncio.wait_for`) propagates into `query()` and, through
+        it, the SDK's own cancellation-safe subprocess teardown — instead of
+        being stranded in a separate event loop the caller can't reach.
         """
         start = time.monotonic()
         try:
             if self._mode == "multi":
                 from recon.runtimes import multi_agent
 
-                outcome = asyncio.run(
-                    multi_agent.run_multi_async(
-                        case,
-                        roles_config_path=self._roles_config_path,
-                        prompts_dir=self._prompts_dir,
-                    )
+                outcome = await multi_agent.run_multi_async(
+                    case,
+                    roles_config_path=self._roles_config_path,
+                    prompts_dir=self._prompts_dir,
                 )
             else:
                 options, usd_to_eur_rate = _build_options(
                     self._models_config_path, self._prompt_path
                 )
-                result = asyncio.run(
-                    _run_query(case.question, options, usd_to_eur_rate)
-                )
+                result = await _run_query(case.question, options, usd_to_eur_rate)
                 answer, evidence, confidence = _validate_answer(result.structured)
                 outcome = _Outcome(
                     answer=answer,

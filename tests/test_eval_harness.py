@@ -1,9 +1,9 @@
 """Tests for `eval/harness.py`.
 
-Uses a fake `Runtime` (the `Runtime` protocol requires only `.run(case)`, per
-`runtimes/base.py`) and a monkeypatched `judge_case` so no real model call
-happens here — the judge itself is covered separately in
-`tests/test_eval_judge.py`.
+Uses a fake `Runtime` (implements both `.run(case)` and `.run_async(case)` per
+`runtimes/base.py`; the harness only calls `.run`) and a monkeypatched
+`judge_case` so no real model call happens here — the judge itself is
+covered separately in `tests/test_eval_judge.py`.
 """
 
 from pathlib import Path
@@ -39,6 +39,9 @@ class _FakeRuntime:
         self._results = results
 
     def run(self, case: Case) -> AgentResult:
+        return self._results[case.case_id]
+
+    async def run_async(self, case: Case) -> AgentResult:
         return self._results[case.case_id]
 
 
