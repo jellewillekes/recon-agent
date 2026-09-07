@@ -30,7 +30,6 @@ from claude_agent_sdk.types import McpStdioServerConfig
 from recon.contracts import AgentResult, Case, ToolCall
 
 RUNTIME_NAME = "agent_sdk"
-MODE: Literal["single", "multi"] = "single"
 
 MCP_SERVER_NAME = "recon-tools"
 _TOOL_NAMES = (
@@ -194,15 +193,35 @@ def _parse_tool_result(content: str | list[dict[str, Any]] | None) -> tuple[str,
     return status, elapsed_ms
 
 
-async def _run_async(
-    case: Case, options: ClaudeAgentOptions, usd_to_eur_rate: float
-) -> _Outcome:
+@dataclass
+class _QueryResult:
+    """What a single `query()` call produced, before schema-specific
+    validation of `structured` — shared by single mode (`_ANSWER_SCHEMA`) and
+    every multi-agent role (`runtimes/multi_agent.py`), each of which
+    validates `structured` against its own `output_format` schema.
+    """
+
+    structured: dict[str, Any]
+    tool_calls: list[ToolCall]
+    tokens_in: int
+    tokens_out: int
+    cost_eur: float
+
+
+async def _run_query(
+    prompt: str, options: ClaudeAgentOptions, usd_to_eur_rate: float
+) -> _QueryResult:
+    """Drive one `query()` call to completion. Tool-call extraction, the
+    oversized-result recovery path, and cost conversion are the same
+    regardless of which role or `output_format` schema `options` configures —
+    only `structured`'s shape varies by caller.
+    """
     tool_calls: list[ToolCall] = []
     pending: dict[str, tuple[str, dict[str, Any]]] = {}
     result_message: ResultMessage | None = None
 
     mcp_prefix = f"mcp__{MCP_SERVER_NAME}__"
-    async for message in query(prompt=case.question, options=options):
+    async for message in query(prompt=prompt, options=options):
         if isinstance(message, AssistantMessage):
             for block in message.content:
                 # Only our four MCP tools are `tool_calls` in the AgentResult
@@ -244,16 +263,6 @@ async def _run_async(
         raise TypeError(
             f"agent_sdk run produced no structured answer (subtype={result_message.subtype!r})."
         )
-    answer, evidence, confidence = (
-        structured["answer"],
-        list(structured["evidence"]),
-        structured["confidence"],
-    )
-    if confidence not in _CONFIDENCE_VALUES:
-        raise RuntimeError(
-            f"agent_sdk run returned an invalid confidence: {confidence!r}."
-        )
-    confidence = cast(_Confidence, confidence)
 
     usage = result_message.usage or {}
     tokens_in = (
@@ -264,15 +273,31 @@ async def _run_async(
     tokens_out = int(usage.get("output_tokens", 0))
     cost_eur = (result_message.total_cost_usd or 0.0) * usd_to_eur_rate
 
-    return _Outcome(
-        answer=answer,
-        evidence=evidence,
-        confidence=confidence,
+    return _QueryResult(
+        structured=structured,
         tool_calls=tool_calls,
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         cost_eur=cost_eur,
     )
+
+
+def _validate_answer(structured: dict[str, Any]) -> tuple[str, list[str], _Confidence]:
+    """`_ANSWER_SCHEMA`'s own validation, split out of `_run_query` so it's
+    reusable wherever an `answer`/`evidence`/`confidence` schema is used
+    (single mode here; multi mode's supervisor-synthesis call in
+    `runtimes/multi_agent.py`).
+    """
+    answer, evidence, confidence = (
+        structured["answer"],
+        list(structured["evidence"]),
+        structured["confidence"],
+    )
+    if confidence not in _CONFIDENCE_VALUES:
+        raise RuntimeError(
+            f"agent_sdk run returned an invalid confidence: {confidence!r}."
+        )
+    return answer, evidence, cast(_Confidence, confidence)
 
 
 class AgentSdkRuntime:
@@ -281,11 +306,22 @@ class AgentSdkRuntime:
     def __init__(
         self,
         *,
+        mode: Literal["single", "multi"] = "single",
         models_config_path: Path = DEFAULT_MODELS_CONFIG_PATH,
         prompt_path: Path = DEFAULT_PROMPT_PATH,
+        roles_config_path: Path | None = None,
+        prompts_dir: Path | None = None,
     ) -> None:
+        self._mode = mode
         self._models_config_path = models_config_path
         self._prompt_path = prompt_path
+        # Only meaningful for mode="multi"; None means "use multi_agent's own
+        # defaults" (applied in run(), which is the only place that needs
+        # runtimes.multi_agent - imported there, not at module level, since
+        # multi_agent imports the query/validation primitives defined below
+        # and a top-level import here would be circular).
+        self._roles_config_path = roles_config_path
+        self._prompts_dir = prompts_dir
 
     def run(self, case: Case) -> AgentResult:
         """Answer `case`. Never raises — the SDK/subprocess/schema failure modes
@@ -308,10 +344,29 @@ class AgentSdkRuntime:
         """
         start = time.monotonic()
         try:
-            options, usd_to_eur_rate = _build_options(
-                self._models_config_path, self._prompt_path
-            )
-            outcome = await _run_async(case, options, usd_to_eur_rate)
+            if self._mode == "multi":
+                from recon.runtimes import multi_agent
+
+                outcome = await multi_agent.run_multi_async(
+                    case,
+                    roles_config_path=self._roles_config_path,
+                    prompts_dir=self._prompts_dir,
+                )
+            else:
+                options, usd_to_eur_rate = _build_options(
+                    self._models_config_path, self._prompt_path
+                )
+                result = await _run_query(case.question, options, usd_to_eur_rate)
+                answer, evidence, confidence = _validate_answer(result.structured)
+                outcome = _Outcome(
+                    answer=answer,
+                    evidence=evidence,
+                    confidence=confidence,
+                    tool_calls=result.tool_calls,
+                    tokens_in=result.tokens_in,
+                    tokens_out=result.tokens_out,
+                    cost_eur=result.cost_eur,
+                )
             return AgentResult(
                 case_id=case.case_id,
                 answer=outcome.answer,
@@ -319,7 +374,7 @@ class AgentSdkRuntime:
                 confidence=outcome.confidence,
                 tool_calls=outcome.tool_calls,
                 runtime=RUNTIME_NAME,
-                mode=MODE,
+                mode=self._mode,
                 tokens_in=outcome.tokens_in,
                 tokens_out=outcome.tokens_out,
                 cost_eur=outcome.cost_eur,
@@ -334,7 +389,7 @@ class AgentSdkRuntime:
                 confidence="low",
                 tool_calls=[],
                 runtime=RUNTIME_NAME,
-                mode=MODE,
+                mode=self._mode,
                 tokens_in=0,
                 tokens_out=0,
                 cost_eur=0.0,

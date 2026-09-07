@@ -194,3 +194,74 @@ def test_run_evaluation_respects_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     assert len(run.case_scores) == 2
+
+
+@pytest.mark.unit
+def test_run_evaluation_hashes_roles_config_for_multi_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """config/roles.yaml governs each role's model/max_turns in multi mode -
+    just as load-bearing for reproducibility as models.yaml, so a change to
+    it must change model_config_hash when mode="multi".
+    """
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    case = _case("c1")
+    runtime = _FakeRuntime({"c1": _agent_result(case_id="c1", mode="multi")})
+    roles_path = tmp_path / "roles.yaml"
+    roles_path.write_text("supervisor:\n  model: x\n", encoding="utf-8")
+
+    run_v1 = harness.run_evaluation(
+        [case],
+        runtime,
+        rubrics_dir=REPO_RUBRICS_DIR,
+        prompts_dir=REPO_PROMPTS_DIR,
+        models_config_path=REPO_MODELS_CONFIG,
+        roles_config_path=roles_path,
+    )
+
+    roles_path.write_text("supervisor:\n  model: y\n", encoding="utf-8")
+    run_v2 = harness.run_evaluation(
+        [case],
+        runtime,
+        rubrics_dir=REPO_RUBRICS_DIR,
+        prompts_dir=REPO_PROMPTS_DIR,
+        models_config_path=REPO_MODELS_CONFIG,
+        roles_config_path=roles_path,
+    )
+
+    assert run_v1.model_config_hash != run_v2.model_config_hash
+
+
+@pytest.mark.unit
+def test_run_evaluation_single_mode_ignores_roles_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """roles.yaml is irrelevant to single mode - changing it must not change
+    single mode's model_config_hash (no regression to existing hash values).
+    """
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    case = _case("c1")
+    runtime = _FakeRuntime({"c1": _agent_result(case_id="c1", mode="single")})
+    roles_path = tmp_path / "roles.yaml"
+    roles_path.write_text("supervisor:\n  model: x\n", encoding="utf-8")
+
+    run_v1 = harness.run_evaluation(
+        [case],
+        runtime,
+        rubrics_dir=REPO_RUBRICS_DIR,
+        prompts_dir=REPO_PROMPTS_DIR,
+        models_config_path=REPO_MODELS_CONFIG,
+        roles_config_path=roles_path,
+    )
+
+    roles_path.write_text("supervisor:\n  model: y\n", encoding="utf-8")
+    run_v2 = harness.run_evaluation(
+        [case],
+        runtime,
+        rubrics_dir=REPO_RUBRICS_DIR,
+        prompts_dir=REPO_PROMPTS_DIR,
+        models_config_path=REPO_MODELS_CONFIG,
+        roles_config_path=roles_path,
+    )
+
+    assert run_v1.model_config_hash == run_v2.model_config_hash

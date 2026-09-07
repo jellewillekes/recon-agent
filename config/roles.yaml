@@ -1,0 +1,30 @@
+# Role configuration for multi-agent mode (`runtimes/multi_agent.py`).
+# Mirrors models.yaml's per-role-key shape. `tools:` is the structural tool
+# subset for that role - it drives ClaudeAgentOptions.allowed_tools directly,
+# not a prompt instruction. supervisor/critic omit it entirely: they get no
+# MCP server attached at all, not just an empty allowlist.
+
+supervisor:
+  model: claude-sonnet-5
+  # Called twice per case (decompose, then synthesize) - no tool use in
+  # either call, so a small turn budget is enough for both.
+  max_turns: 4
+
+worker_lookup:
+  model: claude-sonnet-5
+  max_turns: 8
+  # Discovery: what companies/concepts exist, before fetching their values.
+  tools: [list_companies, list_financial_concepts]
+
+worker_facts:
+  model: claude-sonnet-5
+  max_turns: 8
+  # Retrieval: the actual facts/filings once the lookup worker (or the
+  # supervisor's routing) has named a company/concept to fetch.
+  tools: [get_financial_fact, search_filings]
+
+critic:
+  model: claude-sonnet-5
+  # Checks a proposed answer against the evidence it's handed - no tool use,
+  # no multi-step reasoning.
+  max_turns: 3

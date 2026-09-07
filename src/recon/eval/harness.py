@@ -115,6 +115,13 @@ def run_evaluation(
     rubrics_dir: Path = DEFAULT_RUBRICS_DIR,
     prompts_dir: Path = hashing.DEFAULT_PROMPTS_DIR,
     models_config_path: Path = DEFAULT_MODELS_CONFIG_PATH,
+    # Only read (and hashed into model_config_hash) when the run turns out to
+    # be mode="multi" - config/roles.yaml governs each role's model/max_turns
+    # there, same reproducibility stakes as models.yaml (docs/contracts.md
+    # §7). A literal default, not an import from runtimes.multi_agent: the
+    # harness depends only on the Runtime protocol, never a specific runtime
+    # module (see this module's docstring).
+    roles_config_path: Path = Path("config/roles.yaml"),
 ) -> EvalRun:
     if limit is not None:
         cases = cases[:limit]
@@ -131,6 +138,12 @@ def run_evaluation(
         case_scores.append(score)
         runtime_name, mode = agent_result.runtime, agent_result.mode
 
+    model_config_hash = (
+        hashing.compute_model_config_hash(models_config_path, roles_config_path)
+        if mode == "multi"
+        else hashing.compute_model_config_hash(models_config_path)
+    )
+
     return EvalRun(
         run_id=_run_id(),
         timestamp_utc=datetime.now(UTC),
@@ -139,7 +152,7 @@ def run_evaluation(
         dataset_attribution=ATTRIBUTION,
         runtime=runtime_name,
         mode=mode,
-        model_config_hash=hashing.compute_model_config_hash(models_config_path),
+        model_config_hash=model_config_hash,
         prompt_hashes=hashing.compute_prompt_hashes(prompts_dir),
         rubric_version=RUBRIC_VERSION,
         case_scores=case_scores,
