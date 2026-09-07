@@ -30,10 +30,6 @@ jobs:
           # and the loop stalls - confirmed live: an unlisted github-actions[bot]
           # push failed with "Workflow initiated by non-human actor".
           allowed_bots: "claude[bot],github-actions[bot]"
-          # TEMP: verifying the mcp__github__add_comment_to_pending_review fix
-          # below (see this PR's description) actually gets inline comments
-          # posting. Remove once confirmed.
-          show_full_output: "true"
           prompt: |
             REPO: ${{ github.repository }}
             PR: #${{ github.event.pull_request.number }}
