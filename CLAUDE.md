@@ -104,6 +104,16 @@ Do not try to make CI call a model.
 - One step, one PR. Do not combine two steps
 - Never commit directly to `main`
 
+## Architecture decisions
+
+When a design decision has more than one reasonable option and gets settled — by the user,
+or in a terminal/session discussion — record it in `docs/adr/` as a new numbered file
+(`000X-short-title.md`): Context (what's being decided and why it isn't obvious),
+Decision, Consequences. Keep it short — a few paragraphs, not a design doc. A PR description
+should point back to the ADR rather than re-arguing the reasoning inline. Write one whether
+the decision came from the user directly or from a Claude session's own investigation and
+choice — both count.
+
 ## Voice
 
 Applies to anything a Claude agent writes for a human to read in this repo:

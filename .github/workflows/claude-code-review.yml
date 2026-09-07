@@ -20,10 +20,16 @@ jobs:
       - uses: anthropics/claude-code-action@d75b94d5ad426cb8546e6628b6f5f19b84e5cce1 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Re-review runs happen when the implement agent pushes a fix commit
-          # (a "synchronize" event authored by claude[bot]) - without this the
-          # human-actor check would reject that run and the loop would stall.
-          allowed_bots: "claude[bot]"
+          # Re-review runs happen when the implement agent pushes a fix commit.
+          # Two separate bot identities show up here: the commit's author is
+          # claude[bot] (the action's own bot_id/bot_name), but the git push
+          # itself authenticates with claude-respond-to-review.yml's default
+          # GITHUB_TOKEN (that workflow's checkout step doesn't override it),
+          # so the resulting "synchronize" event's actor is github-actions[bot].
+          # Without both listed here, the human-actor check rejects that run
+          # and the loop stalls - confirmed live: an unlisted github-actions[bot]
+          # push failed with "Workflow initiated by non-human actor".
+          allowed_bots: "claude[bot],github-actions[bot]"
           # TEMP: diagnosing why inline review comments never post (see PR
           # description). Remove before merging.
           show_full_output: "true"
