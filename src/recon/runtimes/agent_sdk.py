@@ -8,6 +8,7 @@ model, turn budget, and USD→EUR rate this reads.
 
 import asyncio
 import json
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -116,11 +117,58 @@ def _strip_tool_name(mcp_tool_name: str) -> str:
     return name.removesuffix("_tool")
 
 
+# When a tool result is too large to inline, the CLI replaces the
+# `ToolResultBlock.content` with a notice like:
+#   "Error: result (53,048 characters) exceeds maximum allowed tokens. Output
+#   has been saved to /home/user/.claude/projects/.../tool-results/
+#   mcp-recon-tools-list_companies_tool-<ts>.txt.\nFormat: ..."
+# instead of our tool's own JSON. The file it names holds exactly that JSON,
+# on the same local filesystem, so we can recover the real status ourselves.
+_OFFLOAD_NOTICE_RE = re.compile(r"Output has been saved to (?P<path>\S+?)\.\n")
+
+
+def _parse_offloaded_result(text: str) -> dict[str, Any] | None:
+    """Follow the CLI's oversized-result offload notice back to the real payload.
+
+    Returns `None` (never raises) unless the notice names a file we can safely
+    read: this text arrives inside tool output, which step 3's `search_filings`
+    will eventually source from untrusted documents, so a forged notice must
+    not be able to make us open an arbitrary path. We only follow one that
+    resolves under the CLI's own per-session project directory and whose
+    filename matches our own MCP server's offload naming convention.
+    """
+    match = _OFFLOAD_NOTICE_RE.search(text)
+    if match is None:
+        return None
+    path = Path(match.group("path"))
+    trusted_root = Path.home() / ".claude" / "projects"
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(trusted_root.resolve())
+    except (OSError, ValueError):
+        return None
+    if not resolved.name.startswith(
+        f"mcp-{MCP_SERVER_NAME}-"
+    ) or not resolved.name.endswith(".txt"):
+        return None
+    if not resolved.is_file():
+        return None
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def _parse_tool_result(content: str | list[dict[str, Any]] | None) -> tuple[str, int]:
     """Pull `status`/`elapsed_ms` back out of the JSON our own `ToolResult` produced.
 
-    Falls back to `("unavailable", 0)` for anything that doesn't parse as the
-    shape `tools/server.py` returns — the tool ran, but we can't account for it.
+    Recognizes two shapes: the JSON directly, or (when the result was too
+    large to inline) the CLI's offload notice, in which case the real payload
+    is recovered from disk via `_parse_offloaded_result`. Falls back to
+    `("unknown", 0)` for anything else — genuinely undeterminable, which is a
+    different claim than `ToolResult`'s own `"unavailable"` ("source down,
+    timeout, circuit open" per `docs/contracts.md`).
     """
     text: str | None = content if isinstance(content, str) else None
     if text is None and isinstance(content, list):
@@ -133,14 +181,16 @@ def _parse_tool_result(content: str | list[dict[str, Any]] | None) -> tuple[str,
             None,
         )
     if text is None:
-        return "unavailable", 0
+        return "unknown", 0
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        return "unavailable", 0
+        payload = _parse_offloaded_result(text)
+        if payload is None:
+            return "unknown", 0
     status, elapsed_ms = payload.get("status"), payload.get("elapsed_ms")
     if not isinstance(status, str) or not isinstance(elapsed_ms, int):
-        return "unavailable", 0
+        return "unknown", 0
     return status, elapsed_ms
 
 
@@ -160,8 +210,7 @@ async def _run_async(
                 # recovery, see _build_options) isn't one of tools/server.py's
                 # tools and its result doesn't match ToolResult's shape —
                 # recording it here would mislabel a successful recovery read
-                # as ToolResult status "unavailable" (contracts.md section 3:
-                # "source down, timeout, circuit open").
+                # with the generic "unknown" fallback status.
                 if isinstance(block, ToolUseBlock) and block.name.startswith(
                     mcp_prefix
                 ):

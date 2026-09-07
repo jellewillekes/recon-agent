@@ -262,6 +262,155 @@ def test_run_excludes_read_from_tool_calls(monkeypatch: pytest.MonkeyPatch) -> N
     assert result.tool_calls == []
 
 
+def _offload_notice(path: Path) -> str:
+    return (
+        f"Error: result (53,048 characters) exceeds maximum allowed tokens. "
+        f"Output has been saved to {path}.\n"
+        "Format: JSON with schema: {status: string, data: [{...}], "
+        "row_count: number, message: string, elapsed_ms: number}\n"
+    )
+
+
+@pytest.mark.unit
+def test_run_recovers_status_from_offloaded_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When a result is too large to inline, the CLI swaps the tool's own
+    ToolResult JSON for an offload notice naming a file with that JSON. The
+    call still succeeded — real status must be recovered from the file, not
+    reported as the generic fallback.
+    """
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    tool_results_dir = tmp_path / ".claude" / "projects" / "p1" / "s1" / "tool-results"
+    tool_results_dir.mkdir(parents=True)
+    offloaded_file = tool_results_dir / "mcp-recon-tools-list_companies_tool-1.txt"
+    offloaded_file.write_text(
+        json.dumps(
+            {
+                "status": "truncated",
+                "data": [{"company_id": "FIRM-001"}],
+                "row_count": 500,
+                "message": "500 companies match, showing the first 500.",
+                "elapsed_ms": 42,
+            }
+        )
+    )
+    _patch_options(monkeypatch)
+    _patch_query(
+        monkeypatch,
+        [
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="tu1",
+                        name="mcp__recon-tools__list_companies_tool",
+                        input={},
+                    )
+                ],
+                model="claude-sonnet-5",
+            ),
+            UserMessage(
+                content=[
+                    ToolResultBlock(
+                        tool_use_id="tu1", content=_offload_notice(offloaded_file)
+                    )
+                ]
+            ),
+            _result_message(),
+        ],
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is None
+    assert result.tool_calls[0].status == "truncated"
+    assert result.tool_calls[0].elapsed_ms == 42
+
+
+@pytest.mark.unit
+def test_run_refuses_offload_notice_outside_trusted_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A tool result is untrusted input in principle (step 3's search_filings
+    will eventually source from real documents) — an offload notice pointing
+    outside the CLI's own project directory must never be followed, even if a
+    file happens to exist there.
+    """
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    outside_file = tmp_path / "mcp-recon-tools-list_companies_tool-1.txt"
+    outside_file.write_text(json.dumps({"status": "ok", "elapsed_ms": 1}))
+    _patch_options(monkeypatch)
+    _patch_query(
+        monkeypatch,
+        [
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="tu1",
+                        name="mcp__recon-tools__list_companies_tool",
+                        input={},
+                    )
+                ],
+                model="claude-sonnet-5",
+            ),
+            UserMessage(
+                content=[
+                    ToolResultBlock(
+                        tool_use_id="tu1", content=_offload_notice(outside_file)
+                    )
+                ]
+            ),
+            _result_message(),
+        ],
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is None
+    assert result.tool_calls[0].status == "unknown"
+    assert result.tool_calls[0].elapsed_ms == 0
+
+
+@pytest.mark.unit
+def test_run_offload_notice_missing_file_falls_back_to_unknown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    tool_results_dir = tmp_path / ".claude" / "projects" / "p1" / "s1" / "tool-results"
+    tool_results_dir.mkdir(parents=True)
+    missing_file = tool_results_dir / "mcp-recon-tools-list_companies_tool-1.txt"
+    _patch_options(monkeypatch)
+    _patch_query(
+        monkeypatch,
+        [
+            AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="tu1",
+                        name="mcp__recon-tools__list_companies_tool",
+                        input={},
+                    )
+                ],
+                model="claude-sonnet-5",
+            ),
+            UserMessage(
+                content=[
+                    ToolResultBlock(
+                        tool_use_id="tu1", content=_offload_notice(missing_file)
+                    )
+                ]
+            ),
+            _result_message(),
+        ],
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is None
+    assert result.tool_calls[0].status == "unknown"
+    assert result.tool_calls[0].elapsed_ms == 0
+
+
 @pytest.mark.unit
 def test_run_no_result_message_populates_error_not_raise(
     monkeypatch: pytest.MonkeyPatch,
