@@ -30,6 +30,9 @@ jobs:
           # bot-authored review event actually trigger this job - see the
           # matching note in claude-code-review.yml.
           allowed_bots: "claude[bot]"
+          # TEMP: diagnosing issue #35 (missing summary comment / no-op runs).
+          # Remove once fixed.
+          show_full_output: "true"
           prompt: |
             REPO: ${{ github.repository }}
             PR: #${{ github.event.pull_request.number }}
