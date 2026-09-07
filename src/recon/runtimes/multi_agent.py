@@ -24,6 +24,7 @@ from recon.runtimes.agent_sdk import (
     MCP_SERVER_NAME,
     _BudgetExceeded,
     _BudgetTracker,
+    _Confidence,
     _load_model_config,
     _load_run_budget,
     _Outcome,
@@ -183,7 +184,22 @@ async def run_multi_async(
     cost_eur = 0.0
     tool_calls: list[ToolCall] = []
 
-    def _accumulate(result: _QueryResult) -> None:
+    def _accumulate(
+        result: _QueryResult,
+        *,
+        answer: str = "",
+        evidence: list[str] | None = None,
+        confidence: _Confidence = "low",
+    ) -> None:
+        """Adds `result`'s usage to the running totals; raises
+        `_BudgetExceeded` if that pushes the run over `budget.max_tokens`.
+
+        `answer`/`evidence`/`confidence`, when passed, are already validated
+        from `result` itself (the supervisor-synthesis or critic call) — a
+        breach here means that step's own tokens tipped the budget, but its
+        output is already a complete, valid answer and must survive the
+        exception instead of being discarded with it.
+        """
         nonlocal tokens_in, tokens_out, cost_eur
         tokens_in += result.tokens_in
         tokens_out += result.tokens_out
@@ -195,6 +211,9 @@ async def run_multi_async(
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cost_eur=cost_eur,
+                answer=answer,
+                evidence=evidence,
+                confidence=confidence,
             )
 
     async def _run(prompt: str, options: ClaudeAgentOptions) -> _QueryResult:
@@ -245,8 +264,10 @@ async def run_multi_async(
         "Synthesize a final answer from these findings only."
     )
     synthesis_result = await _run(synthesis_prompt, synthesize_options)
-    _accumulate(synthesis_result)
     answer, evidence, confidence = _validate_answer(synthesis_result.structured)
+    _accumulate(
+        synthesis_result, answer=answer, evidence=evidence, confidence=confidence
+    )
 
     critic_options = _build_role_options(
         "critic", roles_config["critic"], prompts_dir, _CRITIC_SCHEMA
@@ -256,10 +277,10 @@ async def run_multi_async(
         f"Cited evidence: {evidence}\n\nDoes the evidence support the answer?"
     )
     critic_result = await _run(critic_prompt, critic_options)
-    _accumulate(critic_result)
     accepted, _reason = _validate_critic(critic_result.structured)
     if not accepted:
         confidence = "low"
+    _accumulate(critic_result, answer=answer, evidence=evidence, confidence=confidence)
 
     return _Outcome(
         answer=answer,

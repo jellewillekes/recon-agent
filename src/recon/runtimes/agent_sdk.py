@@ -123,6 +123,13 @@ class _BudgetExceeded(Exception):
     everything gathered before the breach so the caller returns a partial
     `AgentResult` (`AgentSdkRuntime.run_async`'s `except _BudgetExceeded`)
     instead of crashing or silently discarding it.
+
+    `answer`/`evidence`/`confidence` default to the empty/`"low"` values used
+    when the breach lands before any answer exists (single mode; multi
+    mode's decompose or worker calls). `run_multi_async` passes the real
+    values through when a breach is detected after its supervisor-synthesis
+    or critic call has already produced one — otherwise that already-valid
+    answer would be thrown away along with the exception.
     """
 
     def __init__(
@@ -132,6 +139,9 @@ class _BudgetExceeded(Exception):
         tokens_in: int = 0,
         tokens_out: int = 0,
         cost_eur: float = 0.0,
+        answer: str = "",
+        evidence: list[str] | None = None,
+        confidence: _Confidence = "low",
     ) -> None:
         super().__init__(reason)
         self.reason = reason
@@ -139,6 +149,9 @@ class _BudgetExceeded(Exception):
         self.tokens_in = tokens_in
         self.tokens_out = tokens_out
         self.cost_eur = cost_eur
+        self.answer = answer
+        self.evidence = evidence or []
+        self.confidence = confidence
 
 
 def _load_model_config(path: Path) -> dict[str, Any]:
@@ -294,11 +307,14 @@ async def _run_query(
     regardless of which role or `output_format` schema `options` configures —
     only `structured`'s shape varies by caller.
 
-    `tracker`, when given, is checked after every message; a tool-call or
-    wall-clock breach raises `_BudgetExceeded` and explicitly closes the
-    stream (`contextlib.aclosing`, not a bare `break` — that would leave the
-    generator merely suspended, not closed; ADR-0006 established that
-    `query()`'s generator is safe to close mid-flight).
+    `tracker`, when given, is checked after every message up until the
+    `ResultMessage` arrives; a tool-call or wall-clock breach raises
+    `_BudgetExceeded` and explicitly closes the stream (`contextlib.aclosing`,
+    not a bare `break` — that would leave the generator merely suspended, not
+    closed; ADR-0006 established that `query()`'s generator is safe to close
+    mid-flight). Once `result_message` is set there is already a complete,
+    valid answer to return — the budget is no longer checked, so a breach
+    that lands on the very message carrying that answer doesn't discard it.
     """
     tool_calls: list[ToolCall] = []
     pending: dict[str, tuple[str, dict[str, Any]]] = {}
@@ -346,7 +362,7 @@ async def _run_query(
             elif isinstance(message, ResultMessage):
                 result_message = message
 
-            if tracker is not None:
+            if tracker is not None and result_message is None:
                 reason = tracker.breach_reason()
                 if reason is not None:
                     raise _BudgetExceeded(reason, tool_calls=list(tool_calls))
@@ -488,9 +504,9 @@ class AgentSdkRuntime:
         except _BudgetExceeded as exc:
             return AgentResult(
                 case_id=case.case_id,
-                answer="",
-                evidence=[],
-                confidence="low",
+                answer=exc.answer,
+                evidence=exc.evidence,
+                confidence=exc.confidence,
                 tool_calls=exc.tool_calls,
                 runtime=RUNTIME_NAME,
                 mode=self._mode,

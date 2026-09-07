@@ -25,10 +25,12 @@ MAX_ROWS = 500
 TIMEOUT_S = 30.0
 
 # Retry: up to this many attempts total per call, exponential backoff + jitter
-# between them. Circuit breaker: this many *calls* (not retry attempts within
-# one call) failing consecutively opens the breaker for that connection -
-# further calls short-circuit straight to `unavailable` with no query attempt
-# at all, until the cooldown elapses and lets one probe call through.
+# between them - except a timeout (_ToolTimeout), which is never retried; see
+# its docstring. Circuit breaker: this many *calls* (not retry attempts
+# within one call) failing consecutively opens the breaker for that
+# connection - further calls short-circuit straight to `unavailable` with no
+# query attempt at all, until the cooldown elapses and lets one probe call
+# through.
 _MAX_ATTEMPTS = 3
 _BASE_DELAY_S = 0.01
 _BREAKER_THRESHOLD = 3
@@ -39,6 +41,18 @@ _EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
 class _ToolUnavailable(Exception):
     """Raised by `_run_bounded`, caught by each tool to build an `unavailable` result."""
+
+
+class _ToolTimeout(_ToolUnavailable):
+    """Raised by `_run_bounded_once` specifically for a `TIMEOUT_S` timeout.
+
+    Kept distinct from a plain `_ToolUnavailable` so `_run_bounded` can skip
+    retrying it: a query that already burned the full `TIMEOUT_S` waiting is
+    a much stronger signal of a stuck source than a fast `duckdb.Error`, and
+    retrying it up to `_MAX_ATTEMPTS` times would multiply, not shorten, the
+    wait — up to `_MAX_ATTEMPTS * TIMEOUT_S` per call before the breaker even
+    sees a failure, which can outrun a runtime's own wall-clock budget.
+    """
 
 
 class _CircuitBreaker:
@@ -148,7 +162,7 @@ def _run_bounded_once(
         return future.result(timeout=TIMEOUT_S)
     except concurrent.futures.TimeoutError as exc:
         cursor.interrupt()
-        raise _ToolUnavailable(
+        raise _ToolTimeout(
             f"Query exceeded the {TIMEOUT_S}s timeout and was cancelled. Narrow "
             "the request and retry."
         ) from exc
@@ -169,6 +183,10 @@ def _run_bounded(
     immediately - the whole point is to stop hammering a source that's
     already shown it's down. A call that exhausts its retries counts as one
     failure toward the breaker; three such calls in a row open it.
+
+    A `_ToolTimeout` is never retried - it already spent the full
+    `TIMEOUT_S` once, so it counts as this call's failure immediately
+    instead of burning `_MAX_ATTEMPTS` full waits in a row.
     """
     breaker = _breaker_for(conn)
     if breaker.is_open:
@@ -181,6 +199,9 @@ def _run_bounded(
     for attempt in range(_MAX_ATTEMPTS):
         try:
             result = _run_bounded_once(conn, sql, params)
+        except _ToolTimeout:
+            breaker.record_failure()
+            raise
         except _ToolUnavailable as exc:
             last_exc = exc
             if attempt < _MAX_ATTEMPTS - 1:
