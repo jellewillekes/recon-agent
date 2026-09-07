@@ -1,0 +1,14 @@
+# Model configuration for agent runtimes. Read by `runtimes/agent_sdk.py`
+# and hashed into `EvalRun.model_config_hash` (step 5) so a scored run is
+# reproducible against the config that produced it.
+
+investigator:
+  model: claude-sonnet-5
+  price_usd_per_1m_input: 3.0
+  price_usd_per_1m_output: 15.0
+
+# Static, manually-updated approximation — not a live lookup. A runtime call
+# must not depend on network access beyond the Agent SDK itself, and a fixed
+# rate keeps cost_eur reproducible across runs. Bump deliberately, in its own
+# PR, if it drifts too far from the real rate.
+usd_to_eur_rate: 0.92
