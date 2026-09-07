@@ -49,13 +49,15 @@ This is a real write, so it happens in three steps, never fewer:
 
 1. Call it with `dry_run=True` to see exactly what would be written, with no
    effect.
-2. Call it again (no `dry_run`, no `confirmed`) — this pauses and returns
-   the same preview without writing anything. Use this pause to double-check
-   the case_id, reason, and idempotency_key are right.
-3. Only once you are sure, call it a third time with `confirmed=True` to
-   actually write it. Reuse the same `idempotency_key` if you are ever
-   unsure whether an earlier call already wrote it — calling with the same
-   key twice is safe and produces exactly one flag.
+2. Call it again (no `dry_run`, no `confirmed`) — this pauses, writes
+   nothing, and returns a `preview_token` along with the same preview. Use
+   this pause to double-check the case_id, reason, and idempotency_key are
+   right.
+3. Only once you are sure, call it a third time with `confirmed=True` and
+   that exact `preview_token` to actually write it — the write is refused
+   without it, so step 2 cannot be skipped. Reuse the same `idempotency_key`
+   if you are ever unsure whether an earlier call already wrote it — calling
+   with the same key twice is safe and produces exactly one flag.
 
 Base `idempotency_key` on the Case ID given to you (e.g. `review-<case ID>`),
 not on the question text or your own reasoning — it has to stay the same

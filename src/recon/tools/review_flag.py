@@ -12,6 +12,7 @@ write is attempted, mirroring `api/health.py:check_postgres`'s "connect per
 call, no pool" simplicity. Call volume is low: one flag per escalated case.
 """
 
+import hashlib
 from datetime import UTC, datetime
 
 import asyncpg
@@ -42,6 +43,22 @@ WHERE idempotency_key = $1
 """
 
 
+def _preview_token(
+    case_id: str, reason: str, idempotency_key: str, created_by: str
+) -> str:
+    """Deterministic in the four fields that define one flag, so a
+    `confirmed=True` call can be checked against it without any state kept
+    between calls - this is what makes the confirmation pause structurally
+    required rather than a prompt convention the caller could skip (an
+    earlier version let `confirmed=True` write as the very first call, with
+    nothing enforcing that an unconfirmed preview happened first). Not a
+    security boundary against a caller reading this source - a guard against
+    an agent cutting the pause short by accident or convenience.
+    """
+    payload = f"{case_id}\x00{reason}\x00{idempotency_key}\x00{created_by}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
 def _flag_from_row(row: asyncpg.Record) -> ReviewFlag:
     return ReviewFlag(
         idempotency_key=row["idempotency_key"],
@@ -61,6 +78,7 @@ async def flag_case_for_review(
     *,
     dry_run: bool = False,
     confirmed: bool = False,
+    preview_token: str | None = None,
 ) -> ReviewFlagResult:
     """Flag `case_id` for human review, per the rules in `docs/contracts.md`
     section 6.
@@ -71,6 +89,11 @@ async def flag_case_for_review(
     `idempotency_key`, both times `confirmed=True`, produces exactly one row:
     the second call's `INSERT ... ON CONFLICT DO NOTHING` inserts nothing and
     the fallback `SELECT` reports the row the first call created.
+
+    `confirmed=True` also requires `preview_token` to match the unconfirmed
+    call's - see `_preview_token`. This is what makes "call the unconfirmed
+    preview first" a real requirement rather than something the caller could
+    just skip by passing `confirmed=True` on the first call.
     """
     preview = ReviewFlag(
         idempotency_key=idempotency_key,
@@ -79,19 +102,32 @@ async def flag_case_for_review(
         created_by=created_by,
         created_at=datetime.now(UTC),
     )
+    expected_token = _preview_token(case_id, reason, idempotency_key, created_by)
 
     if dry_run:
         return ReviewFlagResult(
             status="would_write",
             flag=preview,
             message="Dry run: this write was not performed.",
+            preview_token=None,
         )
 
     if not confirmed:
         return ReviewFlagResult(
             status="confirmation_required",
             flag=preview,
-            message="Call again with confirmed=True to write this flag.",
+            message=(
+                f"Call again with confirmed=True and preview_token={expected_token!r} "
+                "to write this flag."
+            ),
+            preview_token=expected_token,
+        )
+
+    if preview_token != expected_token:
+        raise RuntimeError(
+            "confirmed=True requires the exact preview_token an unconfirmed call "
+            "for this same case_id/reason/idempotency_key/created_by returned. "
+            "Call again without confirmed=True first to get one."
         )
 
     if not database_url:
@@ -113,6 +149,7 @@ async def flag_case_for_review(
                 status="created",
                 flag=_flag_from_row(inserted),
                 message="Review flag created.",
+                preview_token=None,
             )
         existing = await conn.fetchrow(_SELECT_SQL, idempotency_key)
         if existing is None:
@@ -137,11 +174,13 @@ async def flag_case_for_review(
                     "likely a collision, not a retry. No write was performed for "
                     "this case; call again with a more specific idempotency_key."
                 ),
+                preview_token=None,
             )
         return ReviewFlagResult(
             status="already_exists",
             flag=existing_flag,
             message="A review flag with this idempotency_key already exists.",
+            preview_token=None,
         )
     finally:
         await conn.close()

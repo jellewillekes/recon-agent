@@ -139,6 +139,7 @@ class ReviewFlagResult(BaseModel):
     status: Literal["would_write", "confirmation_required", "created", "already_exists"]
     flag: ReviewFlag | None
     message: str
+    preview_token: str | None
 ```
 
 Rules:
@@ -149,11 +150,15 @@ Rules:
   application-level de-duplication
 - Has a dry-run mode (`dry_run=True`) that returns `status="would_write"` with
   the intended `ReviewFlag` and performs no write
-- Pauses the run for confirmation before executing: calling without
-  `confirmed=True` returns `status="confirmation_required"` and performs no
-  write. A second call with `confirmed=True` performs it, returning
-  `status="created"` (or `"already_exists"` if that idempotency key was
-  already written)
+- Pauses the run for confirmation before executing, and this is structurally
+  required, not a prompt convention the caller could skip: calling without
+  `confirmed=True` returns `status="confirmation_required"`, a `preview_token`
+  deterministic in `case_id`/`reason`/`idempotency_key`/`created_by`, and
+  performs no write. A `confirmed=True` call must present that exact
+  `preview_token` or the write is refused — it cannot succeed as the first
+  call for a given set of those four fields. A matching call performs the
+  write, returning `status="created"` (or `"already_exists"` if that
+  idempotency key was already written)
 - Never called by a worker role. Supervisor only, enforced the same
   structural way as section 4's tool restriction — the tool is absent from a
   worker's `allowed_tools`, not merely refused

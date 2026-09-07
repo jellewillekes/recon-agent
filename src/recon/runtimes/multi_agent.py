@@ -23,6 +23,7 @@ from recon.runtimes.agent_sdk import (
     _ANSWER_SCHEMA,
     DEFAULT_MODELS_CONFIG_PATH,
     MCP_SERVER_NAME,
+    RUNTIME_NAME,
     _load_model_config,
     _Outcome,
     _QueryResult,
@@ -37,8 +38,10 @@ WORKER_NAMES = ("worker_lookup", "worker_facts")
 
 # See agent_sdk._CREATED_BY - same purpose, multi mode's value. Set on every
 # role's MCP subprocess that gets one attached, though only the supervisor's
-# roles.yaml tool subset ever actually includes flag_case_for_review.
-_CREATED_BY = "agent_sdk:multi"
+# roles.yaml tool subset ever actually includes flag_case_for_review. Built
+# from RUNTIME_NAME rather than hardcoded, so it can't drift from
+# agent_sdk._CREATED_BY's single-mode equivalent if RUNTIME_NAME ever changes.
+_CREATED_BY = f"{RUNTIME_NAME}:multi"
 
 _DECOMPOSE_SCHEMA: dict[str, Any] = {
     "type": "json_schema",

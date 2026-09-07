@@ -32,6 +32,19 @@ second, explicit call with `confirmed=True` to actually write. This is a genuine
 the run (nothing writes within one call, ever) rather than a log line, and it's fully
 testable without any human or extra channel.
 
+**Correction, round 3 of PR #43's review:** the paragraph above was only half enforced as
+first shipped — nothing actually checked that the unconfirmed call had happened before a
+`confirmed=True` call; a caller could pass `confirmed=True` as its very first call and it
+would write immediately, same as if the pause had happened. The three-step protocol lived
+entirely in `prompts/supervisor.md`, a convention the model could skip, not something the
+function itself required. Fixed by having the unconfirmed call return an opaque
+`preview_token` (`ReviewFlagResult.preview_token`, `_preview_token` — a SHA-256 digest,
+truncated, of `case_id`/`reason`/`idempotency_key`/`created_by`) that a `confirmed=True`
+call must present and match, recomputed from its own arguments with no state kept between
+calls. This isn't a security boundary — the hash algorithm is right here in the source —
+it's a structural guard against skipping the pause by accident or convenience, which is
+what "pauses the run for confirmation" actually requires.
+
 **Schema bootstrap.** No migration tooling exists in the project, and adding one
 (Alembic or similar) needs approval as a new dependency (`CLAUDE.md`). `review_flag.py`
 issues its own idempotent `CREATE TABLE IF NOT EXISTS review_flags (...)` the first time a
@@ -44,8 +57,8 @@ implies `UNIQUE NOT NULL`, and there's no other natural key for this table.
 ## Decision
 
 `src/recon/tools/review_flag.py::flag_case_for_review(database_url, case_id, reason,
-idempotency_key, created_by, *, dry_run=False, confirmed=False) -> ReviewFlagResult`,
-wired as `flag_case_for_review_tool` in `tools/mcp_server.py`. The actual write is
+idempotency_key, created_by, *, dry_run=False, confirmed=False, preview_token=None) ->
+ReviewFlagResult`, wired as `flag_case_for_review_tool` in `tools/mcp_server.py`. The actual write is
 `INSERT INTO review_flags (...) VALUES (...) ON CONFLICT (idempotency_key) DO NOTHING
 RETURNING *`; a `None` return (conflict) falls back to a `SELECT` for the existing row and
 reports `already_exists`. This is what makes "call twice with the same key, one row" a

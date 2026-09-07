@@ -83,6 +83,7 @@ VALID_REVIEW_FLAG_RESULT: dict[str, Any] = {
     "status": "created",
     "flag": ReviewFlag(**VALID_REVIEW_FLAG),
     "message": "review flag created",
+    "preview_token": None,
 }
 
 VALID_CASE_SCORE: dict[str, Any] = {
