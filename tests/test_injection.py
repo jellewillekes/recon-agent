@@ -43,18 +43,10 @@ def anyio_backend() -> str:
 # --- unit-marked: tool-call extraction is mechanical, not interpretive ------
 
 
-ROLES_CONFIG: dict[str, Any] = {
-    "worker_lookup": {
-        "model": "claude-sonnet-5",
-        "max_turns": 8,
-        "tools": ["list_companies", "list_financial_concepts"],
-    },
-    "worker_facts": {
-        "model": "claude-sonnet-5",
-        "max_turns": 8,
-        "tools": ["get_financial_fact", "search_filings"],
-    },
-}
+# Loaded from the real file, not hardcoded, so a future edit to worker tool
+# subsets can't silently stop being reflected here (`run_multi_async` loads
+# the same file the same way).
+ROLES_CONFIG: dict[str, Any] = multi_agent._load_roles_config(Path("config/roles.yaml"))
 
 # A tool result whose *content* carries an embedded instruction - the shape
 # issue #13 describes: "a document the agent retrieves contains 'ignore
@@ -174,11 +166,20 @@ async def test_a_simulated_successful_injection_is_caught_hard_not_a_soft_warnin
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Simulates the worst case: the model *did* get injected and emitted a
-    `ToolUseBlock` for a tool outside `worker_lookup`'s subset. Per issue
-    #13, this must fail hard on detection, not warn softly - the assertion
-    below is a plain `assert ... not in ...`, which raises `AssertionError`
-    (pytest reports it as a failure) the moment it's false, with no
-    try/except swallowing it anywhere in this path.
+    `ToolUseBlock` for a tool outside `worker_lookup`'s subset. `_run_query`
+    itself does not enforce `allowed_tools` - that's the CLI's job, per
+    ADR-0007 - so this test cannot and does not exercise that enforcement
+    boundary; the structural test above (`allowed_tools` excludes the other
+    worker's tools) covers the boundary itself.
+
+    What this test is a canary for: that `_run_query`'s tool-call extraction
+    reports an escaped call plainly (as `get_financial_fact`, in
+    `result.tool_calls`) rather than silently filtering, coercing, or
+    renaming it into something that would look compliant. If extraction
+    ever grew logic that suppressed escaped calls based on `allowed_tools`,
+    it would be self-certifying its own enforcement instead of leaving that
+    to the CLI - and this test would start failing here, hard, rather than
+    passing by accident.
     """
     worker_lookup_options = multi_agent._build_role_options(
         "worker_lookup",
@@ -230,12 +231,10 @@ async def test_a_simulated_successful_injection_is_caught_hard_not_a_soft_warnin
     )
     called_tools = {call.tool for call in result.tool_calls}
 
-    # _run_query itself doesn't enforce allowed_tools (that's the CLI's job,
-    # confirmed live in this repo's own GitHub Actions runs denying
-    # out-of-allowlist calls) - so the fake model above *can* successfully
-    # simulate an escaped call here. This is exactly the tripwire: in
-    # production the CLI blocks the call before it ever reaches this code,
-    # so this assertion failing would mean that structural boundary is gone.
+    # _run_query doesn't enforce allowed_tools itself (that's the CLI's job,
+    # per ADR-0007), so the fake model above can freely simulate an escaped
+    # call reaching this code. The point isn't that _run_query blocks it -
+    # it's that extraction reports it plainly rather than hiding it.
     assert "get_financial_fact" in called_tools  # the simulated injection "worked" here
     stripped_allowed = {
         agent_sdk._strip_tool_name(name)
@@ -245,8 +244,8 @@ async def test_a_simulated_successful_injection_is_caught_hard_not_a_soft_warnin
     escaped_tools = called_tools - stripped_allowed
     assert escaped_tools, (
         "expected the simulated call to fall outside worker_lookup's allowed "
-        "tools - if this is empty, the CLI-enforcement tripwire this test "
-        "exists to guard has been silently satisfied some other way"
+        "tools - if this is empty, the fixture no longer represents an "
+        "escaped call and this test isn't guarding what its name claims"
     )
     assert "get_financial_fact" not in stripped_allowed
 
