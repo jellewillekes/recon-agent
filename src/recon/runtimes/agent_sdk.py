@@ -38,7 +38,7 @@ _TOOL_NAMES = (
     "get_financial_fact_tool",
     "search_filings_tool",
 )
-ALLOWED_TOOLS = [f"mcp__{MCP_SERVER_NAME}__{name}" for name in _TOOL_NAMES]
+ALLOWED_TOOLS = [f"mcp__{MCP_SERVER_NAME}__{name}" for name in _TOOL_NAMES] + ["Read"]
 
 DEFAULT_MODELS_CONFIG_PATH = Path("config/models.yaml")
 DEFAULT_PROMPT_PATH = Path("prompts/investigator.md")
@@ -89,9 +89,12 @@ def _build_options(
     options = ClaudeAgentOptions(
         model=investigator["model"],
         system_prompt={"type": "file", "path": str(prompt_path.resolve())},
-        # No built-in tools (Bash, Read, Write, ...) — the only capability
-        # this agent gets is the MCP tool subset below.
-        tools=[],
+        # Read is the one built-in tool kept: when an MCP tool result is too
+        # large to hand back inline, the CLI offloads it to a file and tells
+        # the model to Read it back — without this, that recovery path is a
+        # dead end and the run stalls out retrying. Bash/Write/Edit/... stay
+        # off; the only other capability is the MCP tool subset below.
+        tools=["Read"],
         mcp_servers={
             MCP_SERVER_NAME: McpStdioServerConfig(
                 command=sys.executable,

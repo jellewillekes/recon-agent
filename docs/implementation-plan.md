@@ -119,9 +119,15 @@ and the follow-up ticket for real data.
   `usd_to_eur_rate` — a fixed, manually-updated constant rather than a live FX
   lookup, so a run's cost stays reproducible and doesn't depend on network
   access beyond the Agent SDK subprocess itself.
-- The agent gets `tools=[]` (every built-in tool — Bash, Read, Write, ...
-  disabled) plus the four MCP tools from step 3 via `allowed_tools`. Tool
-  access is restricted at the SDK options boundary, not through prompt text.
+- The agent gets `tools=["Read"]` plus the four MCP tools from step 3 via
+  `allowed_tools`; Bash/Write/Edit/... stay off. `Read` is not optional: a
+  real run against `list_companies(sector=None)` (fixtures.py's own
+  near-`MAX_ROWS` case) showed the CLI offloads an oversized tool result to a
+  file and tells the model to `Read` it back — with `tools=[]` that recovery
+  path is a dead end and the run stalls retrying. Tool access is still
+  restricted at the SDK options boundary, not through prompt text; `Read` is
+  the one deliberate exception, required by the CLI's own large-output
+  handling rather than by anything this agent should do on its own.
 
 ---
 
