@@ -1,0 +1,76 @@
+{
+  "run_id": "eval-20260907T102452Z",
+  "timestamp_utc": "2026-09-07T10:24:52.480877Z",
+  "dataset": "finance-agent-bench",
+  "dataset_license": "MIT",
+  "dataset_attribution": "Data from vals-ai/finance-agent (MIT License), Copyright (c) 2025 Vals AI, Inc. https://github.com/vals-ai/finance-agent — benchmark details at https://www.vals.ai/benchmarks/finance_agent",
+  "runtime": "agent_sdk",
+  "mode": "single",
+  "model_config_hash": "aaa051b23c4f2cb00940cf656a118e6d37e8930bf0a63c19f5b5534b62cdf36a",
+  "prompt_hashes": {
+    "investigator": "239fec9126a21effb6d5a10d6cc40d2156f5e4dafea12a4e4dac89c962e05b40"
+  },
+  "rubric_version": "1",
+  "case_scores": [
+    {
+      "case_id": "finance-agent-bench:1167a2e783bf",
+      "task_completion": true,
+      "answer_score": 0.1111111111111111,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 1.0,
+      "rubric_scores": {
+        "evidence_grounding": 1.0,
+        "tool_efficiency": 1.0,
+        "answer_correctness": 0.1111111111111111
+      },
+      "cost_eur": 0.596420728,
+      "elapsed_ms": 28963,
+      "notes": "N/A: no expected_tool_path for this case"
+    },
+    {
+      "case_id": "finance-agent-bench:2777a42cc5f1",
+      "task_completion": true,
+      "answer_score": 0.1,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 0.75,
+      "rubric_scores": {
+        "evidence_grounding": 1.0,
+        "tool_efficiency": 1.0,
+        "answer_correctness": 0.1
+      },
+      "cost_eur": 0.234562096,
+      "elapsed_ms": 29346,
+      "notes": "N/A: no expected_tool_path for this case"
+    },
+    {
+      "case_id": "finance-agent-bench:a3198eb6e162",
+      "task_completion": true,
+      "answer_score": 0.3333333333333333,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 0.9166666666666666,
+      "rubric_scores": {
+        "evidence_grounding": 1.0,
+        "tool_efficiency": 0.5,
+        "answer_correctness": 0.3333333333333333
+      },
+      "cost_eur": 0.28911828000000006,
+      "elapsed_ms": 38593,
+      "notes": "N/A: no expected_tool_path for this case"
+    }
+  ],
+  "aggregate": {
+    "case_count": 3.0,
+    "task_completion_rate": 1.0,
+    "answer_score_mean": 0.18148148148148147,
+    "tool_call_accuracy_mean": 0.8888888888888888,
+    "elapsed_ms_mean": 32300.666666666668,
+    "tool_path_applicable_count": 0.0,
+    "tool_efficiency_mean": 0.8333333333333334,
+    "answer_correctness_mean": 0.18148148148148147,
+    "evidence_grounding_mean": 1.0
+  },
+  "total_cost_eur": 1.1201011040000002
+}

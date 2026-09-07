@@ -1,0 +1,11 @@
+dimension: answer_correctness
+version: 1
+weight: 0.5
+# This dimension has no static assertions of its own. finance-agent-bench
+# already carries a per-question grading rubric (Case.context["rubric"], see
+# docs/data-sources.md) of {"operator": "correctness"|"contradiction",
+# "criteria": ...} pairs written specifically for that question -
+# src/recon/eval/judge.py expands those into per-case assertions at score
+# time. There's nothing dataset-agnostic to assert for "is this answer
+# correct" the way there is for evidence_grounding or tool_efficiency below.
+assertions: []

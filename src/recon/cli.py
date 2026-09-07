@@ -9,7 +9,10 @@ from recon.adapters.finance_agent_bench import (
     fetch_csv,
     load_cases,
 )
-from recon.contracts import Case
+from recon.contracts import Case, EvalRun
+from recon.eval.gate import check_gate
+from recon.eval.harness import run_evaluation
+from recon.eval.report import render_markdown
 from recon.runtimes.agent_sdk import AgentSdkRuntime
 
 # Filename carries the pinned commit, so bumping the pin in the adapter also
@@ -63,6 +66,38 @@ def _cmd_run(args: argparse.Namespace) -> None:
     print(result.model_dump_json(indent=2))
 
 
+def _cmd_eval(args: argparse.Namespace) -> None:
+    csv_path = fetch_csv(args.path)
+    cases = load_cases(csv_path)
+    run = run_evaluation(cases, AgentSdkRuntime(), limit=args.limit)
+
+    results_dir = Path("evals/results")
+    results_dir.mkdir(parents=True, exist_ok=True)
+    json_path = results_dir / f"{run.run_id}.json"
+    md_path = results_dir / f"{run.run_id}.md"
+    json_path.write_text(run.model_dump_json(indent=2), encoding="utf-8")
+    md_path.write_text(render_markdown(run), encoding="utf-8")
+
+    print(f"Wrote {json_path} and {md_path}")
+    print(
+        f"cases={len(run.case_scores)} "
+        f"task_completion_rate={run.aggregate.get('task_completion_rate', 0.0):.3f} "
+        f"answer_score_mean={run.aggregate.get('answer_score_mean', 0.0):.3f} "
+        f"total_cost_eur={run.total_cost_eur:.4f}"
+    )
+
+    if args.baseline is not None:
+        baseline = EvalRun.model_validate_json(
+            args.baseline.read_text(encoding="utf-8")
+        )
+        failures = check_gate(run, baseline)
+        if failures:
+            for failure in failures:
+                print(f"GATE FAILED: {failure}")
+            raise SystemExit(1)
+        print("Gate passed.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="recon")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -92,6 +127,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Local cache path for the source CSV (fetched here if missing).",
     )
     run_parser.set_defaults(func=_cmd_run)
+
+    eval_parser = subparsers.add_parser("eval", help="Run the evaluation harness.")
+    eval_parser.add_argument(
+        "--limit", type=int, default=None, help="Only evaluate the first N cases."
+    )
+    eval_parser.add_argument(
+        "--path",
+        type=Path,
+        default=DEFAULT_DATASET_PATH,
+        help="Local cache path for the source CSV (fetched here if missing).",
+    )
+    eval_parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help="Baseline EvalRun JSON to gate against (docs/contracts.md §9). "
+        "Exits non-zero on regression.",
+    )
+    eval_parser.set_defaults(func=_cmd_eval)
 
     return parser
 

@@ -1,0 +1,13 @@
+# Candidate assertions - draft only, not final until reviewed (CLAUDE.md /
+# Issue #10 "Do not delegate": rubric content is a judgement call about what
+# a good answer looks like, not something a session finalizes on its own).
+dimension: evidence_grounding
+version: 1
+weight: 0.3
+assertions:
+  - id: cites_tool_output
+    text: "Every factual claim references retrieved tool output."
+    score_if_true: 1.0
+  - id: no_unsupported_numbers
+    text: "No numbers appear in the answer that are absent from tool output."
+    score_if_true: 1.0
