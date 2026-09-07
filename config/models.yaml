@@ -9,6 +9,13 @@ investigator:
   # retrying tool calls indefinitely.
   max_turns: 20
 
+judge:
+  model: claude-sonnet-5
+  # A judge call checks a fixed list of true/false assertions against an
+  # already-produced answer and tool-call trace — no tool use, no multi-step
+  # reasoning, so a small turn budget is enough.
+  max_turns: 2
+
 # Static, manually-updated approximation — not a live lookup. A runtime call
 # must not depend on network access beyond the Agent SDK itself, and a fixed
 # rate keeps cost_eur reproducible across runs. Bump deliberately, in its own
