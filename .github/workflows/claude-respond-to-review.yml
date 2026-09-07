@@ -30,14 +30,6 @@ jobs:
           # bot-authored review event actually trigger this job - see the
           # matching note in claude-code-review.yml.
           allowed_bots: "claude[bot]"
-          # TEMP: verifying two tool-name fixes below (root cause of issue
-          # #35): mcp__github__get_pull_request_comments (for reading review
-          # comments) and mcp__github__create_issue_comment (for posting the
-          # summary comment) are both nonexistent tool names the model was
-          # silently denied on - the second one found live on PR #41's own
-          # round-1 review, after the first fix alone still left the
-          # responder unable to complete its job. Remove once confirmed.
-          show_full_output: "true"
           prompt: |
             REPO: ${{ github.repository }}
             PR: #${{ github.event.pull_request.number }}
