@@ -182,7 +182,9 @@ async def test_investigate_unsupported_runtime_is_422() -> None:
     assert resp.json()["field"] == "runtime"
 
 
-async def test_investigate_timeout_is_504(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_investigate_timeout_is_504(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     import time
 
     def slow_run(case: Case) -> AgentResult:
@@ -192,10 +194,15 @@ async def test_investigate_timeout_is_504(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(api_main._runtime, "run", slow_run)
     monkeypatch.setattr(api_main, "REQUEST_TIMEOUT_S", 0.01)
 
-    async with await _client() as client:
-        resp = await client.post("/investigate", json={"question": "q"})
+    with caplog.at_level("WARNING", logger="recon.api.main"):
+        async with await _client() as client:
+            resp = await client.post("/investigate", json={"question": "q"})
 
     assert resp.status_code == 504
+    # The underlying thread isn't actually cancelled (see
+    # docs/adr/0005-api-timeout-cancellation-deferred.md) - the warning is
+    # the only signal that a run kept executing past its timeout.
+    assert "timed out" in caplog.text
 
 
 async def test_metrics_returns_prometheus_text() -> None:

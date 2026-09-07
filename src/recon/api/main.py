@@ -7,6 +7,7 @@ variable once at import time — `RECON_API_MAX_CONCURRENCY`,
 """
 
 import asyncio
+import logging
 import os
 import time
 import uuid
@@ -27,6 +28,8 @@ from recon.api.metrics import (
 from recon.api.schemas import InvestigateRequest
 from recon.contracts import Case
 from recon.runtimes.agent_sdk import AgentSdkRuntime
+
+logger = logging.getLogger(__name__)
 
 MAX_CONCURRENCY = int(os.environ.get("RECON_API_MAX_CONCURRENCY", "4"))
 REQUEST_TIMEOUT_S = float(os.environ.get("RECON_API_REQUEST_TIMEOUT_S", "120"))
@@ -137,6 +140,17 @@ async def investigate(request: Request, body: InvestigateRequest) -> Response:
             finally:
                 INVESTIGATE_IN_FLIGHT.dec()
     except TimeoutError:
+        # wait_for only cancels the await, not _runtime.run's underlying
+        # thread/subprocess (see docs/adr/0005-api-timeout-cancellation-deferred.md) -
+        # the run keeps executing after this response goes out, so log it as
+        # the operational signal that a real fix still needs.
+        logger.warning(
+            "request_id=%s timed out after %.1fs; the underlying run may "
+            "still be executing in the background (case_id=%s)",
+            request_id,
+            REQUEST_TIMEOUT_S,
+            case.case_id,
+        )
         REQUEST_COUNT.labels(route="/investigate", status="504").inc()
         return JSONResponse(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
