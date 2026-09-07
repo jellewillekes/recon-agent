@@ -30,8 +30,9 @@ jobs:
           # and the loop stalls - confirmed live: an unlisted github-actions[bot]
           # push failed with "Workflow initiated by non-human actor".
           allowed_bots: "claude[bot],github-actions[bot]"
-          # TEMP: diagnosing why inline review comments never post (see PR
-          # description). Remove before merging.
+          # TEMP: verifying the mcp__github__add_comment_to_pending_review fix
+          # below (see this PR's description) actually gets inline comments
+          # posting. Remove once confirmed.
           show_full_output: "true"
           prompt: |
             REPO: ${{ github.repository }}
@@ -68,7 +69,7 @@ jobs:
                correctness/design findings.
             4. Create a pending review with mcp__github__create_pending_pull_request_review.
                Every correctness or design concern that ties to specific code is an
-               inline comment via mcp__github__add_pull_request_review_comment_to_pending_review
+               inline comment via mcp__github__add_comment_to_pending_review
                - the review body is not a place to restate them. Use the body only for
                a short overall summary, the "Needs a human decision:" line from step 3
                if any, plus (round N+1 > 1) a compact status list: one line each for
@@ -87,5 +88,5 @@ jobs:
                  review cap (3 rounds) - this needs a human to weigh in."
           claude_args: |
             --model claude-sonnet-5
-            --allowedTools "mcp__github__get_pull_request_reviews,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_files,mcp__github__create_pending_pull_request_review,mcp__github__add_pull_request_review_comment_to_pending_review,mcp__github__submit_pending_pull_request_review"
+            --allowedTools "mcp__github__get_pull_request_reviews,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_files,mcp__github__create_pending_pull_request_review,mcp__github__add_comment_to_pending_review,mcp__github__submit_pending_pull_request_review"
             --append-system-prompt "Follow CLAUDE.md's Voice section for the review body and every inline comment you write."
