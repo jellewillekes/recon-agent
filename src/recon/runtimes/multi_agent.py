@@ -9,6 +9,7 @@ role's own `ClaudeAgentOptions.allowed_tools`/`mcp_servers` rather than in
 `tools/mcp_server.py`.
 """
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,11 @@ DEFAULT_ROLES_CONFIG_PATH = Path("config/roles.yaml")
 DEFAULT_PROMPTS_DIR = Path("prompts")
 
 WORKER_NAMES = ("worker_lookup", "worker_facts")
+
+# See agent_sdk._CREATED_BY - same purpose, multi mode's value. Set on every
+# role's MCP subprocess that gets one attached, though only the supervisor's
+# roles.yaml tool subset ever actually includes flag_case_for_review.
+_CREATED_BY = "agent_sdk:multi"
 
 _DECOMPOSE_SCHEMA: dict[str, Any] = {
     "type": "json_schema",
@@ -117,6 +123,7 @@ def _build_role_options(
         mcp_servers[MCP_SERVER_NAME] = McpStdioServerConfig(
             command=sys.executable,
             args=["-m", "recon.tools.mcp_server"],
+            env={**os.environ, "RECON_CREATED_BY": _CREATED_BY},
         )
         allowed_tools = [f"mcp__{MCP_SERVER_NAME}__{name}_tool" for name in tool_names]
         allowed_tools.append("Read")

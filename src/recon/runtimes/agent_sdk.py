@@ -8,6 +8,7 @@ model, turn budget, and USD→EUR rate this reads.
 
 import asyncio
 import json
+import os
 import re
 import sys
 import time
@@ -37,8 +38,17 @@ _TOOL_NAMES = (
     "list_financial_concepts_tool",
     "get_financial_fact_tool",
     "search_filings_tool",
+    # Single mode has no worker/supervisor split - the one agent acts as
+    # supervisor, so it gets the write path too (docs/contracts.md section 6:
+    # "supervisor only").
+    "flag_case_for_review_tool",
 )
 ALLOWED_TOOLS = [f"mcp__{MCP_SERVER_NAME}__{name}" for name in _TOOL_NAMES] + ["Read"]
+
+# Passed to the MCP server subprocess's environment so flag_case_for_review_tool
+# can populate ReviewFlag.created_by ("runtime + mode", docs/contracts.md section
+# 6) without the agent having to self-report it as a tool argument.
+_CREATED_BY = f"{RUNTIME_NAME}:single"
 
 DEFAULT_MODELS_CONFIG_PATH = Path("config/models.yaml")
 DEFAULT_PROMPT_PATH = Path("prompts/investigator.md")
@@ -102,6 +112,7 @@ def _build_options(
             MCP_SERVER_NAME: McpStdioServerConfig(
                 command=sys.executable,
                 args=["-m", "recon.tools.mcp_server"],
+                env={**os.environ, "RECON_CREATED_BY": _CREATED_BY},
             )
         },
         allowed_tools=ALLOWED_TOOLS,

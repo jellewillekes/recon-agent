@@ -46,7 +46,11 @@ CASE = Case(
 )
 
 ROLES_CONFIG: dict[str, Any] = {
-    "supervisor": {"model": "claude-sonnet-5", "max_turns": 4},
+    "supervisor": {
+        "model": "claude-sonnet-5",
+        "max_turns": 4,
+        "tools": ["flag_case_for_review"],
+    },
     "worker_lookup": {
         "model": "claude-sonnet-5",
         "max_turns": 8,
@@ -289,9 +293,16 @@ def test_worker_options_exclude_tools_outside_subset() -> None:
     )
     assert "mcp__recon-tools__search_filings_tool" not in lookup_options.allowed_tools
     assert "mcp__recon-tools__list_companies_tool" in lookup_options.allowed_tools
+    assert (
+        "mcp__recon-tools__flag_case_for_review_tool"
+        not in lookup_options.allowed_tools
+    )
 
     assert facts_options.allowed_tools is not None
     assert "mcp__recon-tools__list_companies_tool" not in facts_options.allowed_tools
+    assert (
+        "mcp__recon-tools__flag_case_for_review_tool" not in facts_options.allowed_tools
+    )
     assert (
         "mcp__recon-tools__list_financial_concepts_tool"
         not in facts_options.allowed_tools
@@ -300,9 +311,22 @@ def test_worker_options_exclude_tools_outside_subset() -> None:
 
 
 @pytest.mark.unit
-def test_supervisor_and_critic_get_no_mcp_server_at_all() -> None:
-    """Not just an empty allowlist - no MCP server attached, so the tool is
-    structurally absent from these roles' clients, not merely refused.
+def test_critic_gets_no_mcp_server_at_all() -> None:
+    """Not just an empty allowlist - no MCP server attached, so no tool is
+    structurally absent from the critic's client, not merely refused.
+    """
+    critic_options = multi_agent._build_role_options(
+        "critic", ROLES_CONFIG["critic"], Path("prompts"), multi_agent._CRITIC_SCHEMA
+    )
+
+    assert critic_options.mcp_servers == {}
+    assert critic_options.allowed_tools == []
+
+
+@pytest.mark.unit
+def test_supervisor_gets_only_the_flag_tool() -> None:
+    """The supervisor's one tool is flag_case_for_review (docs/contracts.md
+    section 6: "supervisor only") - none of the workers' read tools.
     """
     supervisor_options = multi_agent._build_role_options(
         "supervisor",
@@ -310,11 +334,15 @@ def test_supervisor_and_critic_get_no_mcp_server_at_all() -> None:
         Path("prompts"),
         multi_agent._DECOMPOSE_SCHEMA,
     )
-    critic_options = multi_agent._build_role_options(
-        "critic", ROLES_CONFIG["critic"], Path("prompts"), multi_agent._CRITIC_SCHEMA
-    )
 
-    assert supervisor_options.mcp_servers == {}
-    assert supervisor_options.allowed_tools == []
-    assert critic_options.mcp_servers == {}
-    assert critic_options.allowed_tools == []
+    assert supervisor_options.allowed_tools == [
+        "mcp__recon-tools__flag_case_for_review_tool",
+        "Read",
+    ]
+    for read_tool in (
+        "list_companies_tool",
+        "list_financial_concepts_tool",
+        "get_financial_fact_tool",
+        "search_filings_tool",
+    ):
+        assert f"mcp__recon-tools__{read_tool}" not in supervisor_options.allowed_tools

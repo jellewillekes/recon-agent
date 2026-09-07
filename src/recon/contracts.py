@@ -115,6 +115,18 @@ class ReviewFlag(BaseModel):
     created_at: datetime
 
 
+class ReviewFlagResult(BaseModel):
+    """What `flag_case_for_review` returns. Not a `ToolResult` — this is a
+    state operation, not a read tool (docs/contracts.md section 2), and its
+    real states (preview / paused for confirmation / written / already
+    written) don't fit ToolResult's five read statuses.
+    """
+
+    status: Literal["would_write", "confirmation_required", "created", "already_exists"]
+    flag: ReviewFlag | None
+    message: str
+
+
 class CaseScore(BaseModel):
     """Per-case evaluation result."""
 

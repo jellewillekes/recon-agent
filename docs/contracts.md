@@ -134,14 +134,29 @@ class ReviewFlag(BaseModel):
     reason: str
     created_by: str                    # runtime + mode
     created_at: datetime
+
+class ReviewFlagResult(BaseModel):
+    status: Literal["would_write", "confirmation_required", "created", "already_exists"]
+    flag: ReviewFlag | None
+    message: str
 ```
 
 Rules:
 
-- Requires an idempotency key. Calling twice with the same key produces one row
-- Has a dry-run mode that returns the intended write without performing it
-- Pauses the run for confirmation before executing
-- Never called by a worker role. Supervisor only
+- Requires an idempotency key. Calling twice with the same key produces one row.
+  Enforced by a Postgres `UNIQUE` constraint on `idempotency_key`, via
+  `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING RETURNING *`, not just
+  application-level de-duplication
+- Has a dry-run mode (`dry_run=True`) that returns `status="would_write"` with
+  the intended `ReviewFlag` and performs no write
+- Pauses the run for confirmation before executing: calling without
+  `confirmed=True` returns `status="confirmation_required"` and performs no
+  write. A second call with `confirmed=True` performs it, returning
+  `status="created"` (or `"already_exists"` if that idempotency key was
+  already written)
+- Never called by a worker role. Supervisor only, enforced the same
+  structural way as section 4's tool restriction — the tool is absent from a
+  worker's `allowed_tools`, not merely refused
 
 ---
 

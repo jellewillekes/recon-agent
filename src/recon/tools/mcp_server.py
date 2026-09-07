@@ -1,16 +1,19 @@
-"""Wires the tool functions in `server.py` to an `MCPServer` over stdio.
+"""Wires the tool functions in `server.py` (and the write path in
+`review_flag.py`) to an `MCPServer` over stdio.
 
 Kept separate from `server.py` so that module stays focused on the tool
 contract itself; nothing here is exercised by `tests/test_tools.py`, which
 calls the plain functions directly.
 """
 
+import os
 from typing import Any, Literal
 
 import duckdb
 from mcp.server.mcpserver import MCPServer
 
 from recon.tools.fixtures import seed
+from recon.tools.review_flag import flag_case_for_review
 from recon.tools.server import (
     get_financial_fact,
     list_companies,
@@ -56,6 +59,34 @@ def build_server(conn: duckdb.DuckDBPyConnection) -> MCPServer:
         return search_filings(
             conn, company_id, keyword, form_type, fiscal_year
         ).model_dump()
+
+    @server.tool()
+    async def flag_case_for_review_tool(
+        case_id: str,
+        reason: str,
+        idempotency_key: str,
+        dry_run: bool = False,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
+        """Flag a case for human review. Supervisor only (docs/contracts.md
+        section 6) — restricted structurally via `config/roles.yaml` and
+        `agent_sdk.ALLOWED_TOOLS`, not by this tool refusing a caller.
+
+        Call with `dry_run=True` to preview the write without performing it.
+        Otherwise call once to see the preview and pause for confirmation,
+        then again with `confirmed=True` to actually write it.
+        """
+        created_by = os.environ.get("RECON_CREATED_BY", "agent_sdk:unknown")
+        result = await flag_case_for_review(
+            os.environ.get("DATABASE_URL"),
+            case_id,
+            reason,
+            idempotency_key,
+            created_by,
+            dry_run=dry_run,
+            confirmed=confirmed,
+        )
+        return result.model_dump(mode="json")
 
     return server
 
