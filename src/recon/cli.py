@@ -62,14 +62,14 @@ def _find_case(cases: list[Case], case_id: str) -> Case:
 def _cmd_run(args: argparse.Namespace) -> None:
     csv_path = fetch_csv(args.path)
     case = _find_case(load_cases(csv_path), args.case_id)
-    result = AgentSdkRuntime().run(case)
+    result = AgentSdkRuntime(mode=args.mode).run(case)
     print(result.model_dump_json(indent=2))
 
 
 def _cmd_eval(args: argparse.Namespace) -> None:
     csv_path = fetch_csv(args.path)
     cases = load_cases(csv_path)
-    run = run_evaluation(cases, AgentSdkRuntime(), limit=args.limit)
+    run = run_evaluation(cases, AgentSdkRuntime(mode=args.mode), limit=args.limit)
 
     results_dir = Path("evals/results")
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -126,6 +126,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_DATASET_PATH,
         help="Local cache path for the source CSV (fetched here if missing).",
     )
+    run_parser.add_argument(
+        "--mode",
+        choices=["single", "multi"],
+        default="single",
+        help="single: one investigator. multi: supervisor + workers + critic.",
+    )
     run_parser.set_defaults(func=_cmd_run)
 
     eval_parser = subparsers.add_parser("eval", help="Run the evaluation harness.")
@@ -137,6 +143,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_DATASET_PATH,
         help="Local cache path for the source CSV (fetched here if missing).",
+    )
+    eval_parser.add_argument(
+        "--mode",
+        choices=["single", "multi"],
+        default="single",
+        help="single: one investigator. multi: supervisor + workers + critic.",
     )
     eval_parser.add_argument(
         "--baseline",
