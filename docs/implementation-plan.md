@@ -103,7 +103,7 @@ and the follow-up ticket for real data.
 
 ---
 
-## Step 4 — agent, one runtime (1.5 hours)
+## Step 4 — agent, one runtime (1.5 hours) → **done**
 
 > Define `src/recon/runtimes/base.py` with a `Runtime` protocol: `run(case: Case) -> AgentResult`. Implement `runtimes/agent_sdk.py` using the Claude Agent SDK against the MCP server from step 3. System prompt in `prompts/investigator.md`, loaded by path, never inline.
 >
@@ -112,6 +112,22 @@ and the follow-up ticket for real data.
 > `recon.cli run --case-id X` runs one case and prints the `AgentResult` as JSON.
 
 **Verify:** `uv run python -m recon.cli run --case-id <first case>` → valid JSON with at least one tool call and populated cost.
+
+**Two decisions the plan above left open:**
+
+- The SDK reports `total_cost_usd`, not EUR. `config/models.yaml` adds a static
+  `usd_to_eur_rate` — a fixed, manually-updated constant rather than a live FX
+  lookup, so a run's cost stays reproducible and doesn't depend on network
+  access beyond the Agent SDK subprocess itself.
+- The agent gets `tools=["Read"]` plus the four MCP tools from step 3 via
+  `allowed_tools`; Bash/Write/Edit/... stay off. `Read` is not optional: a
+  real run against `list_companies(sector=None)` (fixtures.py's own
+  near-`MAX_ROWS` case) showed the CLI offloads an oversized tool result to a
+  file and tells the model to `Read` it back — with `tools=[]` that recovery
+  path is a dead end and the run stalls retrying. Tool access is still
+  restricted at the SDK options boundary, not through prompt text; `Read` is
+  the one deliberate exception, required by the CLI's own large-output
+  handling rather than by anything this agent should do on its own.
 
 ---
 
