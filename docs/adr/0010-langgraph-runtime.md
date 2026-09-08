@@ -144,6 +144,20 @@ primitives (`_run_graph`, `_build_react_subgraph`, `_build_checkpointer`, `_Outc
 `langgraph.py`, imported rather than duplicated — this module was already long (474 lines
 before this PR) with exactly that machinery.
 
+**Worker budget enforcement is coarser than single mode's, not equivalent.** Each worker now
+gets its own `role_config["max_turns"]` as `recursion_limit` (fixed post-review — it was
+previously unset, silently falling back to LangGraph's own default instead of
+`config/roles.yaml`'s per-role value). That bounds a worker's own turns, but `_run_graph`'s
+live `max_tool_calls` check only runs between supersteps of the *outer* graph — a `Send`-fanned
+worker is one `.ainvoke()` call from the outer graph's perspective, so its internal tool calls
+are invisible to that check until the worker's whole subgraph returns, not per tool call the
+way single mode's own streamed loop is checked. A single stuck or looping worker can still spend
+up to its `max_turns` ceiling before the run's tool-call budget gets a chance to stop it early.
+Giving workers the same live, per-tool-call visibility single mode has would mean streaming each
+worker's own subgraph and folding its state into the outer graph's live check mid-flight —
+a real change to how `Send`-fanned workers execute, not a bug fix; out of scope here. The
+`recursion_limit` fix above is the bound that exists today.
+
 **Flag-interrupt design: a dedicated graph node, not a bound tool — decided with the user
 directly.** The SDK runtime's supervisor (`multi_agent.py`, issue #13) drives the entire
 dry-run/pause/confirm protocol itself via ordinary multi-turn tool-calling on

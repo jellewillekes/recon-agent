@@ -48,8 +48,6 @@ from recon.tools.review_flag import flag_case_for_review
 DEFAULT_ROLES_CONFIG_PATH = Path("config/roles.yaml")
 DEFAULT_PROMPTS_DIR = Path("prompts")
 
-WORKER_NAMES = ("worker_lookup", "worker_facts")
-
 # See langgraph._CREATED_BY - same purpose, multi mode's value.
 _CREATED_BY = f"{RUNTIME_NAME}:multi"
 
@@ -193,7 +191,15 @@ async def _run_worker_task(
         created_by=_CREATED_BY,
         tool_names=tuple(role_config["tools"]),
     )
-    result = await graph.ainvoke({"messages": [("user", task["instruction"])]})
+    # Without this, LangGraph falls back to its own default recursion limit
+    # instead of this role's config/roles.yaml max_turns - the same
+    # investigator.max_turns -> recursion_limit mapping _run_graph applies
+    # for single mode's own graph, just read from this worker's own role
+    # entry rather than the investigator's.
+    result = await graph.ainvoke(
+        {"messages": [("user", task["instruction"])]},
+        config={"recursion_limit": role_config["max_turns"]},
+    )
     structured = result["structured_response"]
     if not isinstance(structured, WorkerResponse):
         raise TypeError(

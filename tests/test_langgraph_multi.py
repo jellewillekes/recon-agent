@@ -415,6 +415,49 @@ async def test_build_react_subgraph_restricts_worker_tools_to_role_subset(
     assert "flag_case_for_review_tool" not in tool_names
 
 
+@pytest.mark.anyio
+async def test_run_worker_task_passes_role_max_turns_as_recursion_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Round 1 review of this PR found `graph.ainvoke` here passing no
+    `config` at all - `config/roles.yaml`'s per-role `max_turns` was silently
+    never applied, LangGraph falling back to its own default recursion limit
+    instead (see docs/adr/0010-langgraph-runtime.md's "Worker budget
+    enforcement" paragraph for what this does and doesn't fix).
+    """
+    captured: dict[str, Any] = {}
+
+    class _FakeGraph:
+        async def ainvoke(
+            self, input_state: Any, config: Any = None
+        ) -> dict[str, Any]:
+            captured["config"] = config
+            return {
+                "structured_response": lgm.WorkerResponse(
+                    findings="found it", evidence=["e1"]
+                ),
+                "messages": [],
+            }
+
+    async def fake_build_react_subgraph(**kwargs: Any) -> _FakeGraph:
+        return _FakeGraph()
+
+    monkeypatch.setattr(lgm, "_build_react_subgraph", fake_build_react_subgraph)
+
+    await lgm._run_worker_task(
+        lgm._WorkerTask(
+            case_id=CASE.case_id, worker="worker_lookup", instruction="find it"
+        ),
+        roles_config=ROLES_CONFIG,
+        model_config=MODEL_CONFIG,
+        prompts_dir=Path("prompts"),
+    )
+
+    assert captured["config"] == {
+        "recursion_limit": ROLES_CONFIG["worker_lookup"]["max_turns"]
+    }
+
+
 class _FakeReviewFlagConnection:
     """Mirrors `test_review_flag.py`'s own `_FakeConnection` - duplicated
     here rather than imported across test files (same independence
