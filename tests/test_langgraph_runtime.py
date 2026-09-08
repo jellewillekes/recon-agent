@@ -281,12 +281,6 @@ async def test_run_missing_model_config_populates_error_not_raise() -> None:
     assert result.tool_calls == []
 
 
-@pytest.mark.unit
-def test_multi_mode_not_yet_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        lg.LangGraphRuntime(mode="multi")
-
-
 # --- run_budget / RECON_CREATED_BY (round 1 review of PR #46) --------------
 
 
