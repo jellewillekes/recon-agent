@@ -150,6 +150,46 @@ def test_cmd_eval_defaults_to_single_mode(
 
 
 @pytest.mark.unit
+def test_cmd_eval_runtime_flag_reaches_langgraph_runtime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    captured: dict[str, object] = {}
+
+    def fake_run_evaluation(cases: object, runtime: object, limit: object) -> EvalRun:
+        captured["runtime_type"] = type(runtime).__name__
+        return _eval_run()
+
+    monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(["eval", "--runtime", "langgraph"])
+    args.func(args)
+
+    assert captured["runtime_type"] == "LangGraphRuntime"
+
+
+@pytest.mark.unit
+def test_cmd_eval_defaults_to_sdk_runtime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    captured: dict[str, object] = {}
+
+    def fake_run_evaluation(cases: object, runtime: object, limit: object) -> EvalRun:
+        captured["runtime_type"] = type(runtime).__name__
+        return _eval_run()
+
+    monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(["eval"])
+    args.func(args)
+
+    assert captured["runtime_type"] == "AgentSdkRuntime"
+
+
+@pytest.mark.unit
 def test_cmd_eval_gate_passes_prints_message(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
