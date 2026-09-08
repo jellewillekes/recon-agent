@@ -8,6 +8,8 @@ result parsing is exercised against the real shape `langchain-mcp-adapters`
 actually produces, not a guessed one.
 """
 
+import asyncio
+import os
 from pathlib import Path
 from typing import Any
 
@@ -100,6 +102,31 @@ class _FakeToolCallingModel(BaseChatModel):
 def _patch_model(monkeypatch: pytest.MonkeyPatch, responses: list[AIMessage]) -> None:
     fake = _FakeToolCallingModel(responses=responses)
     monkeypatch.setattr(lg, "ChatAnthropic", lambda **kwargs: fake)
+
+
+def _model_config(**run_budget_overrides: Any) -> dict[str, Any]:
+    """Same shape as `config/models.yaml`, with a generous default `run_budget`
+    - individual tests override just the ceiling they're exercising, the same
+    way `tests/test_reliability.py` builds a custom `agent_sdk.RunBudget` per
+    test instead of writing a real yaml file.
+    """
+    run_budget: dict[str, int | float] = {
+        "max_tool_calls": 30,
+        "max_tokens": 300_000,
+        "max_wall_clock_s": 100.0,
+    }
+    run_budget.update(run_budget_overrides)
+    return {
+        "investigator": {"model": "claude-sonnet-5", "max_turns": 20},
+        "pricing": {
+            "claude-sonnet-5": {
+                "input_usd_per_mtok": 2.00,
+                "output_usd_per_mtok": 10.00,
+            }
+        },
+        "usd_to_eur_rate": 0.92,
+        "run_budget": run_budget,
+    }
 
 
 @pytest.mark.anyio
@@ -258,3 +285,182 @@ async def test_run_missing_model_config_populates_error_not_raise() -> None:
 def test_multi_mode_not_yet_implemented() -> None:
     with pytest.raises(NotImplementedError):
         lg.LangGraphRuntime(mode="multi")
+
+
+# --- run_budget / RECON_CREATED_BY (round 1 review of PR #46) --------------
+
+
+@pytest.mark.anyio
+async def test_run_passes_created_by_and_parent_env_to_mcp_subprocess(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`mcp_server.py`'s `_call_flag_case_for_review` reads `RECON_CREATED_BY`
+    (falls back to the wrong "agent_sdk:unknown" label if unset) and
+    `DATABASE_URL` straight from `os.environ` - both must reach the
+    subprocess, or every `flag_case_for_review` call made through this
+    runtime either mislabels itself or can't reach Postgres at all.
+    `_mcp_connection()` used to be called with no `env` at all.
+    """
+    captured: dict[str, Any] = {}
+
+    class _FakeClient:
+        def __init__(self, connections: dict[str, Any]) -> None:
+            captured["connections"] = connections
+
+        async def get_tools(self) -> list[Any]:
+            raise RuntimeError("stop before spawning a real subprocess")
+
+    monkeypatch.setattr(lg, "MultiServerMCPClient", _FakeClient)
+    monkeypatch.setenv("RECON_TEST_PARENT_VAR", "present")
+
+    result = await lg.LangGraphRuntime().run_async(CASE)
+
+    assert result.error == "stop before spawning a real subprocess"
+    connection = captured["connections"][lg.MCP_SERVER_NAME]
+    assert connection["env"]["RECON_CREATED_BY"] == "langgraph:single"
+    assert connection["env"]["RECON_TEST_PARENT_VAR"] == "present"
+    assert connection["env"]["PATH"] == os.environ["PATH"]
+
+
+@pytest.mark.anyio
+async def test_run_stops_on_wall_clock_budget_breach(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Round 1 review of PR #46: `run_budget` was entirely bypassed here, with
+    only an approximate `recursion_limit` as a cost guard on a runtime that
+    spends real, separately-billed money. `max_wall_clock_s` is now a live,
+    hard ceiling on the whole `graph.ainvoke` call.
+    """
+    monkeypatch.setattr(
+        lg, "_load_model_config", lambda path: _model_config(max_wall_clock_s=0.02)
+    )
+    fake = _FakeToolCallingModel(responses=[AIMessage(content="ok")])
+
+    async def slow_agenerate(
+        self: _FakeToolCallingModel,
+        messages: Any,
+        stop: Any = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        await asyncio.sleep(1.0)
+        message = self.responses[self._idx]
+        self._idx += 1
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+    monkeypatch.setattr(_FakeToolCallingModel, "_agenerate", slow_agenerate)
+    monkeypatch.setattr(lg, "ChatAnthropic", lambda **kwargs: fake)
+
+    result = await lg.LangGraphRuntime().run_async(CASE)
+
+    assert result.error is not None
+    assert "wall-clock budget" in result.error
+    assert result.answer == ""
+
+
+@pytest.mark.anyio
+async def test_run_reports_token_budget_breach_after_the_fact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Single mode makes exactly one `graph.ainvoke` call - like `agent_sdk`'s
+    own single mode, a token breach can only be reported once the (already
+    complete, valid) answer exists, not prevented before the fact.
+    """
+    monkeypatch.setattr(
+        lg, "_load_model_config", lambda path: _model_config(max_tokens=1)
+    )
+    _patch_model(
+        monkeypatch,
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "list_companies_tool",
+                        "args": {"sector": "Industrials"},
+                        "id": "call1",
+                    }
+                ],
+                usage_metadata={
+                    "input_tokens": 100,
+                    "output_tokens": 20,
+                    "total_tokens": 120,
+                },
+            ),
+            AIMessage(
+                content="Industrials.",
+                usage_metadata={
+                    "input_tokens": 50,
+                    "output_tokens": 10,
+                    "total_tokens": 60,
+                },
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "AnswerResponse",
+                        "args": {
+                            "answer": "Industrials",
+                            "evidence": ["FIRM-001 is in Industrials"],
+                            "confidence": "high",
+                        },
+                        "id": "r1",
+                    }
+                ],
+            ),
+        ],
+    )
+
+    result = await lg.LangGraphRuntime().run_async(CASE)
+
+    assert result.error is not None
+    assert "token budget" in result.error
+    # Reported, not discarded - the call had already produced a real answer.
+    assert result.answer == "Industrials"
+    assert result.confidence == "high"
+
+
+@pytest.mark.anyio
+async def test_run_reports_tool_call_budget_breach_after_the_fact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        lg, "_load_model_config", lambda path: _model_config(max_tool_calls=0)
+    )
+    _patch_model(
+        monkeypatch,
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "list_companies_tool",
+                        "args": {"sector": "Industrials"},
+                        "id": "call1",
+                    }
+                ],
+            ),
+            AIMessage(content="Industrials."),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "AnswerResponse",
+                        "args": {
+                            "answer": "Industrials",
+                            "evidence": ["FIRM-001 is in Industrials"],
+                            "confidence": "high",
+                        },
+                        "id": "r1",
+                    }
+                ],
+            ),
+        ],
+    )
+
+    result = await lg.LangGraphRuntime().run_async(CASE)
+
+    assert result.error is not None
+    assert "tool-call budget" in result.error
+    assert result.answer == "Industrials"

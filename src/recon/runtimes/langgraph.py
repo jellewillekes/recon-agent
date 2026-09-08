@@ -13,6 +13,7 @@ mode (issue #14 part 2/2) is a hand-built `StateGraph`.
 
 import asyncio
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -39,6 +40,12 @@ _TOOL_NAMES = (
     "search_filings_tool",
     "flag_case_for_review_tool",
 )
+
+# Passed to the MCP server subprocess's environment, same convention as
+# agent_sdk._CREATED_BY - without it, mcp_server.py's _call_flag_case_for_review
+# falls back to the wrong "agent_sdk:unknown" label for every flag made
+# through this runtime.
+_CREATED_BY = f"{RUNTIME_NAME}:single"
 
 DEFAULT_MODELS_CONFIG_PATH = Path("config/models.yaml")
 DEFAULT_PROMPT_PATH = Path("prompts/investigator.md")
@@ -165,6 +172,66 @@ def _sum_usage(messages: list[BaseMessage]) -> tuple[int, int]:
     return tokens_in, tokens_out
 
 
+def _budget_breach_note(
+    tool_calls: list[ToolCall],
+    tokens_in: int,
+    tokens_out: int,
+    max_tool_calls: int,
+    max_tokens: int,
+) -> str | None:
+    """Checked once `graph.ainvoke` has already returned - `create_react_agent`
+    gives no per-step hook to check mid-run the way `agent_sdk._run_query`'s
+    streaming `_BudgetTracker` does, so (like `agent_sdk`'s own single-mode
+    token check) this can only report a breach after the fact, not stop it
+    early. Wall-clock is still enforced live, via `run_async`'s
+    `asyncio.wait_for`. Reported, not discarded - the run's answer is real
+    and already complete by the time this is checked.
+    """
+    total_tokens = tokens_in + tokens_out
+    if total_tokens > max_tokens:
+        return (
+            f"token budget of {max_tokens} exceeded ({total_tokens} used) - "
+            "reported after the fact, since graph.ainvoke had already completed"
+        )
+    if len(tool_calls) > max_tool_calls:
+        return (
+            f"tool-call budget of {max_tool_calls} exceeded "
+            f"({len(tool_calls)} used) - reported after the fact, since "
+            "graph.ainvoke had already completed"
+        )
+    return None
+
+
+async def _run_graph(
+    graph: Any, case: Case, max_turns: int, max_wall_clock_s: float
+) -> dict[str, Any]:
+    """Drive one `graph.ainvoke` call to completion, bounded by `run_budget`'s
+    `max_wall_clock_s` - `create_react_agent` gives no per-step hook the way
+    `agent_sdk._run_query`'s streaming `_BudgetTracker` has, so the whole call
+    is bounded instead of each step.
+    """
+    try:
+        result: dict[str, Any] = await asyncio.wait_for(
+            graph.ainvoke(
+                {"messages": [("user", case.question)]},
+                config={
+                    "configurable": {"thread_id": case.case_id},
+                    # Graph *steps*, not literal turns (each tool-call round
+                    # trip is ~2 steps in this prebuilt graph) - reuses
+                    # investigator.max_turns as a generous, not exact, bound,
+                    # rather than forking a second turn-budget config.
+                    "recursion_limit": max_turns,
+                },
+            ),
+            timeout=max_wall_clock_s,
+        )
+    except TimeoutError as exc:
+        raise RuntimeError(
+            f"wall-clock budget of {max_wall_clock_s}s exceeded"
+        ) from exc
+    return result
+
+
 def _validate_answer(response: AnswerResponse) -> tuple[str, list[str], _Confidence]:
     """No confidence check needed here, unlike `agent_sdk._validate_answer`:
     that one validates a raw dict against `_CONFIDENCE_VALUES` because the
@@ -210,8 +277,19 @@ class LangGraphRuntime:
             model_config = _load_model_config(self._models_config_path)
             investigator = model_config["investigator"]
             model_name = investigator["model"]
+            run_budget = model_config["run_budget"]
+            max_tool_calls = int(run_budget["max_tool_calls"])
+            max_tokens = int(run_budget["max_tokens"])
+            max_wall_clock_s = float(run_budget["max_wall_clock_s"])
 
-            client = MultiServerMCPClient({MCP_SERVER_NAME: _mcp_connection()})
+            # Same convention as agent_sdk._build_options: the full parent
+            # environment, plus RECON_CREATED_BY, so mcp_server.py's
+            # flag_case_for_review_tool both reaches DATABASE_URL and labels
+            # created_by correctly - env=None left DATABASE_URL to whatever
+            # langchain_mcp_adapters/mcp's stdio client defaults to, which is
+            # not guaranteed to be the full parent environment.
+            env = {**os.environ, "RECON_CREATED_BY": _CREATED_BY}
+            client = MultiServerMCPClient({MCP_SERVER_NAME: _mcp_connection(env=env)})
             tools = await client.get_tools()
 
             # mypy's stub for ChatAnthropic's generated __init__ doesn't
@@ -227,16 +305,8 @@ class LangGraphRuntime:
                 response_format=AnswerResponse,
                 checkpointer=InMemorySaver(),
             )
-            result = await graph.ainvoke(
-                {"messages": [("user", case.question)]},
-                config={
-                    "configurable": {"thread_id": case.case_id},
-                    # Graph *steps*, not literal turns (each tool-call round
-                    # trip is ~2 steps in this prebuilt graph) - reuses
-                    # investigator.max_turns as a generous, not exact, bound,
-                    # rather than forking a second turn-budget config.
-                    "recursion_limit": investigator["max_turns"],
-                },
+            result = await _run_graph(
+                graph, case, investigator["max_turns"], max_wall_clock_s
             )
 
             structured = result["structured_response"]
@@ -265,7 +335,9 @@ class LangGraphRuntime:
                 tokens_out=tokens_out,
                 cost_eur=cost_eur,
                 elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=None,
+                error=_budget_breach_note(
+                    tool_calls, tokens_in, tokens_out, max_tool_calls, max_tokens
+                ),
             )
         except Exception as exc:  # noqa: BLE001 — boundary: see run's docstring
             return AgentResult(
