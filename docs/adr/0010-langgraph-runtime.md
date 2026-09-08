@@ -116,6 +116,19 @@ protocol on success, exception, or cancellation alike. `MultiServerMCPClient` it
 holds a persistent session to close — there is nothing to leak, including on the
 `asyncio.wait_for` timeout path.
 
+**Round 4 review of PR #46, two more findings, both fixed.** `_compute_cost_eur`'s pricing
+lookup (`model_config["pricing"][model]`) had no guard — a `KeyError` for a model missing
+a `pricing:` entry, raised from inside `run_async`'s `except _BudgetExceeded` handler,
+would have been unrecoverable: a second `except` block can't catch a new exception raised
+while handling the first, so this would have broken the "never raises" contract on nothing
+worse than a config gap. Now returns `0.0` instead of raising — reported cost being wrong
+beats the whole run crashing over it. Separately, `_run_graph`'s `BaseExceptionGroup`
+handling (above) only checked whether a cancellation was present, not whether an *unrelated*
+exception was bundled alongside it in the same group — that case silently discarded the
+unrelated exception. Now included in the `_BudgetExceeded` reason text
+(`"...; also: {other!r}"`) rather than dropped, while still degrading gracefully for the
+genuine cancellation. Both covered by new tests.
+
 **Known, accepted gap:** `create_react_agent` is deprecated as of LangGraph 1.0 in favor of
 `langchain.agents.create_agent` (removal planned for 2.0). Using it anyway rather than
 adding a sixth dependency (`langchain`) for a warning, not a removal, on a currently-working

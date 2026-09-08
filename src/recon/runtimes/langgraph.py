@@ -90,8 +90,18 @@ def _compute_cost_eur(
     computed dollar cost the way `claude_agent_sdk`'s `ResultMessage.
     total_cost_usd` does - `config/models.yaml`'s `pricing:` table (added for
     this runtime) is what fills that gap.
+
+    Returns `0.0`, never raises, if `model` has no `pricing:` entry - round 4
+    of PR #46's review found this unguarded: a `KeyError` here would have
+    been unrecoverable from inside `run_async`'s own `except _BudgetExceeded`
+    handler (a second `except` block can't catch a new exception raised
+    while handling the first), breaking the "never raises" contract on
+    nothing worse than a config gap. Reported cost being wrong is far
+    better than the whole run crashing over it.
     """
-    pricing = model_config["pricing"][model]
+    pricing = model_config.get("pricing", {}).get(model)
+    if pricing is None:
+        return 0.0
     cost_usd = (
         tokens_in / 1_000_000 * pricing["input_usd_per_mtok"]
         + tokens_out / 1_000_000 * pricing["output_usd_per_mtok"]
@@ -287,16 +297,23 @@ async def _run_graph(
         # wall-clock breach if it actually is one; a genuine unrelated error
         # inside that group must still propagate as itself, not get
         # mislabeled as a timeout.
+        reason = f"wall-clock budget of {max_wall_clock_s}s exceeded"
         if isinstance(exc, BaseExceptionGroup):
-            cancelled, _other = exc.split((asyncio.CancelledError, TimeoutError))
+            cancelled, other = exc.split((asyncio.CancelledError, TimeoutError))
             if cancelled is None:
                 raise
+            if other is not None:
+                # A real cancellation happened, but something else broke at
+                # the same time - graceful degradation for the cancellation
+                # still applies (below), but that other failure must not be
+                # silently dropped just because it arrived bundled with it.
+                reason = f"{reason}; also: {other!r}"
         tool_calls = _extract_tool_calls(last_state["messages"]) if last_state else []
         tokens_in, tokens_out = (
             _sum_usage(last_state["messages"]) if last_state else (0, 0)
         )
         raise _BudgetExceeded(
-            f"wall-clock budget of {max_wall_clock_s}s exceeded",
+            reason,
             tool_calls=tool_calls,
             tokens_in=tokens_in,
             tokens_out=tokens_out,

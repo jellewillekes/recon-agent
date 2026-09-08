@@ -369,8 +369,14 @@ async def test_run_wall_clock_breach_preserves_partial_telemetry(
     forward whatever the last completed graph step (here, the real tool call
     below) had already recorded.
     """
+    # Real subprocess + a real tool round trip happen before the intentional
+    # hang below - 1.0s was too tight on a loaded CI runner and made this
+    # flaky (the budget could fire before that first, real call finished,
+    # leaving no telemetry to preserve and failing the very assertion this
+    # test exists to make). 3.0s gives that call generous headroom while
+    # still landing well before the 10s hang.
     monkeypatch.setattr(
-        lg, "_load_model_config", lambda path: _model_config(max_wall_clock_s=1.0)
+        lg, "_load_model_config", lambda path: _model_config(max_wall_clock_s=3.0)
     )
     fake = _FakeToolCallingModel(
         responses=[
@@ -401,7 +407,7 @@ async def test_run_wall_clock_breach_preserves_partial_telemetry(
         **kwargs: Any,
     ) -> ChatResult:
         if self._idx > 0:
-            await asyncio.sleep(5.0)
+            await asyncio.sleep(10.0)
         message = self.responses[self._idx]
         self._idx += 1
         return ChatResult(generations=[ChatGeneration(message=message)])
@@ -613,3 +619,79 @@ async def test_run_graph_reraises_an_unrelated_exception_group_unchanged() -> No
         await lg._run_graph(graph, CASE, 20, 100.0, 30)
 
     assert exc_info.value is group
+
+
+@pytest.mark.anyio
+async def test_run_graph_surfaces_an_unrelated_exception_alongside_a_real_cancellation() -> (
+    None
+):
+    """Round 4 review of PR #46: a mixed group (a real cancellation *and* an
+    unrelated exception together) used to still report a plain wall-clock
+    breach, silently discarding the unrelated exception rather than just
+    not mislabeling it as the cause. Graceful degradation for the
+    cancellation still applies, but the other failure must be visible too.
+    """
+    other = ValueError("a real, unrelated bug that happened at the same time")
+    group: BaseExceptionGroup[Any] = BaseExceptionGroup(
+        "unhandled errors in a TaskGroup", [asyncio.CancelledError(), other]
+    )
+    graph = _FakeGraphRaisingExceptionGroup(group)
+
+    with pytest.raises(lg._BudgetExceeded) as exc_info:
+        await lg._run_graph(graph, CASE, 20, 100.0, 30)
+
+    assert "wall-clock budget" in exc_info.value.reason
+    assert repr(other) in exc_info.value.reason
+    # Still degrades gracefully - the cancellation's own telemetry survives.
+    assert len(exc_info.value.tool_calls) == 1
+
+
+# --- _compute_cost_eur (round 4 review of PR #46) ---------------------------
+
+
+def test_compute_cost_eur_returns_zero_for_a_model_with_no_pricing_entry() -> None:
+    """A `KeyError` here used to be unrecoverable from inside `run_async`'s
+    `except _BudgetExceeded` handler - a second `except` block can't catch a
+    new exception raised while handling the first, so this would have broken
+    the "never raises" contract on nothing worse than a config gap.
+    """
+    config = _model_config()
+    del config["pricing"]["claude-sonnet-5"]
+
+    cost = lg._compute_cost_eur(config, "claude-sonnet-5", 100, 20)
+
+    assert cost == 0.0
+
+
+@pytest.mark.anyio
+async def test_run_reports_wall_clock_breach_even_with_no_pricing_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        lg,
+        "_load_model_config",
+        lambda path: {
+            **_model_config(max_wall_clock_s=0.01),
+            "pricing": {},
+        },
+    )
+
+    async def _agenerate_hangs(
+        self: _FakeToolCallingModel,
+        messages: Any,
+        stop: Any = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        await asyncio.sleep(10.0)
+        raise AssertionError("unreachable")
+
+    fake = _FakeToolCallingModel(responses=[AIMessage(content="ok")])
+    monkeypatch.setattr(_FakeToolCallingModel, "_agenerate", _agenerate_hangs)
+    monkeypatch.setattr(lg, "ChatAnthropic", lambda **kwargs: fake)
+
+    result = await lg.LangGraphRuntime().run_async(CASE)
+
+    assert result.error is not None
+    assert "wall-clock budget" in result.error
+    assert result.cost_eur == 0.0
