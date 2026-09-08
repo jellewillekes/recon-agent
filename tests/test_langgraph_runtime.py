@@ -422,11 +422,24 @@ async def test_run_reports_token_budget_breach_after_the_fact(
 
 
 @pytest.mark.anyio
-async def test_run_reports_tool_call_budget_breach_after_the_fact(
+async def test_run_stops_early_on_tool_call_budget_breach(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Round 2 review of PR #46: `max_tool_calls` used to only be checked once
+    `graph.ainvoke` had already returned - unlike `agent_sdk.py`'s mid-stream
+    `_BudgetTracker`, a runaway tool-calling loop here kept running (and
+    spending real `ANTHROPIC_API_KEY` credit) until `max_turns`/
+    `recursion_limit` intervened. Now checked after every graph step
+    (`astream`'s `stream_mode="values"`), so the breach stops the run
+    immediately - the model's next call (which would have produced a final
+    answer) never fires.
+    """
+    # max_tool_calls=1, not 0: astream's stream_mode="values" yields a chunk
+    # for the initial input too (0 tool calls used), and a 0-vs.->=0 ceiling
+    # would trip on that chunk before the model ever runs. 1 isolates the
+    # breach to right after the one real tool call completes.
     monkeypatch.setattr(
-        lg, "_load_model_config", lambda path: _model_config(max_tool_calls=0)
+        lg, "_load_model_config", lambda path: _model_config(max_tool_calls=1)
     )
     _patch_model(
         monkeypatch,
@@ -441,21 +454,6 @@ async def test_run_reports_tool_call_budget_breach_after_the_fact(
                     }
                 ],
             ),
-            AIMessage(content="Industrials."),
-            AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "name": "AnswerResponse",
-                        "args": {
-                            "answer": "Industrials",
-                            "evidence": ["FIRM-001 is in Industrials"],
-                            "confidence": "high",
-                        },
-                        "id": "r1",
-                    }
-                ],
-            ),
         ],
     )
 
@@ -463,4 +461,6 @@ async def test_run_reports_tool_call_budget_breach_after_the_fact(
 
     assert result.error is not None
     assert "tool-call budget" in result.error
-    assert result.answer == "Industrials"
+    assert result.answer == ""
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].tool == "list_companies"

@@ -74,15 +74,19 @@ graph, so this is generously matched, not precisely. Still a real cost-safety bo
 is what `max_turns` exists for in the first place.
 
 `run_budget` (`max_tool_calls`/`max_tokens`/`max_wall_clock_s`, same section `agent_sdk.py`
-reads) now applies here too, at the same fidelity `agent_sdk.py`'s own single mode has:
-`max_wall_clock_s` wraps `graph.ainvoke` in `asyncio.wait_for` as a live, hard ceiling —
-`create_react_agent` has no per-step hook the way `agent_sdk._run_query`'s streaming
-`_BudgetTracker` does, so the whole call is bounded rather than each step. `max_tool_calls`/
-`max_tokens` are checked once `ainvoke` returns, same "reported after the fact" pattern
-`agent_sdk.py`'s single mode already uses for tokens (its one `query()` call has already
-finished by the time usage is known). Round 1 review of this PR found `run_budget` entirely
-bypassed at merge time — this closes that gap to the same level of rigor the SDK runtime
-already has in single mode, not further.
+reads) now applies here too, at the same fidelity `agent_sdk.py`'s own single mode has.
+`max_wall_clock_s` wraps the whole run in `asyncio.wait_for` as a live, hard ceiling.
+`max_tool_calls` is checked after every graph step via `astream`'s `stream_mode="values"`
+(which yields the accumulated state after each node, unlike `ainvoke`, which only returns
+once the whole run is over) — a breach raises `_BudgetExceeded` and closes the stream
+immediately, the same live fidelity `agent_sdk._run_query`'s streaming `_BudgetTracker` has
+for tool calls. `max_tokens` is still checked once the run completes, same "reported after
+the fact" pattern `agent_sdk.py`'s single mode already uses for tokens (there, usage is only
+known once a call's `ResultMessage` arrives; here, once a breaching message's own
+`usage_metadata` has already been folded into the running total). Round 1 review of this PR
+found `run_budget` entirely bypassed at merge time; round 2 found the initial `max_tool_calls`
+fix still only checked post-hoc — both closed now, to the same rigor `agent_sdk.py` already
+has for tool calls and wall-clock, plus its own existing gap for tokens.
 
 **Known, accepted gap:** `create_react_agent` is deprecated as of LangGraph 1.0 in favor of
 `langchain.agents.create_agent` (removal planned for 2.0). Using it anyway rather than

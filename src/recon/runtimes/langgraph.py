@@ -12,6 +12,7 @@ mode (issue #14 part 2/2) is a hand-built `StateGraph`.
 """
 
 import asyncio
+import contextlib
 import json
 import os
 import sys
@@ -172,64 +173,102 @@ def _sum_usage(messages: list[BaseMessage]) -> tuple[int, int]:
     return tokens_in, tokens_out
 
 
-def _budget_breach_note(
-    tool_calls: list[ToolCall],
-    tokens_in: int,
-    tokens_out: int,
-    max_tool_calls: int,
-    max_tokens: int,
-) -> str | None:
-    """Checked once `graph.ainvoke` has already returned - `create_react_agent`
-    gives no per-step hook to check mid-run the way `agent_sdk._run_query`'s
-    streaming `_BudgetTracker` does, so (like `agent_sdk`'s own single-mode
-    token check) this can only report a breach after the fact, not stop it
-    early. Wall-clock is still enforced live, via `run_async`'s
-    `asyncio.wait_for`. Reported, not discarded - the run's answer is real
+def _budget_breach_note(tokens_in: int, tokens_out: int, max_tokens: int) -> str | None:
+    """Checked once the run has already completed. Unlike `max_tool_calls`
+    (enforced live in `_run_graph`, mid-stream), token usage from a breaching
+    message is only known once that message's `usage_metadata` has already
+    been folded into the running total, so - like `agent_sdk`'s own
+    single-mode token check - this can only report a breach after the fact,
+    not stop it early. Reported, not discarded - the run's answer is real
     and already complete by the time this is checked.
     """
     total_tokens = tokens_in + tokens_out
     if total_tokens > max_tokens:
         return (
             f"token budget of {max_tokens} exceeded ({total_tokens} used) - "
-            "reported after the fact, since graph.ainvoke had already completed"
-        )
-    if len(tool_calls) > max_tool_calls:
-        return (
-            f"tool-call budget of {max_tool_calls} exceeded "
-            f"({len(tool_calls)} used) - reported after the fact, since "
-            "graph.ainvoke had already completed"
+            "reported after the fact, since the run had already completed"
         )
     return None
 
 
-async def _run_graph(
-    graph: Any, case: Case, max_turns: int, max_wall_clock_s: float
-) -> dict[str, Any]:
-    """Drive one `graph.ainvoke` call to completion, bounded by `run_budget`'s
-    `max_wall_clock_s` - `create_react_agent` gives no per-step hook the way
-    `agent_sdk._run_query`'s streaming `_BudgetTracker` has, so the whole call
-    is bounded instead of each step.
+class _BudgetExceeded(Exception):
+    """Mirrors `agent_sdk._BudgetExceeded`: raised mid-stream, the instant
+    `tool_calls_used` hits `max_tool_calls`, carrying everything gathered up
+    to that point so the caller returns a partial `AgentResult` instead of
+    letting a runaway loop keep spending real `ANTHROPIC_API_KEY` credit
+    until `max_turns`/`recursion_limit` eventually intervenes (round 2 review
+    of PR #46).
     """
-    try:
-        result: dict[str, Any] = await asyncio.wait_for(
-            graph.ainvoke(
-                {"messages": [("user", case.question)]},
-                config={
-                    "configurable": {"thread_id": case.case_id},
-                    # Graph *steps*, not literal turns (each tool-call round
-                    # trip is ~2 steps in this prebuilt graph) - reuses
-                    # investigator.max_turns as a generous, not exact, bound,
-                    # rather than forking a second turn-budget config.
-                    "recursion_limit": max_turns,
-                },
-            ),
-            timeout=max_wall_clock_s,
+
+    def __init__(
+        self,
+        reason: str,
+        tool_calls: list[ToolCall],
+        tokens_in: int,
+        tokens_out: int,
+    ) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.tool_calls = tool_calls
+        self.tokens_in = tokens_in
+        self.tokens_out = tokens_out
+
+
+async def _run_graph(
+    graph: Any,
+    case: Case,
+    max_turns: int,
+    max_wall_clock_s: float,
+    max_tool_calls: int,
+) -> dict[str, Any]:
+    """Drive one graph run to completion, bounded by `run_budget`'s
+    `max_wall_clock_s` (a hard ceiling on the whole call, via
+    `asyncio.wait_for`) and `max_tool_calls` (checked after every graph step,
+    via `astream`'s `stream_mode="values"`, which yields the accumulated
+    state after each node runs - unlike `ainvoke`, which only returns once
+    the whole run is over). A tool-call breach raises `_BudgetExceeded` and
+    closes the stream immediately (`contextlib.aclosing`, not a bare `break`
+    - see `agent_sdk._run_query`'s docstring for why that matters), the same
+    live fidelity `agent_sdk._run_query`'s streaming `_BudgetTracker` has.
+    """
+    config = {
+        "configurable": {"thread_id": case.case_id},
+        # Graph *steps*, not literal turns (each tool-call round trip is ~2
+        # steps in this prebuilt graph) - reuses investigator.max_turns as a
+        # generous, not exact, bound, rather than forking a second
+        # turn-budget config.
+        "recursion_limit": max_turns,
+    }
+
+    async def _drive() -> dict[str, Any]:
+        state: dict[str, Any] | None = None
+        stream = graph.astream(
+            {"messages": [("user", case.question)]},
+            config=config,
+            stream_mode="values",
         )
+        async with contextlib.aclosing(stream):
+            async for chunk in stream:
+                state = chunk
+                tool_calls = _extract_tool_calls(chunk["messages"])
+                if len(tool_calls) >= max_tool_calls:
+                    tokens_in, tokens_out = _sum_usage(chunk["messages"])
+                    raise _BudgetExceeded(
+                        f"tool-call budget of {max_tool_calls} exceeded",
+                        tool_calls=tool_calls,
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                    )
+        if state is None:
+            raise RuntimeError("langgraph run produced no state.")
+        return state
+
+    try:
+        return await asyncio.wait_for(_drive(), timeout=max_wall_clock_s)
     except TimeoutError as exc:
         raise RuntimeError(
             f"wall-clock budget of {max_wall_clock_s}s exceeded"
         ) from exc
-    return result
 
 
 def _validate_answer(response: AnswerResponse) -> tuple[str, list[str], _Confidence]:
@@ -289,6 +328,13 @@ class LangGraphRuntime:
             # langchain_mcp_adapters/mcp's stdio client defaults to, which is
             # not guaranteed to be the full parent environment.
             env = {**os.environ, "RECON_CREATED_BY": _CREATED_BY}
+            # No explicit teardown here: per langchain-mcp-adapters' documented
+            # design (since its 0.1 release), MultiServerMCPClient doesn't hold
+            # a persistent session past get_tools() - each bound tool opens and
+            # closes its own stdio subprocess per invocation, unlike
+            # agent_sdk.py's one long-lived query() stream (contextlib.aclosing
+            # in _run_query). Not independently re-verified against this
+            # project's exact pinned version - see PR #46 review discussion.
             client = MultiServerMCPClient({MCP_SERVER_NAME: _mcp_connection(env=env)})
             tools = await client.get_tools()
 
@@ -306,7 +352,11 @@ class LangGraphRuntime:
                 checkpointer=InMemorySaver(),
             )
             result = await _run_graph(
-                graph, case, investigator["max_turns"], max_wall_clock_s
+                graph,
+                case,
+                investigator["max_turns"],
+                max_wall_clock_s,
+                max_tool_calls,
             )
 
             structured = result["structured_response"]
@@ -335,9 +385,24 @@ class LangGraphRuntime:
                 tokens_out=tokens_out,
                 cost_eur=cost_eur,
                 elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=_budget_breach_note(
-                    tool_calls, tokens_in, tokens_out, max_tool_calls, max_tokens
+                error=_budget_breach_note(tokens_in, tokens_out, max_tokens),
+            )
+        except _BudgetExceeded as exc:
+            return AgentResult(
+                case_id=case.case_id,
+                answer="",
+                evidence=[],
+                confidence="low",
+                tool_calls=exc.tool_calls,
+                runtime=RUNTIME_NAME,
+                mode=self._mode,
+                tokens_in=exc.tokens_in,
+                tokens_out=exc.tokens_out,
+                cost_eur=_compute_cost_eur(
+                    model_config, model_name, exc.tokens_in, exc.tokens_out
                 ),
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                error=exc.reason,
             )
         except Exception as exc:  # noqa: BLE001 — boundary: see run's docstring
             return AgentResult(

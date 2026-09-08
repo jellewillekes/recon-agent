@@ -63,7 +63,13 @@ def _find_case(cases: list[Case], case_id: str) -> Case:
 
 def _build_runtime(runtime: str, mode: str) -> Runtime:
     if runtime == "langgraph":
-        return LangGraphRuntime(mode=mode)  # type: ignore[arg-type]
+        try:
+            return LangGraphRuntime(mode=mode)  # type: ignore[arg-type]
+        except NotImplementedError as exc:
+            # LangGraphRuntime(mode="multi") raises rather than accept a mode
+            # it can't run (issue #14 part 2 not landed yet) - a clean CLI
+            # exit here beats letting that traceback surface raw.
+            raise SystemExit(str(exc)) from exc
     return AgentSdkRuntime(mode=mode)  # type: ignore[arg-type]
 
 
