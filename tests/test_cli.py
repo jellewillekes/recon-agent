@@ -190,16 +190,17 @@ def test_cmd_eval_defaults_to_sdk_runtime(
 
 
 @pytest.mark.unit
-def test_build_runtime_langgraph_multi_exits_cleanly() -> None:
-    """Round 2 review of PR #46: `--runtime langgraph --mode multi` used to
-    reach `LangGraphRuntime(mode="multi")` and raise `NotImplementedError`
-    uncaught - a raw traceback instead of a clean CLI error. Multi mode isn't
-    implemented until issue #14 part 2.
+def test_build_runtime_langgraph_multi_builds_a_multi_mode_runtime() -> None:
+    """Issue #14 part 2: `--runtime langgraph --mode multi` used to raise
+    `NotImplementedError` (caught by `_build_runtime` into a clean
+    `SystemExit`, round 2 review of PR #46) - now a real, constructible
+    runtime, the same as every other runtime/mode combination.
     """
-    with pytest.raises(SystemExit) as exc_info:
-        cli._build_runtime("langgraph", "multi")
+    from recon.runtimes.langgraph import LangGraphRuntime
 
-    assert "multi" in str(exc_info.value)
+    runtime = cli._build_runtime("langgraph", "multi")
+
+    assert isinstance(runtime, LangGraphRuntime)
 
 
 @pytest.mark.unit

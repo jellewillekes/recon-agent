@@ -6,9 +6,13 @@ See `docs/adr/0010-langgraph-runtime.md` for why this needs a real
 Agent SDK subscription credit `runtimes/agent_sdk.py` uses exclusively), why
 `mcp` is pinned below 2.0 project-wide, and the tool-restriction mechanism.
 
-Single mode (this module, issue #14 part 1/2) is `langgraph.prebuilt.
-create_react_agent` — "a ReAct graph" in LangGraph's own vocabulary. Multi
-mode (issue #14 part 2/2) is a hand-built `StateGraph`.
+Single mode (this module) is `langgraph.prebuilt.create_react_agent` — "a
+ReAct graph" in LangGraph's own vocabulary. Multi mode is a hand-built
+`StateGraph` in `runtimes/langgraph_multi.py` — same split as `agent_sdk.py`/
+`multi_agent.py` (ADR-0007), and for the same reason: this module is already
+long with single mode's own streaming/budget mechanics, which multi mode
+reuses (`_run_graph`, `_build_react_subgraph`, `_build_checkpointer`) rather
+than duplicating.
 """
 
 import asyncio
@@ -17,6 +21,8 @@ import json
 import os
 import sys
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -25,8 +31,12 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.sessions import StdioConnection
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.prebuilt import create_react_agent
+from psycopg import AsyncConnection
+from psycopg.rows import dict_row
 from pydantic import BaseModel
 
 from recon.contracts import AgentResult, Case, ToolCall
@@ -55,11 +65,18 @@ DEFAULT_PROMPT_PATH = Path("prompts/investigator.md")
 class AnswerResponse(BaseModel):
     """Mirrors `agent_sdk._ANSWER_SCHEMA`'s shape - passed as `create_react_agent`'s
     `response_format` to get the same validated final structure.
+
+    `flag_reason` is multi mode's own extension (issue #14 part 2): the
+    supervisor's synthesize call uses this same schema (`langgraph_multi.py`),
+    and sets this field instead of calling a bound tool - see
+    `docs/adr/0010-langgraph-runtime.md` for why. Always `None` in single
+    mode, which has no dedicated confirm-flag node to act on it.
     """
 
     answer: str
     evidence: list[str]
     confidence: Literal["high", "medium", "low"]
+    flag_reason: str | None = None
 
 
 _Confidence = Literal["high", "medium", "low"]
@@ -81,6 +98,33 @@ def _mcp_connection(env: dict[str, str] | None = None) -> StdioConnection:
         args=["-m", "recon.tools.mcp_server"],
         env=env,
     )
+
+
+async def _build_checkpointer(database_url: str | None) -> BaseCheckpointSaver:
+    """`AsyncPostgresSaver` when `DATABASE_URL` is configured, `InMemorySaver`
+    otherwise - same "not configured is a normal, expected state" stance
+    `api/health.py:check_postgres` already takes (no live Postgres exists
+    anywhere in this project yet; `docker/compose.yaml` is step 10).
+
+    Connects the same way `AsyncPostgresSaver.from_conn_string` does
+    internally (autocommit, `prepare_threshold=0`, dict rows) but without its
+    `async with` scoping - the connection has to outlive one call, since
+    `LangGraphRuntime` caches this checkpointer on the instance and reuses it
+    across a paused `run_async` and the `resume` that later completes it
+    (`LangGraphRuntime._get_checkpointer`); closing it in between would lose
+    exactly the state a resume needs. Within one runtime instance, that
+    within-process interrupt/resume cycle works identically whichever
+    checkpointer this returns - only a resume from a *different* process
+    needs the real, Postgres-backed one.
+    """
+    if not database_url:
+        return InMemorySaver()
+    conn = await AsyncConnection.connect(
+        database_url, autocommit=True, prepare_threshold=0, row_factory=dict_row
+    )
+    checkpointer = AsyncPostgresSaver(conn=conn)
+    await checkpointer.setup()
+    return checkpointer
 
 
 def _compute_cost_eur(
@@ -218,12 +262,64 @@ class _BudgetExceeded(Exception):
         tool_calls: list[ToolCall],
         tokens_in: int,
         tokens_out: int,
+        cost_eur: float = 0.0,
     ) -> None:
         super().__init__(reason)
         self.reason = reason
         self.tool_calls = tool_calls
         self.tokens_in = tokens_in
         self.tokens_out = tokens_out
+        # Single mode leaves this at 0.0 and lets run_async compute it from
+        # its one well-defined model_name instead (unchanged from part 1) -
+        # multi mode (langgraph_multi.py) has no single model_name to hand
+        # run_async, so it computes cost itself, at the point it re-raises a
+        # _BudgetExceeded surfaced from _run_graph, and carries it here.
+        self.cost_eur = cost_eur
+
+
+@dataclass
+class _Outcome:
+    """What a completed (non-erroring, non-paused) run produced, before
+    `elapsed_ms` is known - shared by both modes' `run_async`, mirroring
+    `agent_sdk._Outcome`.
+    """
+
+    answer: str
+    evidence: list[str]
+    confidence: _Confidence
+    tool_calls: list[ToolCall]
+    tokens_in: int
+    tokens_out: int
+    cost_eur: float
+
+
+class _Paused(Exception):
+    """Raised by `langgraph_multi.run_multi_async`/`resume_multi_async` when
+    the graph reaches `_confirm_flag_node` and calls `interrupt()` - not an
+    error: decompose, workers, synthesize, and critic already ran to
+    completion, and `outcome` carries what they produced rather than
+    discarding it, the same "reuse `AgentResult.error` for ended
+    early/differently than a clean success" precedent `_BudgetExceeded`
+    already established. `thread_id` is what `LangGraphRuntime.resume` needs
+    to continue this exact run.
+    """
+
+    def __init__(self, thread_id: str, outcome: _Outcome) -> None:
+        super().__init__(
+            f"paused for review-flag confirmation (thread_id={thread_id!r}) - "
+            "call LangGraphRuntime.resume(case, thread_id, approved=...) to continue"
+        )
+        self.thread_id = thread_id
+        self.outcome = outcome
+
+
+def _messages_telemetry(state: dict[str, Any]) -> tuple[list[ToolCall], int, int]:
+    """Default `telemetry_fn` for `_run_graph`: single mode's `create_react_agent`
+    graph carries everything in one `state["messages"]` list.
+    """
+    tool_calls = _extract_tool_calls(state["messages"])
+    tokens_in, tokens_out = _sum_usage(state["messages"])
+    return tool_calls, tokens_in, tokens_out
 
 
 async def _run_graph(
@@ -232,6 +328,12 @@ async def _run_graph(
     max_turns: int,
     max_wall_clock_s: float,
     max_tool_calls: int,
+    *,
+    input_state: Any = None,
+    telemetry_fn: Callable[
+        [dict[str, Any]], tuple[list[ToolCall], int, int]
+    ] = _messages_telemetry,
+    thread_id: str | None = None,
 ) -> dict[str, Any]:
     """Drive one graph run to completion, bounded by `run_budget`'s
     `max_wall_clock_s` (a hard ceiling on the whole call, via
@@ -245,15 +347,27 @@ async def _run_graph(
     matters); a wall-clock breach cancels `_drive` via `asyncio.wait_for`,
     but still reports the tool calls and tokens gathered up to the last
     completed step instead of discarding them (round 3 review of PR #46).
+
+    Single mode (this module) drives with `case.question` as the only input
+    and reads telemetry off `state["messages"]` - both are this function's
+    defaults, so its own call site doesn't need to change. Multi mode
+    (`langgraph_multi.py`) passes its own `AgentState` as `input_state` (or a
+    `langgraph.types.Command` to resume a paused run), reads telemetry off
+    its own `tool_calls`/`tokens_in`/`tokens_out` reducer fields via a custom
+    `telemetry_fn`, and passes `thread_id` explicitly since a resume's
+    thread wasn't necessarily created from `case.case_id` in this call
+    (`LangGraphRuntime.resume` takes `thread_id` as its own argument).
     """
     config = {
-        "configurable": {"thread_id": case.case_id},
+        "configurable": {"thread_id": thread_id or case.case_id},
         # Graph *steps*, not literal turns (each tool-call round trip is ~2
         # steps in this prebuilt graph) - reuses investigator.max_turns as a
         # generous, not exact, bound, rather than forking a second
         # turn-budget config.
         "recursion_limit": max_turns,
     }
+    if input_state is None:
+        input_state = {"messages": [("user", case.question)]}
 
     # Written from inside `_drive` on every step, read from the `TimeoutError`
     # handler below. A wall-clock breach cancels `_drive`'s task, but this
@@ -264,16 +378,15 @@ async def _run_graph(
     async def _drive() -> dict[str, Any]:
         nonlocal last_state
         stream = graph.astream(
-            {"messages": [("user", case.question)]},
+            input_state,
             config=config,
             stream_mode="values",
         )
         async with contextlib.aclosing(stream):
             async for chunk in stream:
                 last_state = chunk
-                tool_calls = _extract_tool_calls(chunk["messages"])
+                tool_calls, tokens_in, tokens_out = telemetry_fn(chunk)
                 if len(tool_calls) >= max_tool_calls:
-                    tokens_in, tokens_out = _sum_usage(chunk["messages"])
                     raise _BudgetExceeded(
                         f"tool-call budget of {max_tool_calls} exceeded",
                         tool_calls=tool_calls,
@@ -308,9 +421,8 @@ async def _run_graph(
                 # still applies (below), but that other failure must not be
                 # silently dropped just because it arrived bundled with it.
                 reason = f"{reason}; also: {other!r}"
-        tool_calls = _extract_tool_calls(last_state["messages"]) if last_state else []
-        tokens_in, tokens_out = (
-            _sum_usage(last_state["messages"]) if last_state else (0, 0)
+        tool_calls, tokens_in, tokens_out = (
+            telemetry_fn(last_state) if last_state else ([], 0, 0)
         )
         raise _BudgetExceeded(
             reason,
@@ -332,9 +444,62 @@ def _validate_answer(response: AnswerResponse) -> tuple[str, list[str], _Confide
     return response.answer, response.evidence, response.confidence
 
 
+async def _build_react_subgraph(
+    *,
+    model_name: str,
+    prompt: str,
+    response_format: type[BaseModel],
+    created_by: str,
+    tool_names: tuple[str, ...] | None = None,
+    checkpointer: BaseCheckpointSaver | None = None,
+) -> Any:
+    """Build one `create_react_agent` graph against the project's MCP server:
+    spawn the subprocess, fetch its tools, optionally filter them down to
+    `tool_names` (ADR-0010's Python-side tool restriction - `None` means
+    every tool, single mode's own subset), bind `prompt`/`response_format`.
+
+    Reused for single mode's one investigator (this module, `tool_names=None`,
+    a real `checkpointer` since its whole run goes through `_run_graph`'s
+    thread-scoped `astream`) and for each multi-mode worker
+    (`langgraph_multi.py`, `tool_names` from `config/roles.yaml`,
+    `checkpointer=None` - workers are invoked directly with `.ainvoke()`,
+    with no thread/interrupt needs of their own).
+    """
+    env = {**os.environ, "RECON_CREATED_BY": created_by}
+    # No explicit teardown here - verified directly against this project's
+    # installed langchain-mcp-adapters source, not just its docs (round 3
+    # review of PR #46 asked for this): both get_tools()'s discovery call and
+    # every individual bound tool's execution (convert_mcp_tool_to_langchain_tool's
+    # call_tool) scope their own subprocess session inside `async with
+    # create_session(...)`, torn down via the context manager protocol on
+    # success, exception, or cancellation alike - MultiServerMCPClient itself
+    # never holds a persistent session to close, unlike agent_sdk.py's one
+    # long-lived query() stream (contextlib.aclosing in _run_query).
+    client = MultiServerMCPClient({MCP_SERVER_NAME: _mcp_connection(env=env)})
+    tools = await client.get_tools()
+    if tool_names is not None:
+        wanted = {f"{name}_tool" for name in tool_names}
+        tools = [tool for tool in tools if tool.name in wanted]
+
+    # mypy's stub for ChatAnthropic's generated __init__ doesn't surface
+    # `model` as a valid kwarg, though it's a genuine pydantic field
+    # (confirmed: ChatAnthropic.model_fields, and constructs fine at
+    # runtime) - a stub gap, not a real type error.
+    model = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
+    return create_react_agent(
+        model,
+        tools,
+        prompt=prompt,
+        response_format=response_format,
+        checkpointer=checkpointer,
+    )
+
+
 class LangGraphRuntime:
-    """`Runtime` implementation driving LangGraph. `mode="multi"` lands in
-    issue #14 part 2; this module currently only implements `"single"`.
+    """`Runtime` implementation driving LangGraph. Single mode (this module's
+    own `create_react_agent` graph) and multi mode (`runtimes/
+    langgraph_multi.py`'s hand-built `StateGraph`, ADR-0010) share this one
+    entry point.
     """
 
     def __init__(
@@ -343,14 +508,32 @@ class LangGraphRuntime:
         mode: Literal["single", "multi"] = "single",
         models_config_path: Path = DEFAULT_MODELS_CONFIG_PATH,
         prompt_path: Path = DEFAULT_PROMPT_PATH,
+        roles_config_path: Path | None = None,
+        prompts_dir: Path | None = None,
     ) -> None:
-        if mode == "multi":
-            raise NotImplementedError(
-                "LangGraphRuntime(mode='multi') lands in issue #14 part 2."
-            )
         self._mode = mode
         self._models_config_path = models_config_path
         self._prompt_path = prompt_path
+        # Only meaningful for mode="multi" - None means "use langgraph_multi's
+        # own defaults" (mirrors AgentSdkRuntime.__init__'s identical
+        # roles_config_path/prompts_dir pattern; not imported at module level
+        # for the same reason agent_sdk.py doesn't import multi_agent at
+        # module level - see run_async's lazy import below).
+        self._roles_config_path = roles_config_path
+        self._prompts_dir = prompts_dir
+        # Built lazily and reused across every run_async/resume call this
+        # instance makes (_get_checkpointer) - required for InMemorySaver
+        # (its storage lives only in this one Python object; a fresh one per
+        # call would make every interrupt unresumable) and kept for
+        # AsyncPostgresSaver too rather than reconnecting per call.
+        self._checkpointer: BaseCheckpointSaver | None = None
+
+    async def _get_checkpointer(self) -> BaseCheckpointSaver:
+        if self._checkpointer is None:
+            self._checkpointer = await _build_checkpointer(
+                os.environ.get("DATABASE_URL")
+            )
+        return self._checkpointer
 
     def run(self, case: Case) -> AgentResult:
         """Answer `case`. Never raises - see `AgentSdkRuntime.run`'s docstring;
@@ -361,84 +544,199 @@ class LangGraphRuntime:
 
     async def run_async(self, case: Case) -> AgentResult:
         start = time.monotonic()
+        model_config: dict[str, Any] = {}
+        model_name = ""
         try:
             model_config = _load_model_config(self._models_config_path)
-            investigator = model_config["investigator"]
-            model_name = investigator["model"]
             run_budget = model_config["run_budget"]
             max_tool_calls = int(run_budget["max_tool_calls"])
             max_tokens = int(run_budget["max_tokens"])
             max_wall_clock_s = float(run_budget["max_wall_clock_s"])
 
-            # Same convention as agent_sdk._build_options: the full parent
-            # environment, plus RECON_CREATED_BY, so mcp_server.py's
-            # flag_case_for_review_tool both reaches DATABASE_URL and labels
-            # created_by correctly - env=None left DATABASE_URL to whatever
-            # langchain_mcp_adapters/mcp's stdio client defaults to, which is
-            # not guaranteed to be the full parent environment.
-            env = {**os.environ, "RECON_CREATED_BY": _CREATED_BY}
-            # No explicit teardown here - verified directly against this
-            # project's installed langchain-mcp-adapters source, not just its
-            # docs (round 3 review of PR #46 asked for this): both
-            # get_tools()'s discovery call and every individual bound tool's
-            # execution (convert_mcp_tool_to_langchain_tool's call_tool)
-            # scope their own subprocess session inside `async with
-            # create_session(...)`, torn down via the context manager
-            # protocol on success, exception, or cancellation alike -
-            # MultiServerMCPClient itself never holds a persistent session to
-            # close, unlike agent_sdk.py's one long-lived query() stream
-            # (contextlib.aclosing in _run_query).
-            client = MultiServerMCPClient({MCP_SERVER_NAME: _mcp_connection(env=env)})
-            tools = await client.get_tools()
+            if self._mode == "multi":
+                from recon.runtimes import langgraph_multi
 
-            # mypy's stub for ChatAnthropic's generated __init__ doesn't
-            # surface `model` as a valid kwarg, though it's a genuine pydantic
-            # field (confirmed: ChatAnthropic.model_fields, and constructs
-            # fine at runtime) - a stub gap, not a real type error.
-            model = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
-            prompt = self._prompt_path.read_text(encoding="utf-8")
-            graph = create_react_agent(
-                model,
-                tools,
-                prompt=prompt,
-                response_format=AnswerResponse,
-                checkpointer=InMemorySaver(),
-            )
-            result = await _run_graph(
-                graph,
-                case,
-                investigator["max_turns"],
-                max_wall_clock_s,
-                max_tool_calls,
-            )
-
-            structured = result["structured_response"]
-            if not isinstance(structured, AnswerResponse):
-                raise TypeError(
-                    "langgraph run produced no structured answer "
-                    f"(got {type(structured)!r})."
+                outcome = await langgraph_multi.run_multi_async(
+                    case,
+                    checkpointer=await self._get_checkpointer(),
+                    model_config=model_config,
+                    max_tool_calls=max_tool_calls,
+                    max_wall_clock_s=max_wall_clock_s,
+                    max_turns=int(model_config["investigator"]["max_turns"]),
+                    roles_config_path=self._roles_config_path,
+                    prompts_dir=self._prompts_dir,
                 )
-            answer, evidence, confidence = _validate_answer(structured)
-            messages = result["messages"]
-            tool_calls = _extract_tool_calls(messages)
-            tokens_in, tokens_out = _sum_usage(messages)
-            cost_eur = _compute_cost_eur(
-                model_config, model_name, tokens_in, tokens_out
-            )
+            else:
+                investigator = model_config["investigator"]
+                model_name = investigator["model"]
+                prompt = self._prompt_path.read_text(encoding="utf-8")
+                graph = await _build_react_subgraph(
+                    model_name=model_name,
+                    prompt=prompt,
+                    response_format=AnswerResponse,
+                    created_by=_CREATED_BY,
+                    checkpointer=await self._get_checkpointer(),
+                )
+                result = await _run_graph(
+                    graph,
+                    case,
+                    investigator["max_turns"],
+                    max_wall_clock_s,
+                    max_tool_calls,
+                )
+
+                structured = result["structured_response"]
+                if not isinstance(structured, AnswerResponse):
+                    raise TypeError(
+                        "langgraph run produced no structured answer "
+                        f"(got {type(structured)!r})."
+                    )
+                answer, evidence, confidence = _validate_answer(structured)
+                messages = result["messages"]
+                tool_calls = _extract_tool_calls(messages)
+                tokens_in, tokens_out = _sum_usage(messages)
+                outcome = _Outcome(
+                    answer=answer,
+                    evidence=evidence,
+                    confidence=confidence,
+                    tool_calls=tool_calls,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_eur=_compute_cost_eur(
+                        model_config, model_name, tokens_in, tokens_out
+                    ),
+                )
 
             return AgentResult(
                 case_id=case.case_id,
-                answer=answer,
-                evidence=evidence,
-                confidence=confidence,
-                tool_calls=tool_calls,
+                answer=outcome.answer,
+                evidence=outcome.evidence,
+                confidence=outcome.confidence,
+                tool_calls=outcome.tool_calls,
                 runtime=RUNTIME_NAME,
                 mode=self._mode,
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
+                tokens_in=outcome.tokens_in,
+                tokens_out=outcome.tokens_out,
+                cost_eur=outcome.cost_eur,
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                error=_budget_breach_note(
+                    outcome.tokens_in, outcome.tokens_out, max_tokens
+                ),
+            )
+        except _Paused as exc:
+            # Not a failure - decompose, workers, synthesize, and critic
+            # already produced a real, complete answer; only the review-flag
+            # write is pending a human decision. See _Paused's docstring.
+            return AgentResult(
+                case_id=case.case_id,
+                answer=exc.outcome.answer,
+                evidence=exc.outcome.evidence,
+                confidence=exc.outcome.confidence,
+                tool_calls=exc.outcome.tool_calls,
+                runtime=RUNTIME_NAME,
+                mode=self._mode,
+                tokens_in=exc.outcome.tokens_in,
+                tokens_out=exc.outcome.tokens_out,
+                cost_eur=exc.outcome.cost_eur,
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                error=str(exc),
+            )
+        except _BudgetExceeded as exc:
+            # Single mode computes cost here, from its one well-defined
+            # model_name (unchanged from part 1) - multi mode has no single
+            # model_name to use here, so langgraph_multi.py computes it
+            # itself and carries it on the exception (see _BudgetExceeded's
+            # docstring).
+            cost_eur = (
+                exc.cost_eur
+                if self._mode == "multi"
+                else _compute_cost_eur(
+                    model_config, model_name, exc.tokens_in, exc.tokens_out
+                )
+            )
+            return AgentResult(
+                case_id=case.case_id,
+                answer="",
+                evidence=[],
+                confidence="low",
+                tool_calls=exc.tool_calls,
+                runtime=RUNTIME_NAME,
+                mode=self._mode,
+                tokens_in=exc.tokens_in,
+                tokens_out=exc.tokens_out,
                 cost_eur=cost_eur,
                 elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=_budget_breach_note(tokens_in, tokens_out, max_tokens),
+                error=exc.reason,
+            )
+        except Exception as exc:  # noqa: BLE001 — boundary: see run's docstring
+            return AgentResult(
+                case_id=case.case_id,
+                answer="",
+                evidence=[],
+                confidence="low",
+                tool_calls=[],
+                runtime=RUNTIME_NAME,
+                mode=self._mode,
+                tokens_in=0,
+                tokens_out=0,
+                cost_eur=0.0,
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                error=str(exc),
+            )
+
+    async def resume(self, case: Case, thread_id: str, approved: bool) -> AgentResult:
+        """Complete a multi-mode run paused at `_confirm_flag_node`
+        (`run_async`'s `AgentResult.error` names the `thread_id` to pass
+        here). Outside the `Runtime` protocol - issue #14 part 2 asks for the
+        interrupt mechanism only, no CLI wiring yet; a natural, separate
+        follow-up. Tests call this directly.
+
+        Only meaningful for `mode="multi"` - single mode never pauses, so
+        there is never a `thread_id` to resume.
+        """
+        start = time.monotonic()
+        model_config: dict[str, Any] = {}
+        try:
+            if self._mode != "multi":
+                raise RuntimeError(
+                    "LangGraphRuntime.resume is only meaningful for "
+                    "mode='multi' - single mode never pauses."
+                )
+            model_config = _load_model_config(self._models_config_path)
+            run_budget = model_config["run_budget"]
+            max_tool_calls = int(run_budget["max_tool_calls"])
+            max_tokens = int(run_budget["max_tokens"])
+            max_wall_clock_s = float(run_budget["max_wall_clock_s"])
+
+            from recon.runtimes import langgraph_multi
+
+            outcome = await langgraph_multi.resume_multi_async(
+                case,
+                thread_id,
+                approved,
+                checkpointer=await self._get_checkpointer(),
+                model_config=model_config,
+                max_tool_calls=max_tool_calls,
+                max_wall_clock_s=max_wall_clock_s,
+                max_turns=int(model_config["investigator"]["max_turns"]),
+                roles_config_path=self._roles_config_path,
+                prompts_dir=self._prompts_dir,
+            )
+            return AgentResult(
+                case_id=case.case_id,
+                answer=outcome.answer,
+                evidence=outcome.evidence,
+                confidence=outcome.confidence,
+                tool_calls=outcome.tool_calls,
+                runtime=RUNTIME_NAME,
+                mode=self._mode,
+                tokens_in=outcome.tokens_in,
+                tokens_out=outcome.tokens_out,
+                cost_eur=outcome.cost_eur,
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                error=_budget_breach_note(
+                    outcome.tokens_in, outcome.tokens_out, max_tokens
+                ),
             )
         except _BudgetExceeded as exc:
             return AgentResult(
@@ -451,9 +749,7 @@ class LangGraphRuntime:
                 mode=self._mode,
                 tokens_in=exc.tokens_in,
                 tokens_out=exc.tokens_out,
-                cost_eur=_compute_cost_eur(
-                    model_config, model_name, exc.tokens_in, exc.tokens_out
-                ),
+                cost_eur=exc.cost_eur,
                 elapsed_ms=int((time.monotonic() - start) * 1000),
                 error=exc.reason,
             )
