@@ -85,8 +85,26 @@ the fact" pattern `agent_sdk.py`'s single mode already uses for tokens (there, u
 known once a call's `ResultMessage` arrives; here, once a breaching message's own
 `usage_metadata` has already been folded into the running total). Round 1 review of this PR
 found `run_budget` entirely bypassed at merge time; round 2 found the initial `max_tool_calls`
-fix still only checked post-hoc — both closed now, to the same rigor `agent_sdk.py` already
-has for tool calls and wall-clock, plus its own existing gap for tokens.
+fix still only checked post-hoc; round 3 found the wall-clock path discarding partial
+telemetry the tool-call path preserved — all closed now, to the same rigor `agent_sdk.py`
+already has for tool calls and wall-clock, plus its own existing gap for tokens.
+
+**Found re-verifying round 3's fix, before merge:** the wall-clock breach path
+(`_run_graph`'s `except TimeoutError`) missed a real failure mode. `asyncio.wait_for`'s own
+timeout always raises a plain `TimeoutError` (confirmed directly against this project's own
+graph) — but LangGraph's pregel engine runs on `anyio` structured concurrency internally,
+and under load a cancellation landing mid-step can instead surface as a
+`BaseExceptionGroup` ("unhandled errors in a TaskGroup") wrapping that same
+`CancelledError`/`TimeoutError` — observed live, intermittently, running this project's own
+test suite (not reproducible in isolation, only under full-suite load). The narrow `except
+TimeoutError` missed this shape entirely, falling through to the generic exception handler
+and silently losing the same partial telemetry round 3 had just fixed for the plain-
+`TimeoutError` case. Fixed by also catching `BaseExceptionGroup`, splitting it via
+`.split((asyncio.CancelledError, TimeoutError))` to confirm it's actually a
+cancellation/timeout before treating it as a wall-clock breach — a group containing an
+unrelated real error still propagates as itself, not mislabeled. Covered by two
+deterministic tests exercising `_run_graph` directly with a fake graph, rather than
+depending on the same timing race that made the bug intermittent in the first place.
 
 **Known, accepted gap:** `create_react_agent` is deprecated as of LangGraph 1.0 in favor of
 `langchain.agents.create_agent` (removal planned for 2.0). Using it anyway rather than

@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import BaseModel, Field
 
@@ -528,3 +528,88 @@ async def test_run_stops_early_on_tool_call_budget_breach(
     assert result.answer == ""
     assert len(result.tool_calls) == 1
     assert result.tool_calls[0].tool == "list_companies"
+
+
+# --- _run_graph's BaseExceptionGroup handling (round 3 review of PR #46,
+# found while re-verifying the fix: under load, asyncio.wait_for's
+# cancellation can surface through LangGraph's anyio-based internals as a
+# BaseExceptionGroup instead of a plain TimeoutError) ------------------------
+
+
+class _FakeGraphRaisingExceptionGroup:
+    """A minimal stand-in for `graph`, whose `.astream()` yields one real
+    chunk then raises a `BaseExceptionGroup` - reproduces the shape observed
+    live, deterministically, instead of depending on real timing.
+    """
+
+    def __init__(self, group: BaseExceptionGroup[Any]) -> None:
+        self._group = group
+
+    def astream(self, input: Any, config: Any = None, stream_mode: Any = None) -> Any:
+        async def gen() -> Any:
+            # A full round trip (AIMessage's tool_calls paired with its
+            # ToolMessage) - not just the request half - since
+            # _extract_tool_calls only records a call once it sees the
+            # matching result, the same as agent_sdk._run_query does.
+            yield {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "name": "list_companies_tool",
+                                "args": {"sector": "Industrials"},
+                                "id": "call1",
+                            }
+                        ],
+                        usage_metadata={
+                            "input_tokens": 10,
+                            "output_tokens": 5,
+                            "total_tokens": 15,
+                        },
+                    ),
+                    ToolMessage(
+                        tool_call_id="call1",
+                        content='{"status": "ok", "elapsed_ms": 2}',
+                    ),
+                ]
+            }
+            raise self._group
+
+        return gen()
+
+
+@pytest.mark.anyio
+async def test_run_graph_treats_a_cancellation_shaped_exception_group_as_wall_clock_breach() -> (
+    None
+):
+    group: BaseExceptionGroup[Any] = BaseExceptionGroup(
+        "unhandled errors in a TaskGroup", [asyncio.CancelledError()]
+    )
+    graph = _FakeGraphRaisingExceptionGroup(group)
+
+    with pytest.raises(lg._BudgetExceeded) as exc_info:
+        await lg._run_graph(graph, CASE, 20, 100.0, 30)
+
+    assert "wall-clock budget" in exc_info.value.reason
+    assert len(exc_info.value.tool_calls) == 1
+    assert exc_info.value.tool_calls[0].tool == "list_companies"
+    assert exc_info.value.tokens_in == 10
+    assert exc_info.value.tokens_out == 5
+
+
+@pytest.mark.anyio
+async def test_run_graph_reraises_an_unrelated_exception_group_unchanged() -> None:
+    """A `BaseExceptionGroup` that does *not* contain a cancellation/timeout
+    is a genuine unrelated failure - it must propagate as itself, not get
+    mislabeled as a wall-clock breach.
+    """
+    group: BaseExceptionGroup[Any] = BaseExceptionGroup(
+        "unhandled errors in a TaskGroup", [ValueError("a real, unrelated bug")]
+    )
+    graph = _FakeGraphRaisingExceptionGroup(group)
+
+    with pytest.raises(BaseExceptionGroup) as exc_info:
+        await lg._run_graph(graph, CASE, 20, 100.0, 30)
+
+    assert exc_info.value is group

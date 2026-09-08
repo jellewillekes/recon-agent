@@ -276,10 +276,22 @@ async def _run_graph(
 
     try:
         return await asyncio.wait_for(_drive(), timeout=max_wall_clock_s)
-    except TimeoutError as exc:
-        tool_calls = (
-            _extract_tool_calls(last_state["messages"]) if last_state else []
-        )
+    except (TimeoutError, BaseExceptionGroup) as exc:
+        # asyncio.wait_for's own timeout always raises a plain TimeoutError
+        # (confirmed directly against this project's own graph) - but
+        # LangGraph's pregel engine runs on anyio structured concurrency
+        # internally, and under load a cancellation landing mid-step can
+        # instead surface as a BaseExceptionGroup ("unhandled errors in a
+        # TaskGroup") wrapping the same CancelledError/TimeoutError, observed
+        # live running this project's own test suite. Only treat it as a
+        # wall-clock breach if it actually is one; a genuine unrelated error
+        # inside that group must still propagate as itself, not get
+        # mislabeled as a timeout.
+        if isinstance(exc, BaseExceptionGroup):
+            cancelled, _other = exc.split((asyncio.CancelledError, TimeoutError))
+            if cancelled is None:
+                raise
+        tool_calls = _extract_tool_calls(last_state["messages"]) if last_state else []
         tokens_in, tokens_out = (
             _sum_usage(last_state["messages"]) if last_state else (0, 0)
         )
