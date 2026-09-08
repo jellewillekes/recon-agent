@@ -192,12 +192,14 @@ def _budget_breach_note(tokens_in: int, tokens_out: int, max_tokens: int) -> str
 
 
 class _BudgetExceeded(Exception):
-    """Mirrors `agent_sdk._BudgetExceeded`: raised mid-stream, the instant
-    `tool_calls_used` hits `max_tool_calls`, carrying everything gathered up
-    to that point so the caller returns a partial `AgentResult` instead of
-    letting a runaway loop keep spending real `ANTHROPIC_API_KEY` credit
-    until `max_turns`/`recursion_limit` eventually intervenes (round 2 review
-    of PR #46).
+    """Mirrors `agent_sdk._BudgetExceeded`: raised the instant either
+    `run_budget` ceiling breaches - `max_tool_calls` mid-stream, or
+    `max_wall_clock_s` on cancellation - carrying everything gathered up to
+    that point so the caller returns a partial `AgentResult` instead of
+    either letting a runaway loop keep spending real `ANTHROPIC_API_KEY`
+    credit until `max_turns`/`recursion_limit` eventually intervenes (round 2
+    review of PR #46), or discarding that partial telemetry on a wall-clock
+    breach (round 3 review of PR #46).
     """
 
     def __init__(
@@ -226,10 +228,13 @@ async def _run_graph(
     `asyncio.wait_for`) and `max_tool_calls` (checked after every graph step,
     via `astream`'s `stream_mode="values"`, which yields the accumulated
     state after each node runs - unlike `ainvoke`, which only returns once
-    the whole run is over). A tool-call breach raises `_BudgetExceeded` and
-    closes the stream immediately (`contextlib.aclosing`, not a bare `break`
-    - see `agent_sdk._run_query`'s docstring for why that matters), the same
-    live fidelity `agent_sdk._run_query`'s streaming `_BudgetTracker` has.
+    the whole run is over). Both breach paths raise `_BudgetExceeded`, the
+    same live fidelity `agent_sdk._run_query`'s streaming `_BudgetTracker`
+    has: a tool-call breach closes the stream immediately (`contextlib.
+    aclosing`, not a bare `break` - see that module's docstring for why that
+    matters); a wall-clock breach cancels `_drive` via `asyncio.wait_for`,
+    but still reports the tool calls and tokens gathered up to the last
+    completed step instead of discarding them (round 3 review of PR #46).
     """
     config = {
         "configurable": {"thread_id": case.case_id},
@@ -240,8 +245,14 @@ async def _run_graph(
         "recursion_limit": max_turns,
     }
 
+    # Written from inside `_drive` on every step, read from the `TimeoutError`
+    # handler below. A wall-clock breach cancels `_drive`'s task, but this
+    # variable lives in `_run_graph`'s own frame, not the cancelled task's -
+    # it still holds whatever the last completed step wrote.
+    last_state: dict[str, Any] | None = None
+
     async def _drive() -> dict[str, Any]:
-        state: dict[str, Any] | None = None
+        nonlocal last_state
         stream = graph.astream(
             {"messages": [("user", case.question)]},
             config=config,
@@ -249,7 +260,7 @@ async def _run_graph(
         )
         async with contextlib.aclosing(stream):
             async for chunk in stream:
-                state = chunk
+                last_state = chunk
                 tool_calls = _extract_tool_calls(chunk["messages"])
                 if len(tool_calls) >= max_tool_calls:
                     tokens_in, tokens_out = _sum_usage(chunk["messages"])
@@ -259,15 +270,24 @@ async def _run_graph(
                         tokens_in=tokens_in,
                         tokens_out=tokens_out,
                     )
-        if state is None:
+        if last_state is None:
             raise RuntimeError("langgraph run produced no state.")
-        return state
+        return last_state
 
     try:
         return await asyncio.wait_for(_drive(), timeout=max_wall_clock_s)
     except TimeoutError as exc:
-        raise RuntimeError(
-            f"wall-clock budget of {max_wall_clock_s}s exceeded"
+        tool_calls = (
+            _extract_tool_calls(last_state["messages"]) if last_state else []
+        )
+        tokens_in, tokens_out = (
+            _sum_usage(last_state["messages"]) if last_state else (0, 0)
+        )
+        raise _BudgetExceeded(
+            f"wall-clock budget of {max_wall_clock_s}s exceeded",
+            tool_calls=tool_calls,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
         ) from exc
 
 

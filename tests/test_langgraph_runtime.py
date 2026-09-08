@@ -359,6 +359,70 @@ async def test_run_stops_on_wall_clock_budget_breach(
 
 
 @pytest.mark.anyio
+async def test_run_wall_clock_breach_preserves_partial_telemetry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Round 3 review of PR #46: a wall-clock breach used to convert into a
+    bare `RuntimeError` inside the generic `except Exception` handler,
+    discarding every tool call and token gathered before the timeout. It now
+    raises `_BudgetExceeded` like the tool-call-budget path does, carrying
+    forward whatever the last completed graph step (here, the real tool call
+    below) had already recorded.
+    """
+    monkeypatch.setattr(
+        lg, "_load_model_config", lambda path: _model_config(max_wall_clock_s=1.0)
+    )
+    fake = _FakeToolCallingModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "list_companies_tool",
+                        "args": {"sector": "Industrials"},
+                        "id": "call1",
+                    }
+                ],
+                usage_metadata={
+                    "input_tokens": 100,
+                    "output_tokens": 20,
+                    "total_tokens": 120,
+                },
+            ),
+            AIMessage(content="Industrials."),
+        ]
+    )
+
+    async def _agenerate_hangs_after_first_call(
+        self: _FakeToolCallingModel,
+        messages: Any,
+        stop: Any = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        if self._idx > 0:
+            await asyncio.sleep(5.0)
+        message = self.responses[self._idx]
+        self._idx += 1
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+    monkeypatch.setattr(
+        _FakeToolCallingModel, "_agenerate", _agenerate_hangs_after_first_call
+    )
+    monkeypatch.setattr(lg, "ChatAnthropic", lambda **kwargs: fake)
+
+    result = await lg.LangGraphRuntime().run_async(CASE)
+
+    assert result.error is not None
+    assert "wall-clock budget" in result.error
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].tool == "list_companies"
+    assert result.tool_calls[0].status == "ok"
+    assert result.tokens_in == 100
+    assert result.tokens_out == 20
+
+
+@pytest.mark.anyio
 async def test_run_reports_token_budget_breach_after_the_fact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
