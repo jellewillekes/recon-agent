@@ -106,6 +106,16 @@ unrelated real error still propagates as itself, not mislabeled. Covered by two
 deterministic tests exercising `_run_graph` directly with a fake graph, rather than
 depending on the same timing race that made the bug intermittent in the first place.
 
+**MCP subprocess teardown, round 2/3's open question — resolved, not just documented.**
+No explicit teardown of `MultiServerMCPClient`/the MCP subprocess exists in `run_async`.
+Verified directly against this project's installed `langchain-mcp-adapters` source (not
+just its docs): both `get_tools()`'s discovery call and every individual bound tool's
+execution (`convert_mcp_tool_to_langchain_tool`'s `call_tool`) scope their own subprocess
+session inside `async with create_session(...)`, torn down via the context manager
+protocol on success, exception, or cancellation alike. `MultiServerMCPClient` itself never
+holds a persistent session to close — there is nothing to leak, including on the
+`asyncio.wait_for` timeout path.
+
 **Known, accepted gap:** `create_react_agent` is deprecated as of LangGraph 1.0 in favor of
 `langchain.agents.create_agent` (removal planned for 2.0). Using it anyway rather than
 adding a sixth dependency (`langchain`) for a warning, not a removal, on a currently-working

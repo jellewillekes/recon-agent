@@ -360,13 +360,17 @@ class LangGraphRuntime:
             # langchain_mcp_adapters/mcp's stdio client defaults to, which is
             # not guaranteed to be the full parent environment.
             env = {**os.environ, "RECON_CREATED_BY": _CREATED_BY}
-            # No explicit teardown here: per langchain-mcp-adapters' documented
-            # design (since its 0.1 release), MultiServerMCPClient doesn't hold
-            # a persistent session past get_tools() - each bound tool opens and
-            # closes its own stdio subprocess per invocation, unlike
-            # agent_sdk.py's one long-lived query() stream (contextlib.aclosing
-            # in _run_query). Not independently re-verified against this
-            # project's exact pinned version - see PR #46 review discussion.
+            # No explicit teardown here - verified directly against this
+            # project's installed langchain-mcp-adapters source, not just its
+            # docs (round 3 review of PR #46 asked for this): both
+            # get_tools()'s discovery call and every individual bound tool's
+            # execution (convert_mcp_tool_to_langchain_tool's call_tool)
+            # scope their own subprocess session inside `async with
+            # create_session(...)`, torn down via the context manager
+            # protocol on success, exception, or cancellation alike -
+            # MultiServerMCPClient itself never holds a persistent session to
+            # close, unlike agent_sdk.py's one long-lived query() stream
+            # (contextlib.aclosing in _run_query).
             client = MultiServerMCPClient({MCP_SERVER_NAME: _mcp_connection(env=env)})
             tools = await client.get_tools()
 
