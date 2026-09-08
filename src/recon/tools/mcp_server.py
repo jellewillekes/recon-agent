@@ -4,13 +4,18 @@
 Kept separate from `server.py` so that module stays focused on the tool
 contract itself; nothing here is exercised by `tests/test_tools.py`, which
 calls the plain functions directly.
+
+Uses `mcp.server.fastmcp.FastMCP`, not `mcp.server.mcpserver.MCPServer` (the
+name in `mcp>=2.0`) - this project pins `mcp<2.0` (issue #14) because
+`langchain-mcp-adapters` doesn't support `mcp` 2.x yet. Same `@server.tool()`
+decorator shape either way; see `docs/adr/0010-langgraph-runtime.md`.
 """
 
 import os
 from typing import Any, Literal
 
 import duckdb
-from mcp.server.mcpserver import MCPServer
+from mcp.server.fastmcp import FastMCP
 
 from recon.tools.fixtures import seed
 from recon.tools.review_flag import flag_case_for_review
@@ -50,9 +55,9 @@ async def _call_flag_case_for_review(
     return result.model_dump(mode="json")
 
 
-def build_server(conn: duckdb.DuckDBPyConnection) -> MCPServer:
+def build_server(conn: duckdb.DuckDBPyConnection) -> FastMCP:
     """Wire the tool functions in `server.py` to an `MCPServer` bound to `conn`."""
-    server = MCPServer(name="recon-tools")
+    server = FastMCP(name="recon-tools")
 
     @server.tool()
     def list_companies_tool(sector: str | None = None) -> dict[str, Any]:

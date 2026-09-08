@@ -14,6 +14,8 @@ from recon.eval.gate import check_gate
 from recon.eval.harness import run_evaluation
 from recon.eval.report import render_markdown
 from recon.runtimes.agent_sdk import AgentSdkRuntime
+from recon.runtimes.base import Runtime
+from recon.runtimes.langgraph import LangGraphRuntime
 
 # Filename carries the pinned commit, so bumping the pin in the adapter also
 # changes the default fetch destination here — an old pin's cached file is
@@ -59,17 +61,31 @@ def _find_case(cases: list[Case], case_id: str) -> Case:
     )
 
 
+def _build_runtime(runtime: str, mode: str) -> Runtime:
+    if runtime == "langgraph":
+        try:
+            return LangGraphRuntime(mode=mode)  # type: ignore[arg-type]
+        except NotImplementedError as exc:
+            # LangGraphRuntime(mode="multi") raises rather than accept a mode
+            # it can't run (issue #14 part 2 not landed yet) - a clean CLI
+            # exit here beats letting that traceback surface raw.
+            raise SystemExit(str(exc)) from exc
+    return AgentSdkRuntime(mode=mode)  # type: ignore[arg-type]
+
+
 def _cmd_run(args: argparse.Namespace) -> None:
     csv_path = fetch_csv(args.path)
     case = _find_case(load_cases(csv_path), args.case_id)
-    result = AgentSdkRuntime(mode=args.mode).run(case)
+    result = _build_runtime(args.runtime, args.mode).run(case)
     print(result.model_dump_json(indent=2))
 
 
 def _cmd_eval(args: argparse.Namespace) -> None:
     csv_path = fetch_csv(args.path)
     cases = load_cases(csv_path)
-    run = run_evaluation(cases, AgentSdkRuntime(mode=args.mode), limit=args.limit)
+    run = run_evaluation(
+        cases, _build_runtime(args.runtime, args.mode), limit=args.limit
+    )
 
     results_dir = Path("evals/results")
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -132,6 +148,13 @@ def build_parser() -> argparse.ArgumentParser:
         default="single",
         help="single: one investigator. multi: supervisor + workers + critic.",
     )
+    run_parser.add_argument(
+        "--runtime",
+        choices=["sdk", "langgraph"],
+        default="sdk",
+        help="sdk: Claude Agent SDK, subscription credit. langgraph: LangGraph, "
+        "needs ANTHROPIC_API_KEY (docs/adr/0010-langgraph-runtime.md).",
+    )
     run_parser.set_defaults(func=_cmd_run)
 
     eval_parser = subparsers.add_parser("eval", help="Run the evaluation harness.")
@@ -149,6 +172,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["single", "multi"],
         default="single",
         help="single: one investigator. multi: supervisor + workers + critic.",
+    )
+    eval_parser.add_argument(
+        "--runtime",
+        choices=["sdk", "langgraph"],
+        default="sdk",
+        help="sdk: Claude Agent SDK, subscription credit. langgraph: LangGraph, "
+        "needs ANTHROPIC_API_KEY (docs/adr/0010-langgraph-runtime.md).",
     )
     eval_parser.add_argument(
         "--baseline",
