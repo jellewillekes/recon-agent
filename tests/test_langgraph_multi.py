@@ -428,9 +428,7 @@ async def test_run_worker_task_passes_role_max_turns_as_recursion_limit(
     captured: dict[str, Any] = {}
 
     class _FakeGraph:
-        async def ainvoke(
-            self, input_state: Any, config: Any = None
-        ) -> dict[str, Any]:
+        async def ainvoke(self, input_state: Any, config: Any = None) -> dict[str, Any]:
             captured["config"] = config
             return {
                 "structured_response": lgm.WorkerResponse(
