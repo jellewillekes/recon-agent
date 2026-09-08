@@ -304,6 +304,62 @@ def test_run_stops_and_returns_partial_result_on_tool_call_budget_breach(
 
 
 @pytest.mark.unit
+def test_single_mode_reports_a_token_budget_breach_after_the_fact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Single mode makes exactly one query() call - there's no "next call" to
+    skip the way multi mode's _accumulate can, so a token breach can only be
+    reported once the (already complete, valid) answer exists. Round 4 of
+    PR #44's review found this wasn't happening at all: single mode never
+    checked max_tokens, contradicting what ADR-0009 already claimed.
+    """
+
+    def fake_build_options(
+        models_config_path: Any, prompt_path: Any
+    ) -> tuple[ClaudeAgentOptions, float, agent_sdk.RunBudget]:
+        return (
+            ClaudeAgentOptions(),
+            0.9,
+            agent_sdk.RunBudget(
+                max_tool_calls=1000, max_tokens=1, max_wall_clock_s=3600.0
+            ),
+        )
+
+    monkeypatch.setattr(agent_sdk, "_build_options", fake_build_options)
+
+    async def fake_query(
+        *, prompt: str, options: ClaudeAgentOptions | None = None
+    ) -> Any:
+        yield ResultMessage(
+            subtype="success",
+            duration_ms=100,
+            duration_api_ms=80,
+            is_error=False,
+            num_turns=1,
+            session_id="session-1",
+            total_cost_usd=0.001,
+            usage={"input_tokens": 10, "output_tokens": 5},
+            structured_output={
+                "answer": "Industrials",
+                "evidence": ["FIRM-001 sector fact"],
+                "confidence": "high",
+            },
+        )
+
+    monkeypatch.setattr(agent_sdk, "query", fake_query)
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is not None
+    assert "token budget" in result.error
+    # Reported, not discarded - the call had already produced a real answer.
+    assert result.answer == "Industrials"
+    assert result.confidence == "high"
+    assert result.tokens_in == 10
+    assert result.tokens_out == 5
+
+
+@pytest.mark.unit
 def test_wall_clock_breach_on_the_message_carrying_the_answer_keeps_the_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

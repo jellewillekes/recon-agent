@@ -52,6 +52,26 @@ checked **between calls** instead, in `run_multi_async`'s loop, before issuing t
 sub-call. In single mode there is no "next call" to skip, so a token-budget breach there
 can only be reported after the one call finishes — a real limitation, not worked around.
 
+**Correction, round 4 of PR #44's review:** this ADR claimed the single-mode limitation
+above before the code actually implemented it — `run_async`'s single-mode branch never
+checked `budget.max_tokens` at all, so a breach there was neither prevented nor reported,
+contradicting "reported after the fact" above. Fixed: after the one `_run_query` call
+completes, `run_async` checks `outcome.tokens_in + outcome.tokens_out` against
+`budget.max_tokens` and, on a breach, sets `AgentResult.error` to say so — keeping the
+real answer/evidence/confidence rather than discarding them, the same principle as the
+round-2 fix for multi mode (a call that already produced a complete, valid result must not
+have that result thrown away just because reporting the breach happens after the fact).
+
+**Retry-blocking question, rounds 2-3.** Whether `_run_bounded`'s `time.sleep` and
+`future.result(timeout=TIMEOUT_S)` block the MCP subprocess's event loop, stalling every
+other in-flight tool call in it, not just the failing one. Resolved by inspecting
+`mcp.server.mcpserver`'s own `FuncMetadata.call_fn`, whose docstring states directly: "a
+sync function runs on a worker thread" (dispatched via `anyio.to_thread.run_sync`). Every
+tool in `tools/mcp_server.py` is a plain `def`, not `async def`, so this applies to all of
+them — the blocking happens in a worker thread, not the event loop that keeps the stdio
+transport (and dispatch of any other concurrent tool call) responsive. No code change
+needed; this was a real question worth confirming rather than assuming, not a bug.
+
 ## Decision
 
 `tools/server.py`: `_run_bounded_once` (the original single-attempt logic, renamed) wraps

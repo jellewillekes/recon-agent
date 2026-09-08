@@ -476,6 +476,7 @@ class AgentSdkRuntime:
         """
         start = time.monotonic()
         try:
+            token_budget_note: str | None = None
             if self._mode == "multi":
                 from recon.runtimes import multi_agent
 
@@ -502,6 +503,19 @@ class AgentSdkRuntime:
                     tokens_out=result.tokens_out,
                     cost_eur=result.cost_eur,
                 )
+                # Single mode makes exactly one query() call, so there's no
+                # "next call" to skip the way multi mode's _accumulate can -
+                # the call has already finished with a complete, valid
+                # answer by the time this is checked. Reported, not
+                # prevented: the answer is kept, not discarded, since the
+                # breach can't be un-happened after the fact.
+                total_tokens = outcome.tokens_in + outcome.tokens_out
+                if total_tokens > budget.max_tokens:
+                    token_budget_note = (
+                        f"token budget of {budget.max_tokens} exceeded "
+                        f"({total_tokens} used) - reported after the fact, since "
+                        "single mode's one call had already completed"
+                    )
             return AgentResult(
                 case_id=case.case_id,
                 answer=outcome.answer,
@@ -514,7 +528,7 @@ class AgentSdkRuntime:
                 tokens_out=outcome.tokens_out,
                 cost_eur=outcome.cost_eur,
                 elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=None,
+                error=token_budget_note,
             )
         except _BudgetExceeded as exc:
             return AgentResult(
