@@ -11,11 +11,31 @@ build plan this repo follows.
 
 ## Status
 
-Steps 1-6 of the implementation plan are done: contracts, the finance-agent-bench
-dataset adapter, the synthetic-fixture MCP tool server, the Agent SDK runtime, the
-evaluation harness (`recon.cli eval`), and the FastAPI service (`recon.api.main`) all
-run end to end. No baseline score is recorded yet — that's a separate, explicitly-
+Steps 1-9 of the implementation plan are done: contracts, the finance-agent-bench
+dataset adapter, the synthetic-fixture MCP tool server, the FastAPI service
+(`recon.api.main`), the evaluation harness (`recon.cli eval`), guardrails and
+reliability (prompt-injection tests, the review-flag write path, tool-layer retries
+and budgets), and two runtimes (the Agent SDK and LangGraph), each with a single and
+a multi-agent mode. See [`docs/runtimes.md`](docs/runtimes.md) for how the two
+runtimes compare. No baseline score is recorded yet — that's a separate, explicitly-
 requested run (see `docs/implementation-plan.md`).
+
+## Runtimes
+
+Four `--runtime {sdk,langgraph} --mode {single,multi}` combinations run against the
+same dataset. See [`docs/runtimes.md`](docs/runtimes.md) for what primitives each one
+offers and where they differ.
+
+| Runtime | Mode | Task completion | Answer score | Tool-call accuracy | Total cost (€) | Cases |
+|---|---|---|---|---|---|---|
+| sdk | single | — (pending) | — (pending) | — (pending) | — (pending) | — |
+| sdk | multi | — (pending) | — (pending) | — (pending) | — (pending) | — |
+| langgraph | single | — (pending) | — (pending) | — (pending) | — (pending) | — |
+| langgraph | multi | — (pending) | — (pending) | — (pending) | — (pending) | — |
+
+Populated from real `recon.cli eval` runs, not placeholders — held pending explicit
+go-ahead per `CLAUDE.md`'s Cost section. Verify command:
+`uv run python -m recon.cli eval --runtime <sdk|langgraph> --mode <single|multi> --limit N`.
 
 ## Setup
 
