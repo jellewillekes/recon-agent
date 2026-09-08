@@ -7,11 +7,13 @@ model, turn budget, and USD→EUR rate this reads.
 """
 
 import asyncio
+import contextlib
 import json
 import os
 import re
 import sys
 import time
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast, get_args
@@ -85,15 +87,101 @@ class _Outcome:
     cost_eur: float
 
 
+@dataclass
+class RunBudget:
+    """Per-run ceilings, read from `config/models.yaml`'s `run_budget:`
+    section. "Per run" means the whole case, not one `query()` call — single
+    mode makes one call so the distinction doesn't show, but multi mode's up
+    to seven calls (decompose, up to four workers, synthesis, critic —
+    `runtimes/multi_agent.py`) share one budget.
+    """
+
+    max_tool_calls: int
+    max_tokens: int
+    max_wall_clock_s: float
+
+
+class _BudgetTracker:
+    """Mutable, shared across every `_run_query` call in one run. Only
+    tracks what can be checked mid-stream (tool calls, wall-clock) - token
+    usage is only known once a call's `ResultMessage` arrives, so that
+    budget is checked between calls instead (see `run_multi_async`).
+    """
+
+    def __init__(self, budget: RunBudget) -> None:
+        self.budget = budget
+        self._start = time.monotonic()
+        self.tool_calls_used = 0
+
+    def elapsed_s(self) -> float:
+        return time.monotonic() - self._start
+
+    def breach_reason(self) -> str | None:
+        # >=, not >: this is checked right after tool_calls_used is
+        # incremented for the call that just completed, so max_tool_calls is
+        # the actual ceiling on calls that get to run, not one more than it.
+        if self.tool_calls_used >= self.budget.max_tool_calls:
+            return f"tool-call budget of {self.budget.max_tool_calls} exceeded"
+        if self.elapsed_s() > self.budget.max_wall_clock_s:
+            return f"wall-clock budget of {self.budget.max_wall_clock_s}s exceeded"
+        return None
+
+
+class _BudgetExceeded(Exception):
+    """Raised by `_run_query` (tool-call/wall-clock) or by `run_multi_async`
+    (token budget, checked between calls) on a mid-run breach. Carries
+    everything gathered before the breach so the caller returns a partial
+    `AgentResult` (`AgentSdkRuntime.run_async`'s `except _BudgetExceeded`)
+    instead of crashing or silently discarding it.
+
+    `answer`/`evidence`/`confidence` default to the empty/`"low"` values used
+    when the breach lands before any answer exists (single mode; multi
+    mode's decompose or worker calls). `run_multi_async` passes the real
+    values through when a breach is detected after its supervisor-synthesis
+    or critic call has already produced one — otherwise that already-valid
+    answer would be thrown away along with the exception.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        tool_calls: list[ToolCall],
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+        cost_eur: float = 0.0,
+        answer: str = "",
+        evidence: list[str] | None = None,
+        confidence: _Confidence = "low",
+    ) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.tool_calls = tool_calls
+        self.tokens_in = tokens_in
+        self.tokens_out = tokens_out
+        self.cost_eur = cost_eur
+        self.answer = answer
+        self.evidence = evidence or []
+        self.confidence = confidence
+
+
 def _load_model_config(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as f:
         config: dict[str, Any] = yaml.safe_load(f)
     return config
 
 
+def _load_run_budget(config: dict[str, Any]) -> RunBudget:
+    section = config["run_budget"]
+    return RunBudget(
+        max_tool_calls=int(section["max_tool_calls"]),
+        max_tokens=int(section["max_tokens"]),
+        max_wall_clock_s=float(section["max_wall_clock_s"]),
+    )
+
+
 def _build_options(
     models_config_path: Path, prompt_path: Path
-) -> tuple[ClaudeAgentOptions, float]:
+) -> tuple[ClaudeAgentOptions, float, RunBudget]:
     config = _load_model_config(models_config_path)
     investigator = config["investigator"]
     options = ClaudeAgentOptions(
@@ -118,7 +206,7 @@ def _build_options(
         allowed_tools=ALLOWED_TOOLS,
         output_format=_ANSWER_SCHEMA,
     )
-    return options, float(config["usd_to_eur_rate"])
+    return options, float(config["usd_to_eur_rate"]), _load_run_budget(config)
 
 
 def _strip_tool_name(mcp_tool_name: str) -> str:
@@ -224,46 +312,75 @@ class _QueryResult:
 
 
 async def _run_query(
-    prompt: str, options: ClaudeAgentOptions, usd_to_eur_rate: float
+    prompt: str,
+    options: ClaudeAgentOptions,
+    usd_to_eur_rate: float,
+    tracker: _BudgetTracker | None = None,
 ) -> _QueryResult:
     """Drive one `query()` call to completion. Tool-call extraction, the
     oversized-result recovery path, and cost conversion are the same
     regardless of which role or `output_format` schema `options` configures —
     only `structured`'s shape varies by caller.
+
+    `tracker`, when given, is checked after every message up until the
+    `ResultMessage` arrives; a tool-call or wall-clock breach raises
+    `_BudgetExceeded` and explicitly closes the stream (`contextlib.aclosing`,
+    not a bare `break` — that would leave the generator merely suspended, not
+    closed; ADR-0006 established that `query()`'s generator is safe to close
+    mid-flight). Once `result_message` is set there is already a complete,
+    valid answer to return — the budget is no longer checked, so a breach
+    that lands on the very message carrying that answer doesn't discard it.
     """
     tool_calls: list[ToolCall] = []
     pending: dict[str, tuple[str, dict[str, Any]]] = {}
     result_message: ResultMessage | None = None
 
     mcp_prefix = f"mcp__{MCP_SERVER_NAME}__"
-    async for message in query(prompt=prompt, options=options):
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                # Only our four MCP tools are `tool_calls` in the AgentResult
-                # sense. `Read` (kept for the CLI's own oversized-result
-                # recovery, see _build_options) isn't one of tools/server.py's
-                # tools and its result doesn't match ToolResult's shape —
-                # recording it here would mislabel a successful recovery read
-                # with the generic "unknown" fallback status.
-                if isinstance(block, ToolUseBlock) and block.name.startswith(
-                    mcp_prefix
-                ):
-                    pending[block.id] = (_strip_tool_name(block.name), block.input)
-        elif isinstance(message, UserMessage) and isinstance(message.content, list):
-            for block in message.content:
-                if isinstance(block, ToolResultBlock) and block.tool_use_id in pending:
-                    tool_name, arguments = pending.pop(block.tool_use_id)
-                    status, elapsed_ms = _parse_tool_result(block.content)
-                    tool_calls.append(
-                        ToolCall(
-                            tool=tool_name,
-                            arguments=arguments,
-                            status=status,
-                            elapsed_ms=elapsed_ms,
+    # query()'s declared return type is AsyncIterator, but it's actually
+    # implemented as an async generator (it has .aclose()) - the cast makes
+    # that concrete for aclosing(), which needs it structurally.
+    raw_stream = cast(
+        "AsyncGenerator[object, None]", query(prompt=prompt, options=options)
+    )
+    async with contextlib.aclosing(raw_stream) as stream:
+        async for message in stream:
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    # Only our four MCP tools are `tool_calls` in the AgentResult
+                    # sense. `Read` (kept for the CLI's own oversized-result
+                    # recovery, see _build_options) isn't one of tools/server.py's
+                    # tools and its result doesn't match ToolResult's shape —
+                    # recording it here would mislabel a successful recovery read
+                    # with the generic "unknown" fallback status.
+                    if isinstance(block, ToolUseBlock) and block.name.startswith(
+                        mcp_prefix
+                    ):
+                        pending[block.id] = (_strip_tool_name(block.name), block.input)
+            elif isinstance(message, UserMessage) and isinstance(message.content, list):
+                for block in message.content:
+                    if (
+                        isinstance(block, ToolResultBlock)
+                        and block.tool_use_id in pending
+                    ):
+                        tool_name, arguments = pending.pop(block.tool_use_id)
+                        status, elapsed_ms = _parse_tool_result(block.content)
+                        tool_calls.append(
+                            ToolCall(
+                                tool=tool_name,
+                                arguments=arguments,
+                                status=status,
+                                elapsed_ms=elapsed_ms,
+                            )
                         )
-                    )
-        elif isinstance(message, ResultMessage):
-            result_message = message
+                        if tracker is not None:
+                            tracker.tool_calls_used += 1
+            elif isinstance(message, ResultMessage):
+                result_message = message
+
+            if tracker is not None and result_message is None:
+                reason = tracker.breach_reason()
+                if reason is not None:
+                    raise _BudgetExceeded(reason, tool_calls=list(tool_calls))
 
     if result_message is None:
         raise RuntimeError("agent_sdk query stream ended without a ResultMessage.")
@@ -359,6 +476,7 @@ class AgentSdkRuntime:
         """
         start = time.monotonic()
         try:
+            token_budget_note: str | None = None
             if self._mode == "multi":
                 from recon.runtimes import multi_agent
 
@@ -368,10 +486,13 @@ class AgentSdkRuntime:
                     prompts_dir=self._prompts_dir,
                 )
             else:
-                options, usd_to_eur_rate = _build_options(
+                options, usd_to_eur_rate, budget = _build_options(
                     self._models_config_path, self._prompt_path
                 )
-                result = await _run_query(case.question, options, usd_to_eur_rate)
+                tracker = _BudgetTracker(budget)
+                result = await _run_query(
+                    case.question, options, usd_to_eur_rate, tracker=tracker
+                )
                 answer, evidence, confidence = _validate_answer(result.structured)
                 outcome = _Outcome(
                     answer=answer,
@@ -382,6 +503,19 @@ class AgentSdkRuntime:
                     tokens_out=result.tokens_out,
                     cost_eur=result.cost_eur,
                 )
+                # Single mode makes exactly one query() call, so there's no
+                # "next call" to skip the way multi mode's _accumulate can -
+                # the call has already finished with a complete, valid
+                # answer by the time this is checked. Reported, not
+                # prevented: the answer is kept, not discarded, since the
+                # breach can't be un-happened after the fact.
+                total_tokens = outcome.tokens_in + outcome.tokens_out
+                if total_tokens > budget.max_tokens:
+                    token_budget_note = (
+                        f"token budget of {budget.max_tokens} exceeded "
+                        f"({total_tokens} used) - reported after the fact, since "
+                        "single mode's one call had already completed"
+                    )
             return AgentResult(
                 case_id=case.case_id,
                 answer=outcome.answer,
@@ -394,7 +528,22 @@ class AgentSdkRuntime:
                 tokens_out=outcome.tokens_out,
                 cost_eur=outcome.cost_eur,
                 elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=None,
+                error=token_budget_note,
+            )
+        except _BudgetExceeded as exc:
+            return AgentResult(
+                case_id=case.case_id,
+                answer=exc.answer,
+                evidence=exc.evidence,
+                confidence=exc.confidence,
+                tool_calls=exc.tool_calls,
+                runtime=RUNTIME_NAME,
+                mode=self._mode,
+                tokens_in=exc.tokens_in,
+                tokens_out=exc.tokens_out,
+                cost_eur=exc.cost_eur,
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                error=exc.reason,
             )
         except Exception as exc:  # noqa: BLE001 — boundary: see docstring
             return AgentResult(

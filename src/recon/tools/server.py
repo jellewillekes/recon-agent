@@ -11,7 +11,9 @@ are called directly in tests, with no MCP transport and no LLM involved.
 """
 
 import concurrent.futures
+import random
 import time
+import weakref
 from typing import Any, Literal
 
 import duckdb
@@ -22,11 +24,103 @@ from recon.contracts import ToolResult
 MAX_ROWS = 500
 TIMEOUT_S = 30.0
 
+# Retry: up to this many attempts total per call, exponential backoff + jitter
+# between them - except a timeout (_ToolTimeout), which is never retried; see
+# its docstring. Circuit breaker: this many *calls* (not retry attempts
+# within one call) failing consecutively opens the breaker for that
+# connection - further calls short-circuit straight to `unavailable` with no
+# query attempt at all, until the cooldown elapses and lets one probe call
+# through.
+_MAX_ATTEMPTS = 3
+_BASE_DELAY_S = 0.01
+_BREAKER_THRESHOLD = 3
+_BREAKER_COOLDOWN_S = 30.0
+
 _EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
 
 class _ToolUnavailable(Exception):
     """Raised by `_run_bounded`, caught by each tool to build an `unavailable` result."""
+
+
+class _ToolTimeout(_ToolUnavailable):
+    """Raised by `_run_bounded_once` specifically for a `TIMEOUT_S` timeout.
+
+    Kept distinct from a plain `_ToolUnavailable` so `_run_bounded` can skip
+    retrying it: a query that already burned the full `TIMEOUT_S` waiting is
+    a much stronger signal of a stuck source than a fast `duckdb.Error`, and
+    retrying it up to `_MAX_ATTEMPTS` times would multiply, not shorten, the
+    wait — up to `_MAX_ATTEMPTS * TIMEOUT_S` per call before the breaker even
+    sees a failure, which can outrun a runtime's own wall-clock budget.
+    """
+
+
+class _CircuitBreaker:
+    """Consecutive-failure counter for one data source, with a cooldown so it
+    can recover on its own.
+
+    `is_open` once `_BREAKER_THRESHOLD` calls in a row have failed - but only
+    for `_BREAKER_COOLDOWN_S` after the most recent failure. Once that
+    elapses, `is_open` goes back to `False` for exactly one call: a probe.
+    If it succeeds, `record_success` resets the breaker fully closed; if it
+    fails, `record_failure` re-opens it and restarts the cooldown. Without
+    this, an open breaker would never let a single call through again to
+    find out the source recovered.
+    """
+
+    def __init__(
+        self,
+        threshold: int = _BREAKER_THRESHOLD,
+        cooldown_s: float = _BREAKER_COOLDOWN_S,
+    ) -> None:
+        self._threshold = threshold
+        self._cooldown_s = cooldown_s
+        self._consecutive_failures = 0
+        self._opened_at: float | None = None
+
+    @property
+    def is_open(self) -> bool:
+        if self._consecutive_failures < self._threshold:
+            return False
+        assert self._opened_at is not None
+        return (time.monotonic() - self._opened_at) < self._cooldown_s
+
+    def record_success(self) -> None:
+        self._consecutive_failures = 0
+        self._opened_at = None
+
+    def record_failure(self) -> None:
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self._threshold:
+            self._opened_at = time.monotonic()
+
+
+# One breaker per DuckDB connection, keyed by identity rather than a single
+# global: production holds one long-lived `conn` for the server process's
+# lifetime, while each test gets its own fresh `duckdb.connect(":memory:")` -
+# keying by the connection object itself gives every test an independent
+# breaker automatically, with no explicit reset needed between them.
+#
+# A plain `dict[int, _CircuitBreaker]` keyed by id(conn) would be unsafe here:
+# CPython frees an object's memory as soon as its refcount hits zero, and a
+# same-sized allocation right after can reuse that address - exactly the
+# pattern of short-lived per-test connections. A `WeakKeyDictionary` instead
+# drops the entry itself once `conn` is garbage-collected, so a reused id
+# never resolves to a stale breaker, and the registry can't grow without
+# bound either.
+_BREAKERS: "weakref.WeakKeyDictionary[duckdb.DuckDBPyConnection, _CircuitBreaker]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _breaker_for(conn: duckdb.DuckDBPyConnection) -> _CircuitBreaker:
+    # Reads the module-level constants at call time, not as _CircuitBreaker's
+    # own default arguments (bound once at class-definition time) - so a test
+    # monkeypatching _BREAKER_THRESHOLD/_BREAKER_COOLDOWN_S actually takes
+    # effect for breakers created afterward.
+    if conn not in _BREAKERS:
+        _BREAKERS[conn] = _CircuitBreaker(_BREAKER_THRESHOLD, _BREAKER_COOLDOWN_S)
+    return _BREAKERS[conn]
 
 
 def _elapsed_ms(start: float) -> int:
@@ -41,11 +135,12 @@ def _execute_and_fetch(
     return columns, result.fetchall()
 
 
-def _run_bounded(
+def _run_bounded_once(
     conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any]
 ) -> tuple[list[str], list[tuple[Any, ...]]]:
     """Run `sql` on a fresh cursor duplicated from `conn`, converting a
-    DuckDB error or a TIMEOUT_S timeout into `_ToolUnavailable`.
+    DuckDB error or a TIMEOUT_S timeout into `_ToolUnavailable`. One attempt -
+    `_run_bounded` is what adds retry and the circuit breaker around this.
 
     Each call gets its own cursor rather than running on the shared `conn`
     directly: `docs/contracts.md` section 2 rules out concurrent access to
@@ -67,7 +162,7 @@ def _run_bounded(
         return future.result(timeout=TIMEOUT_S)
     except concurrent.futures.TimeoutError as exc:
         cursor.interrupt()
-        raise _ToolUnavailable(
+        raise _ToolTimeout(
             f"Query exceeded the {TIMEOUT_S}s timeout and was cancelled. Narrow "
             "the request and retry."
         ) from exc
@@ -76,6 +171,49 @@ def _run_bounded(
             f"Query failed: {exc}. The data source may be temporarily unavailable — "
             "retrying is worth trying once."
         ) from exc
+
+
+def _run_bounded(
+    conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any]
+) -> tuple[list[str], list[tuple[Any, ...]]]:
+    """Retry `_run_bounded_once` with exponential backoff + jitter, behind a
+    circuit breaker scoped to `conn`.
+
+    An open breaker skips the query (and every retry) entirely and raises
+    immediately - the whole point is to stop hammering a source that's
+    already shown it's down. A call that exhausts its retries counts as one
+    failure toward the breaker; three such calls in a row open it.
+
+    A `_ToolTimeout` is never retried - it already spent the full
+    `TIMEOUT_S` once, so it counts as this call's failure immediately
+    instead of burning `_MAX_ATTEMPTS` full waits in a row.
+    """
+    breaker = _breaker_for(conn)
+    if breaker.is_open:
+        raise _ToolUnavailable(
+            "The data source has failed repeatedly and the circuit breaker is "
+            "open. Wait before retrying."
+        )
+
+    last_exc: _ToolUnavailable | None = None
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            result = _run_bounded_once(conn, sql, params)
+        except _ToolTimeout:
+            breaker.record_failure()
+            raise
+        except _ToolUnavailable as exc:
+            last_exc = exc
+            if attempt < _MAX_ATTEMPTS - 1:
+                delay = _BASE_DELAY_S * (2**attempt) + random.uniform(0, _BASE_DELAY_S)
+                time.sleep(delay)
+            continue
+        breaker.record_success()
+        return result
+
+    breaker.record_failure()
+    assert last_exc is not None  # loop always sets it before falling through
+    raise last_exc
 
 
 def _rows_to_dicts(

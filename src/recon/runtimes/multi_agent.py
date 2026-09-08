@@ -24,7 +24,11 @@ from recon.runtimes.agent_sdk import (
     DEFAULT_MODELS_CONFIG_PATH,
     MCP_SERVER_NAME,
     RUNTIME_NAME,
+    _BudgetExceeded,
+    _BudgetTracker,
+    _Confidence,
     _load_model_config,
+    _load_run_budget,
     _Outcome,
     _QueryResult,
     _run_query,
@@ -178,28 +182,76 @@ async def run_multi_async(
     roles_config_path = roles_config_path or DEFAULT_ROLES_CONFIG_PATH
     prompts_dir = prompts_dir or DEFAULT_PROMPTS_DIR
     roles_config = _load_roles_config(roles_config_path)
-    usd_to_eur_rate = float(_load_model_config(models_config_path)["usd_to_eur_rate"])
+    model_config = _load_model_config(models_config_path)
+    usd_to_eur_rate = float(model_config["usd_to_eur_rate"])
+    budget = _load_run_budget(model_config)
+    # Shared across all (up to seven) calls below - a case run's tool-call
+    # and wall-clock budget, not one call's (agent_sdk.RunBudget's docstring).
+    tracker = _BudgetTracker(budget)
 
     tokens_in = 0
     tokens_out = 0
     cost_eur = 0.0
     tool_calls: list[ToolCall] = []
 
-    def _accumulate(result: _QueryResult) -> None:
+    def _accumulate(
+        result: _QueryResult,
+        *,
+        answer: str = "",
+        evidence: list[str] | None = None,
+        confidence: _Confidence = "low",
+    ) -> None:
+        """Adds `result`'s usage (including its `tool_calls` - every call can
+        have some now that the supervisor's own `flag_case_for_review` counts
+        as one, not just workers') to the running totals; raises
+        `_BudgetExceeded` if that pushes the run over `budget.max_tokens`.
+
+        `answer`/`evidence`/`confidence`, when passed, are already validated
+        from `result` itself (the supervisor-synthesis or critic call) — a
+        breach here means that step's own tokens tipped the budget, but its
+        output is already a complete, valid answer and must survive the
+        exception instead of being discarded with it.
+        """
         nonlocal tokens_in, tokens_out, cost_eur
         tokens_in += result.tokens_in
         tokens_out += result.tokens_out
         cost_eur += result.cost_eur
         tool_calls.extend(result.tool_calls)
+        if tokens_in + tokens_out > budget.max_tokens:
+            raise _BudgetExceeded(
+                f"token budget of {budget.max_tokens} exceeded",
+                tool_calls=list(tool_calls),
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_eur=cost_eur,
+                answer=answer,
+                evidence=evidence,
+                confidence=confidence,
+            )
+
+    async def _run(prompt: str, options: ClaudeAgentOptions) -> _QueryResult:
+        """`_run_query`, with a mid-stream `_BudgetExceeded` enriched with
+        everything this run has accumulated across *prior* calls before it
+        propagates - `_run_query` itself only knows about the call it's in.
+        """
+        try:
+            return await _run_query(prompt, options, usd_to_eur_rate, tracker=tracker)
+        except _BudgetExceeded as exc:
+            raise _BudgetExceeded(
+                exc.reason,
+                tool_calls=tool_calls + exc.tool_calls,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                cost_eur=cost_eur,
+            ) from exc
 
     decompose_options = _build_role_options(
         "supervisor", roles_config["supervisor"], prompts_dir, _DECOMPOSE_SCHEMA
     )
-    decompose_result = await _run_query(
+    decompose_result = await _run(
         f"Case ID: {case.case_id}\n\n"
         f"Decompose this question into subtasks for your workers: {case.question}",
         decompose_options,
-        usd_to_eur_rate,
     )
     _accumulate(decompose_result)
     subtasks = _validate_decomposition(decompose_result.structured)
@@ -209,7 +261,7 @@ async def run_multi_async(
         worker_options = _build_role_options(
             worker, roles_config[worker], prompts_dir, _WORKER_SCHEMA
         )
-        worker_result = await _run_query(instruction, worker_options, usd_to_eur_rate)
+        worker_result = await _run(instruction, worker_options)
         _accumulate(worker_result)
         worker_findings, worker_evidence = _validate_worker(worker_result.structured)
         findings.append(
@@ -225,11 +277,11 @@ async def run_multi_async(
         "Worker findings:\n" + "\n\n".join(findings) + "\n\n"
         "Synthesize a final answer from these findings only."
     )
-    synthesis_result = await _run_query(
-        synthesis_prompt, synthesize_options, usd_to_eur_rate
-    )
-    _accumulate(synthesis_result)
+    synthesis_result = await _run(synthesis_prompt, synthesize_options)
     answer, evidence, confidence = _validate_answer(synthesis_result.structured)
+    _accumulate(
+        synthesis_result, answer=answer, evidence=evidence, confidence=confidence
+    )
 
     critic_options = _build_role_options(
         "critic", roles_config["critic"], prompts_dir, _CRITIC_SCHEMA
@@ -238,11 +290,11 @@ async def run_multi_async(
         f"Question: {case.question}\n\nProposed answer: {answer}\n\n"
         f"Cited evidence: {evidence}\n\nDoes the evidence support the answer?"
     )
-    critic_result = await _run_query(critic_prompt, critic_options, usd_to_eur_rate)
-    _accumulate(critic_result)
+    critic_result = await _run(critic_prompt, critic_options)
     accepted, _reason = _validate_critic(critic_result.structured)
     if not accepted:
         confidence = "low"
+    _accumulate(critic_result, answer=answer, evidence=evidence, confidence=confidence)
 
     return _Outcome(
         answer=answer,
