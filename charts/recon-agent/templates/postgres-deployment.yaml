@@ -1,0 +1,50 @@
+{{- if .Values.postgresql.enabled }}
+# Dev-only Postgres so the bare k3d verify flow reaches readiness without an
+# external database. Not for production - docs/adr/0012 and docs/deployment.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "recon-agent.postgresFullname" . }}
+  labels:
+    {{- include "recon-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: recon-agent-postgres-dev
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: recon-agent-postgres-dev
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgresql.image }}"
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.user | quote }}
+            - name: POSTGRES_PASSWORD
+              value: {{ .Values.postgresql.password | quote }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgresql.user | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        # emptyDir - dev/k3d only, data does not survive pod restarts.
+        - name: data
+          emptyDir: {}
+{{- end }}

@@ -1,0 +1,75 @@
+# Every setting used by templates/ is documented here. docs/deployment.md
+# covers what changes moving off the k3d defaults to a managed cluster.
+
+image:
+  repository: recon-agent
+  tag: dev
+  # IfNotPresent matches the k3d verify flow (`k3d image import
+  # recon-agent:dev -c recon`) - no registry needed locally. A managed
+  # cluster switches this to a pushed, digest-pinned image - docs/deployment.md.
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  port: 8000
+
+env:
+  # RECON_API_MAX_CONCURRENCY - concurrent /investigate runs before queuing.
+  maxConcurrency: "4"
+  # RECON_API_REQUEST_TIMEOUT_S - per-request timeout in seconds.
+  requestTimeoutS: "120"
+
+secret:
+  # Placeholders only - real values via `--set` or an untracked values
+  # override, never committed. When postgresql.enabled is true, databaseUrl
+  # here is ignored: templates/secret.yaml builds DATABASE_URL from the
+  # postgresql.* values below instead.
+  databaseUrl: ""
+  # CLAUDE_CODE_OAUTH_TOKEN - only needed to actually serve /investigate.
+  # /healthz and /readyz work without it.
+  claudeCodeOauthToken: ""
+
+postgresql:
+  # Dev-only Postgres bundled so the bare k3d verify flow (no external
+  # database) still reaches readiness. See
+  # docs/adr/0012-dev-postgres-bundled-in-helm-chart.md. Turn this off and
+  # set secret.databaseUrl for a managed cluster - docs/deployment.md.
+  enabled: true
+  image: pgvector/pgvector:pg17
+  database: recon
+  user: recon
+  password: recon-dev-only
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+probes:
+  liveness:
+    # Never checks a dependency - api/main.py::healthz.
+    path: /healthz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+  readiness:
+    # Checks MCP server + Postgres reachability - api/main.py::readyz, whose
+    # own internal budget (READYZ_CHECK_TIMEOUT_S) is 5s per dependency, plus
+    # a subprocess spawn for the MCP handshake. timeoutSeconds must clear
+    # that or the probe times out before the app ever responds - it did,
+    # at k8s's 1s default, during verification.
+    path: /readyz
+    initialDelaySeconds: 10
+    periodSeconds: 8
+    timeoutSeconds: 8

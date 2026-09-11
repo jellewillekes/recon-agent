@@ -1,0 +1,72 @@
+# Dev stack: docs/implementation-plan.md's "Where it runs" table. Kubernetes
+# orchestration (k3d + charts/recon-agent/) is a separate layer - see
+# docs/deployment.md.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: recon
+      POSTGRES_USER: recon
+      POSTGRES_PASSWORD: recon-dev-only
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recon -d recon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin-dev-only
+    ports:
+      - "3000:3000"
+
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200" # Tempo query
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://recon:recon-dev-only@postgres:5432/recon
+      RECON_API_MAX_CONCURRENCY: "4"
+      RECON_API_REQUEST_TIMEOUT_S: "120"
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  tempo-data:
+  ollama-data:
