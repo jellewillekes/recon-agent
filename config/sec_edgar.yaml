@@ -1,0 +1,33 @@
+# SEC EDGAR tool data (issue #58, docs/adr/0015-sec-edgar-fact-derivation.md).
+#
+# The contact User-Agent SEC's fair-access policy requires is NOT set here. It
+# comes from the SEC_EDGAR_USER_AGENT environment variable, e.g.
+# "Your Name your.email@example.com".
+
+# Point-in-time cutoff. Facts and filings filed after this date are dropped
+# when the Parquet tables are built, so the agent can't see filings made after
+# a question was asked. The latest "as of" date in finance-agent-bench's
+# questions is 2025-04-07.
+filed_cutoff: "2025-04-07"
+
+# Taxonomies kept from companyfacts. Company-specific (custom) taxonomies never
+# appear in the API at all.
+taxonomies: [us-gaap, ifrs-full, dei]
+
+# Forms kept in the filings table. Everything else (ownership reports, etc.)
+# is noise for research questions.
+forms:
+  - 10-K
+  - 10-K/A
+  - 10-Q
+  - 10-Q/A
+  - 8-K
+  - 8-K/A
+  - DEF 14A
+  - 20-F
+  - 20-F/A
+  - 6-K
+  - 40-F
+
+# SEC allows 10 requests/second. Stay well under it.
+max_requests_per_second: 5

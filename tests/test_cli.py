@@ -2,12 +2,15 @@
 
 compute_dataset_stats is a pure function (no I/O), so it's tested directly
 rather than through the CLI/argparse wiring or the network-fetching path.
-`_cmd_eval` is exercised through `build_parser` with `fetch_csv`/`load_cases`/
-`run_evaluation` monkeypatched, so it never touches the network or a model.
+`_cmd_eval` and the `edgar` subcommands are exercised through `build_parser`
+with the adapters' functions monkeypatched, so neither touches the network,
+a model, or the real `data/` directories.
 """
 
-from datetime import UTC, datetime
+import json
+from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Self
 
 import pytest
 
@@ -245,3 +248,215 @@ def test_cmd_eval_gate_failure_exits_nonzero(
         args.func(args)
 
     assert exc_info.value.code == 1
+
+
+class _FakeHttpClient:
+    """Stands in for the `httpx.Client` `with` block in `_cmd_edgar_fetch`."""
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+
+def _edgar_config() -> object:
+    return cli.sec_edgar.EdgarConfig(
+        filed_cutoff=date(2025, 4, 7),
+        taxonomies=("us-gaap",),
+        forms=("10-K",),
+        max_requests_per_second=5.0,
+    )
+
+
+def _patch_edgar_client_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli.sec_edgar, "load_config", lambda path: _edgar_config())
+    monkeypatch.setattr(
+        cli.sec_edgar, "user_agent_from_env", lambda: "Test test@example.com"
+    )
+    monkeypatch.setattr(
+        cli.sec_edgar, "build_client", lambda user_agent: _FakeHttpClient()
+    )
+    monkeypatch.setattr(cli.sec_edgar, "EdgarClient", lambda *a, **k: "edgar-client")
+
+
+@pytest.mark.unit
+def test_edgar_fetch_parser_defaults() -> None:
+    args = build_parser().parse_args(["edgar", "fetch"])
+    assert args.from_dataset is False
+    assert args.path == cli.DEFAULT_DATASET_PATH
+    assert args.config == cli.sec_edgar.DEFAULT_CONFIG_PATH
+    assert args.func is cli._cmd_edgar_fetch
+
+
+@pytest.mark.unit
+def test_edgar_stats_parser_wires_the_stats_command() -> None:
+    args = build_parser().parse_args(["edgar", "stats"])
+    assert args.func is cli._cmd_edgar_stats
+
+
+@pytest.mark.unit
+def test_cmd_edgar_fetch_from_dataset_stops_before_fetching_companies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`--from-dataset` must derive and write the tickers file, then return -
+    it must never reach the per-company fetch loop below it."""
+    _patch_edgar_client_setup(monkeypatch)
+    captured: dict[str, object] = {}
+
+    def fake_derive(edgar: object, dataset_path: Path, tickers_path: Path) -> None:
+        captured["dataset_path"] = dataset_path
+        captured["tickers_path"] = tickers_path
+
+    monkeypatch.setattr(cli, "_derive_tickers_file", fake_derive)
+    monkeypatch.setattr(
+        cli.sec_edgar_tickers,
+        "read_tickers_file",
+        lambda path: pytest.fail("--from-dataset must not read the tickers file"),
+    )
+
+    dataset_path = tmp_path / "dataset.csv"
+    args = build_parser().parse_args(
+        ["edgar", "fetch", "--from-dataset", "--path", str(dataset_path)]
+    )
+    args.func(args)
+
+    assert captured["dataset_path"] == dataset_path
+    assert captured["tickers_path"] == cli.sec_edgar.DEFAULT_RAW_DIR / "tickers.txt"
+
+
+@pytest.mark.unit
+def test_cmd_edgar_fetch_runs_full_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_edgar_client_setup(monkeypatch)
+    monkeypatch.setattr(cli.sec_edgar, "snapshot_id", lambda: "20260928")
+    monkeypatch.setattr(
+        cli.sec_edgar_tickers, "read_tickers_file", lambda path: {"ABC": 123}
+    )
+
+    fetch_calls: list[tuple[object, int, Path]] = []
+
+    def fake_fetch_company(
+        edgar: object, cik: int, snapshot_dir: Path
+    ) -> dict[str, object]:
+        fetch_calls.append((edgar, cik, snapshot_dir))
+        return {"submissions": ["x"], "companyfacts": True}
+
+    monkeypatch.setattr(cli.sec_edgar, "fetch_company", fake_fetch_company)
+
+    manifest_calls: dict[str, object] = {}
+
+    def fake_write_manifest(
+        snapshot_dir: Path, snapshot: str, config: object, companies: dict[str, object]
+    ) -> Path:
+        manifest_calls["companies"] = companies
+        return snapshot_dir / "manifest.json"
+
+    monkeypatch.setattr(cli.sec_edgar, "write_manifest", fake_write_manifest)
+
+    normalize_calls: dict[str, object] = {}
+
+    def fake_normalize_snapshot(
+        snapshot_dir: Path, tickers: dict[str, int], config: object, out_dir: Path
+    ) -> dict[str, int]:
+        normalize_calls["tickers"] = tickers
+        normalize_calls["out_dir"] = out_dir
+        return {"companies": 1, "financial_facts": 5}
+
+    monkeypatch.setattr(
+        cli.sec_edgar_normalize, "normalize_snapshot", fake_normalize_snapshot
+    )
+
+    args = build_parser().parse_args(["edgar", "fetch"])
+    args.func(args)
+
+    assert fetch_calls == [
+        ("edgar-client", 123, cli.sec_edgar.DEFAULT_RAW_DIR / "20260928")
+    ]
+    assert manifest_calls["companies"] == {
+        "ABC": {"cik": 123, "submissions": ["x"], "companyfacts": True}
+    }
+    assert normalize_calls["tickers"] == {"ABC": 123}
+    assert (
+        normalize_calls["out_dir"] == cli.sec_edgar.DEFAULT_PROCESSED_DIR / "20260928"
+    )
+
+
+@pytest.mark.unit
+def test_cmd_edgar_stats_prints_snapshot_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    snapshot_dir = tmp_path / "20260928"
+    snapshot_dir.mkdir()
+    (snapshot_dir / cli.sec_edgar.MANIFEST_FILENAME).write_text(
+        json.dumps({"filed_cutoff": "2025-04-07", "row_counts": {"companies": 1}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        cli.sec_edgar_store, "latest_snapshot", lambda base: snapshot_dir
+    )
+    monkeypatch.setattr(
+        cli.sec_edgar_store,
+        "company_stats",
+        lambda directory: [("ABC", 10, 2), ("XYZ", 0, 1)],
+    )
+    monkeypatch.setattr(
+        cli.sec_edgar, "DEFAULT_RAW_DIR", tmp_path / "raw-with-no-tickers-file"
+    )
+
+    args = build_parser().parse_args(["edgar", "stats"])
+    args.func(args)
+
+    out = capsys.readouterr().out
+    assert "snapshot: 20260928" in out
+    assert "cutoff: 2025-04-07" in out
+    assert "XYZ" in out and "no XBRL facts" in out
+
+
+@pytest.mark.unit
+def test_cmd_edgar_fetch_merges_repeated_tickers_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_edgar_client_setup(monkeypatch)
+    monkeypatch.setattr(cli.sec_edgar, "snapshot_id", lambda: "20260928")
+    monkeypatch.setattr(
+        cli.sec_edgar, "fetch_company", lambda edgar, cik, snapshot_dir: {}
+    )
+    monkeypatch.setattr(cli.sec_edgar, "write_manifest", lambda *a: tmp_path)
+    fetched: dict[str, object] = {}
+    monkeypatch.setattr(
+        cli.sec_edgar_normalize,
+        "normalize_snapshot",
+        lambda snapshot_dir, tickers, config, out_dir: fetched.update(tickers) or {},
+    )
+    first, second = tmp_path / "a.txt", tmp_path / "b.txt"
+    first.write_text("ABC\t1\n", encoding="utf-8")
+    second.write_text("XYZ\t2\n", encoding="utf-8")
+
+    args = build_parser().parse_args(
+        ["edgar", "fetch", "--tickers-file", str(first), "--tickers-file", str(second)]
+    )
+    args.func(args)
+
+    assert fetched == {"ABC": 1, "XYZ": 2}
+
+
+@pytest.mark.unit
+def test_cmd_edgar_fetch_from_dataset_needs_exactly_one_tickers_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_edgar_client_setup(monkeypatch)
+    args = build_parser().parse_args(
+        [
+            "edgar",
+            "fetch",
+            "--from-dataset",
+            "--tickers-file",
+            "a",
+            "--tickers-file",
+            "b",
+        ]
+    )
+    with pytest.raises(SystemExit, match="exactly one"):
+        args.func(args)
