@@ -104,6 +104,31 @@ def test_score_case_success_uses_judge_and_combines_cost(
 
 
 @pytest.mark.unit
+def test_score_case_answer_score_is_weighted_across_dimensions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_judge(
+        monkeypatch,
+        {"answer_correctness": 0.2, "evidence_grounding": 1.0, "tool_efficiency": 0.5},
+    )
+    case = _case("c5")
+    runtime = _FakeRuntime({"c5": _agent_result(case_id="c5")})
+    rubrics = {
+        dimension: Rubric(dimension=dimension, version=1, weight=weight, assertions=[])
+        for dimension, weight in [
+            ("answer_correctness", 0.5),
+            ("evidence_grounding", 0.3),
+            ("tool_efficiency", 0.2),
+        ]
+    }
+
+    score, _ = harness.score_case(case, runtime, rubrics)
+
+    assert score.answer_score == pytest.approx(0.5 * 0.2 + 0.3 * 1.0 + 0.2 * 0.5)
+    assert score.rubric_scores["answer_correctness"] == 0.2
+
+
+@pytest.mark.unit
 def test_score_case_runtime_error_without_answer_scores_zero_without_judge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

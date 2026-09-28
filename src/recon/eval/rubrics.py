@@ -38,4 +38,9 @@ def load_rubrics(rubrics_dir: Path = DEFAULT_RUBRICS_DIR) -> dict[str, Rubric]:
             data = yaml.safe_load(f)
         rubric = Rubric.model_validate(data)
         rubrics[rubric.dimension] = rubric
+    if rubrics and sum(r.weight for r in rubrics.values()) <= 0:
+        raise ValueError(
+            f"Every rubric in {rubrics_dir} has weight 0, so answer_score would "
+            "always be 0. Give at least one dimension a positive weight."
+        )
     return rubrics

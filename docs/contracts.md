@@ -171,7 +171,7 @@ Rules:
 class CaseScore(BaseModel):
     case_id: str
     task_completion: bool
-    answer_score: float                # 0.0–1.0, from rubric
+    answer_score: float                # 0.0–1.0, weighted across rubric dimensions (§8 weight)
     tool_path_exact: bool
     tool_path_equivalent: bool         # different path, same evidence
     tool_call_accuracy: float          # 0.0–1.0
