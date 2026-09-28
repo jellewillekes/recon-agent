@@ -7,3 +7,4 @@ metadata:
 data:
   RECON_API_MAX_CONCURRENCY: {{ .Values.env.maxConcurrency | quote }}
   RECON_API_REQUEST_TIMEOUT_S: {{ .Values.env.requestTimeoutS | quote }}
+  RECON_TOOL_DATA: {{ .Values.env.toolData | quote }}

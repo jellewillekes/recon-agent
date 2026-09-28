@@ -1,9 +1,9 @@
 """Read-only, DuckDB-backed research tools.
 
 Every tool returns a `ToolResult` (`docs/contracts.md` section 3) and covers
-all five statuses. Data comes from the synthetic fixture in `fixtures.py`,
-not from real filings — see `docs/data-sources.md` for what that means for
-answer quality against finance-agent-bench.
+all five statuses. Data comes from a normalized SEC EDGAR snapshot or the
+synthetic fixture in `fixtures.py`, chosen by `data_source.py`. Both share
+one schema, so the queries below serve either — see `docs/data-sources.md`.
 
 Tool functions below take the DuckDB connection as their first argument and
 are called directly in tests, with no MCP transport and no LLM involved.
@@ -14,6 +14,7 @@ import concurrent.futures
 import random
 import time
 import weakref
+from datetime import date
 from typing import Any, Literal
 
 import duckdb
@@ -219,7 +220,15 @@ def _run_bounded(
 def _rows_to_dicts(
     columns: list[str], rows: list[tuple[Any, ...]]
 ) -> list[dict[str, Any]]:
-    return [dict(zip(columns, row, strict=True)) for row in rows]
+    # Dates as ISO strings: the MCP layer serializes this to JSON, and the
+    # EDGAR tables carry real DATE columns where the fixture has strings.
+    return [
+        {
+            column: value.isoformat() if isinstance(value, date) else value
+            for column, value in zip(columns, row, strict=True)
+        }
+        for row in rows
+    ]
 
 
 def _company_exists(conn: duckdb.DuckDBPyConnection, company_id: str) -> bool:
@@ -314,12 +323,29 @@ def _run_and_classify(
     )
 
 
+FormType = Literal[
+    "10-K",
+    "10-K/A",
+    "10-Q",
+    "10-Q/A",
+    "8-K",
+    "8-K/A",
+    "DEF 14A",
+    "20-F",
+    "20-F/A",
+    "6-K",
+    "40-F",
+]
+
+
 class ListCompaniesInput(BaseModel):
     sector: str | None = Field(default=None, min_length=1)
+    query: str | None = Field(default=None, min_length=1)
 
 
 class ListFinancialConceptsInput(BaseModel):
     company_id: str = Field(min_length=1)
+    keyword: str | None = Field(default=None, min_length=1)
 
 
 class GetFinancialFactInput(BaseModel):
@@ -332,67 +358,74 @@ class GetFinancialFactInput(BaseModel):
 class SearchFilingsInput(BaseModel):
     company_id: str = Field(min_length=1)
     keyword: str | None = Field(default=None, min_length=1)
-    form_type: Literal["10-K", "10-Q", "8-K"] | None = None
+    form_type: FormType | None = None
     fiscal_year: int | None = Field(default=None, ge=1900, le=2100)
 
 
 def list_companies(
-    conn: duckdb.DuckDBPyConnection, sector: str | None = None
+    conn: duckdb.DuckDBPyConnection,
+    sector: str | None = None,
+    query: str | None = None,
 ) -> ToolResult:
-    """List known companies, optionally filtered by sector.
+    """List known companies, optionally filtered by sector or searched by name.
 
-    Use this first to discover which `company_id`s exist — every other tool
-    needs one. Don't use it to look up a single company by name; there's no
-    name search here, only an exact sector filter.
+    Use this first to find a company's `company_id` (its ticker) — every
+    other tool needs one. `query` matches part of a ticker or registered
+    name, case-insensitively, e.g. a distinctive word of the company's name.
+    `sector` is an exact match on the SEC industry description.
     """
     start = time.perf_counter()
     try:
-        validated = ListCompaniesInput(sector=sector)
+        validated = ListCompaniesInput(sector=sector, query=query)
     except ValidationError as exc:
         return ToolResult(
             status="invalid_input",
             data=[],
             row_count=0,
-            message=f"Invalid input: {exc.errors()[0]['msg']}. `sector`, if given, must "
-            "be a non-empty string.",
+            message=f"Invalid input: {exc.errors()[0]['msg']}. `sector` and `query`, "
+            "if given, must be non-empty strings.",
             elapsed_ms=_elapsed_ms(start),
         )
 
-    if validated.sector is None:
-        sql = "SELECT company_id, name, sector, fiscal_year_end FROM companies"
-        params: list[Any] = []
-    else:
-        sql = (
-            "SELECT company_id, name, sector, fiscal_year_end FROM companies "
-            "WHERE sector = ?"
-        )
-        params = [validated.sector]
+    conditions = ["true"]
+    params: list[Any] = []
+    if validated.sector is not None:
+        conditions.append("sector = ?")
+        params.append(validated.sector)
+    if validated.query is not None:
+        conditions.append("(company_id ILIKE ? OR name ILIKE ?)")
+        params.extend([f"%{validated.query}%"] * 2)
 
     return _run_and_classify(
         start,
         conn,
-        sql,
+        "SELECT company_id, name, sector, fiscal_year_end FROM companies "
+        f"WHERE {' AND '.join(conditions)} ORDER BY company_id",
         params,
-        empty_message=f"No companies found for sector={validated.sector!r}. Call "
-        "with no sector to see everything available.",
+        empty_message=f"No companies found for sector={validated.sector!r}, "
+        f"query={validated.query!r}. Try a shorter query or a different word of "
+        "the name, or call with no filters to see everything available.",
         truncated_label="companies",
-        truncated_hint="Narrow with `sector` to see the rest.",
+        truncated_hint="Narrow with `query` or `sector` to see the rest.",
         ok_noun="companies",
     )
 
 
 def list_financial_concepts(
-    conn: duckdb.DuckDBPyConnection, company_id: str
+    conn: duckdb.DuckDBPyConnection, company_id: str, keyword: str | None = None
 ) -> ToolResult:
     """List which financial concepts (line items) exist for a company.
 
     Call this before `get_financial_fact` — concept names aren't guessable,
-    and passing one this tool didn't return will come back `empty`, not an
-    error.
+    and the same line item can have different names at different companies
+    (e.g. `Revenues` vs `RevenueFromContractWithCustomerExcludingAssessedTax`).
+    A real company reports hundreds of concepts, so pass `keyword` to match
+    part of the concept name or its human-readable label, e.g. "revenue",
+    "gross profit", "income tax", "inventory".
     """
     start = time.perf_counter()
     try:
-        validated = ListFinancialConceptsInput(company_id=company_id)
+        validated = ListFinancialConceptsInput(company_id=company_id, keyword=keyword)
     except ValidationError as exc:
         return ToolResult(
             status="invalid_input",
@@ -406,15 +439,26 @@ def list_financial_concepts(
     if (company_error := _check_company(start, conn, validated.company_id)) is not None:
         return company_error
 
+    conditions = ["company_id = ?"]
+    params: list[Any] = [validated.company_id]
+    if validated.keyword is not None:
+        conditions.append("(concept ILIKE ? OR label ILIKE ?)")
+        params.extend([f"%{validated.keyword}%"] * 2)
+
     return _run_and_classify(
         start,
         conn,
-        "SELECT DISTINCT concept FROM financial_facts WHERE company_id = ? "
-        "ORDER BY concept",
-        [validated.company_id],
-        empty_message=f"No financial concepts recorded for {validated.company_id!r}.",
+        "SELECT concept, label, units, taxonomy FROM concepts "
+        f"WHERE {' AND '.join(conditions)} ORDER BY concept, taxonomy",
+        params,
+        empty_message=f"No financial concepts recorded for {validated.company_id!r}"
+        + (
+            f" matching {validated.keyword!r}. Try a shorter or different keyword."
+            if validated.keyword is not None
+            else "."
+        ),
         truncated_label="concepts",
-        truncated_hint="",
+        truncated_hint="Pass `keyword` to narrow the list.",
         ok_noun=f"concepts for {validated.company_id!r}",
     )
 
@@ -426,11 +470,19 @@ def get_financial_fact(
     fiscal_year: int | None = None,
     fiscal_period: Literal["FY", "Q1", "Q2", "Q3", "Q4"] | None = None,
 ) -> ToolResult:
-    """Look up a financial concept's value for a company.
+    """Look up a financial concept's value for a company, as filed.
 
     `concept` must come from `list_financial_concepts` — don't guess a name.
     Omit `fiscal_year`/`fiscal_period` to get every recorded period, e.g. for
-    a trend question.
+    a trend question. `fiscal_year`/`fiscal_period` follow the company's own
+    fiscal calendar, which may not match the calendar year. Each row carries
+    its period dates and the filing it came from (form, filed date,
+    accession): cite those as evidence.
+
+    Rows with a null `fiscal_period` are year-to-date totals (e.g. nine
+    months), not quarters. Q4 is usually not reported on its own: derive it
+    as the FY value minus the nine-month year-to-date value. Values are in
+    the unit shown, unscaled (e.g. USD, not USD millions).
     """
     start = time.perf_counter()
     try:
@@ -465,8 +517,10 @@ def get_financial_fact(
     return _run_and_classify(
         start,
         conn,
-        "SELECT fiscal_year, fiscal_period, concept, value, unit FROM financial_facts "
-        f"WHERE {' AND '.join(conditions)} ORDER BY fiscal_year, fiscal_period",
+        "SELECT fiscal_year, fiscal_period, period_start, period_end, concept, value, "
+        "unit, form, filed, accession FROM financial_facts "
+        f"WHERE {' AND '.join(conditions)} "
+        "ORDER BY fiscal_year NULLS LAST, period_end, fiscal_period",
         params,
         empty_message=f"No {validated.concept!r} fact for {validated.company_id!r} "
         "with the given filters. Try list_financial_concepts, or drop fiscal_year/"
@@ -481,14 +535,17 @@ def search_filings(
     conn: duckdb.DuckDBPyConnection,
     company_id: str,
     keyword: str | None = None,
-    form_type: Literal["10-K", "10-Q", "8-K"] | None = None,
+    form_type: FormType | None = None,
     fiscal_year: int | None = None,
 ) -> ToolResult:
-    """Search filing summaries for a company by keyword, form type, or year.
+    """List a company's filings by keyword, form type, or fiscal year.
 
-    This searches short filing summaries, not full document text — it can't
-    answer questions that need a specific page or exhibit. Omit `keyword` to
-    list everything on file for the company.
+    Returns filing metadata only — form, dates, accession, document name and
+    a short description (for an 8-K, its item numbers; item 2.02 is an
+    earnings release). It can't read document text, so it can't answer
+    questions that need guidance, narrative, or a specific exhibit. 8-Ks
+    have no `fiscal_year`; find them with `form_type` and the filed dates.
+    Omit every filter to list everything on file for the company.
     """
     start = time.perf_counter()
     try:
@@ -526,7 +583,8 @@ def search_filings(
     return _run_and_classify(
         start,
         conn,
-        "SELECT form_type, fiscal_year, fiscal_period, filed_date, summary_text "
+        "SELECT form_type, fiscal_year, fiscal_period, filed_date, report_date, "
+        "accession, primary_document, summary_text "
         f"FROM filings WHERE {' AND '.join(conditions)} ORDER BY filed_date",
         params,
         empty_message=f"No filings match for {validated.company_id!r} with the "
