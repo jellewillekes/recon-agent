@@ -39,7 +39,10 @@ postgresql:
   image: pgvector/pgvector:pg17
   database: recon
   user: recon
-  password: recon-dev-only
+  # Leave empty: the chart generates a random password on first install and
+  # keeps it across `helm upgrade` (templates/_helpers.tpl). Set it only via
+  # `--set` or an untracked values file, never here.
+  password: ""
   resources:
     requests:
       cpu: 50m

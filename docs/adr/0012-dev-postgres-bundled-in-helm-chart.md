@@ -49,3 +49,8 @@ templates authored the same way as the API's own deployment/service, so it doesn
 - Two more resources exist in every default `helm install`, including a first read of the
   chart's manifest list. Commented inline and in `docs/deployment.md` so this reads as a
   deliberate verify-flow fix, not scope creep into "the chart now manages a database."
+- The bundled Postgres has no committed password. `postgresql.password` defaults to empty,
+  and `templates/_helpers.tpl` then generates one on first install and reuses it from the
+  existing Secret on upgrade (via `lookup`). `CLAUDE.md` forbids secrets in config, and a
+  throwaway cluster doesn't earn an exception. `docker/compose.yaml` follows the same rule
+  by reading its passwords from a gitignored `docker/.env`.
