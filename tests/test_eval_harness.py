@@ -104,7 +104,7 @@ def test_score_case_success_uses_judge_and_combines_cost(
 
 
 @pytest.mark.unit
-def test_score_case_runtime_error_scores_zero_without_calling_judge(
+def test_score_case_runtime_error_without_answer_scores_zero_without_judge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     called = False
@@ -136,6 +136,77 @@ def test_score_case_runtime_error_scores_zero_without_calling_judge(
     assert score.answer_score == 0.0
     assert score.rubric_scores == {"answer_correctness": 0.0, "evidence_grounding": 0.0}
     assert "runtime error: boom" in score.notes
+    assert harness.JUDGED_DESPITE_ERROR_NOTE not in score.notes
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "error",
+    [
+        # agent_sdk.py single mode: token budget checked after the one call.
+        (
+            "token budget of 300000 exceeded (310000 used) - reported after the "
+            "fact, since single mode's one call had already completed"
+        ),
+        # langgraph.py multi mode: paused before the review-flag write.
+        (
+            "paused for review-flag confirmation (thread_id='t-1') - call "
+            "LangGraphRuntime.resume(case, thread_id, approved=...) to continue"
+        ),
+    ],
+)
+def test_score_case_judges_answer_despite_non_fatal_error(
+    monkeypatch: pytest.MonkeyPatch, error: str
+) -> None:
+    _patch_judge(monkeypatch, {"answer_correctness": 0.9})
+    case = _case("c3")
+    runtime = _FakeRuntime(
+        {"c3": _agent_result(case_id="c3", error=error, cost_eur=0.01)}
+    )
+    rubrics = {
+        "answer_correctness": Rubric(
+            dimension="answer_correctness", version=1, weight=0.5, assertions=[]
+        )
+    }
+
+    score, _ = harness.score_case(case, runtime, rubrics)
+
+    assert score.answer_score == 0.9
+    assert score.rubric_scores == {"answer_correctness": 0.9}
+    assert score.cost_eur == pytest.approx(0.01 + 0.002)
+    # task_completion stays strict: the run didn't finish within its constraints.
+    assert score.task_completion is False
+    assert f"runtime error: {error}" in score.notes
+    assert harness.JUDGED_DESPITE_ERROR_NOTE in score.notes
+
+
+@pytest.mark.unit
+def test_score_case_whitespace_answer_with_error_is_hard_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def fake_judge_case(*args: object, **kwargs: object) -> JudgeResult:
+        nonlocal called
+        called = True
+        return JudgeResult(rubric_scores={}, cost_eur=0.0)
+
+    monkeypatch.setattr(harness, "judge_case", fake_judge_case)
+    case = _case("c4")
+    runtime = _FakeRuntime(
+        {"c4": _agent_result(case_id="c4", error="boom", answer="  \n")}
+    )
+    rubrics = {
+        "answer_correctness": Rubric(
+            dimension="answer_correctness", version=1, weight=0.5, assertions=[]
+        )
+    }
+
+    score, _ = harness.score_case(case, runtime, rubrics)
+
+    assert called is False
+    assert score.answer_score == 0.0
+    assert harness.JUDGED_DESPITE_ERROR_NOTE not in score.notes
 
 
 @pytest.mark.unit

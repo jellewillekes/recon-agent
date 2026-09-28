@@ -21,7 +21,13 @@ USABLE_STATUSES = USABLE_READ_STATUSES | USABLE_WRITE_STATUSES
 
 
 def task_completion(agent_result: AgentResult) -> bool:
-    """A run "completed" if it produced a non-empty answer without erroring."""
+    """A run "completed" if it produced a non-empty answer without erroring.
+
+    Deliberately stricter than the harness's judge gate, which grades any
+    non-empty answer. A run that breached its budget or paused for review
+    didn't finish within its constraints, even when its answer is still
+    worth grading. See docs/adr/0013.
+    """
     return agent_result.error is None and bool(agent_result.answer.strip())
 
 
