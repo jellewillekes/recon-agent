@@ -13,9 +13,9 @@ repos:
       - id: trailing-whitespace
       - id: check-yaml
         # Helm templates use Go-template control syntax ({{- if ... }}) that
-        # isn't valid plain YAML; `helm lint` is this repo's real check for
-        # charts/, run separately (make/CI), not via this generic hook.
-        exclude: ^charts/
+        # isn't valid plain YAML; `helm lint` covers them, run separately
+        # (make/CI). Chart.yaml and values.yaml are plain YAML and stay checked.
+        exclude: ^charts/.*/templates/
       - id: check-toml
       - id: check-added-large-files
         args: ["--maxkb=1024"]
