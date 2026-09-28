@@ -22,6 +22,7 @@ from recon.contracts import Case, ToolCall
 from recon.runtimes.agent_sdk import (
     _ANSWER_SCHEMA,
     DEFAULT_MODELS_CONFIG_PATH,
+    ISOLATED_SESSION,
     MCP_SERVER_NAME,
     RUNTIME_NAME,
     _BudgetExceeded,
@@ -146,6 +147,7 @@ def _build_role_options(
         mcp_servers=mcp_servers,
         allowed_tools=allowed_tools,
         output_format=output_format,
+        **ISOLATED_SESSION,
     )
 
 

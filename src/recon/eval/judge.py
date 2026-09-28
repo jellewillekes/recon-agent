@@ -20,6 +20,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
 from recon.contracts import AgentResult, Case
 from recon.eval.rubrics import Rubric
+from recon.runtimes.agent_sdk import ISOLATED_SESSION
 
 DEFAULT_MODELS_CONFIG_PATH = Path("config/models.yaml")
 
@@ -161,6 +162,7 @@ def _build_options(judge_config: dict[str, Any]) -> ClaudeAgentOptions:
         tools=[],
         allowed_tools=[],
         output_format=_JUDGE_SCHEMA,
+        **ISOLATED_SESSION,
     )
 
 
