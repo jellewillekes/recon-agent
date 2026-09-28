@@ -6,6 +6,7 @@ import pytest
 
 from recon.contracts import AgentResult, Case, ReviewFlagResult, ToolCall, ToolResult
 from recon.eval import metrics
+from recon.eval.rubrics import Rubric
 
 UNUSABLE_STATUSES = frozenset({"invalid_input", "unavailable"})
 
@@ -196,3 +197,54 @@ def test_every_contract_status_is_classified() -> None:
         "metrics.USABLE_STATUSES / UNUSABLE_STATUSES. Decide whether it is usable "
         "and add it to one of them."
     )
+
+
+def _rubrics(**weights: float) -> dict[str, Rubric]:
+    return {
+        dimension: Rubric(dimension=dimension, version=1, weight=weight, assertions=[])
+        for dimension, weight in weights.items()
+    }
+
+
+REPO_WEIGHTS = _rubrics(
+    answer_correctness=0.5, evidence_grounding=0.3, tool_efficiency=0.2
+)
+
+
+@pytest.mark.unit
+def test_weighted_answer_score_uses_rubric_weights() -> None:
+    # The committed eval-20260907T102452Z's dimension means, re-weighted.
+    scores = {
+        "answer_correctness": 0.181,
+        "evidence_grounding": 1.0,
+        "tool_efficiency": 0.833,
+    }
+    assert metrics.weighted_answer_score(scores, REPO_WEIGHTS) == pytest.approx(
+        0.5 * 0.181 + 0.3 * 1.0 + 0.2 * 0.833
+    )
+
+
+@pytest.mark.unit
+def test_weighted_answer_score_renormalizes_over_scored_dimensions() -> None:
+    scores = {"answer_correctness": 1.0, "tool_efficiency": 0.0}
+    assert metrics.weighted_answer_score(scores, REPO_WEIGHTS) == pytest.approx(
+        0.5 / 0.7
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("value", [0.0, 1.0])
+def test_weighted_answer_score_uniform_scores(value: float) -> None:
+    scores = dict.fromkeys(REPO_WEIGHTS, value)
+    assert metrics.weighted_answer_score(scores, REPO_WEIGHTS) == pytest.approx(value)
+
+
+@pytest.mark.unit
+def test_weighted_answer_score_ignores_unknown_dimensions() -> None:
+    scores = {"answer_correctness": 0.4, "not_a_rubric": 1.0}
+    assert metrics.weighted_answer_score(scores, REPO_WEIGHTS) == pytest.approx(0.4)
+
+
+@pytest.mark.unit
+def test_weighted_answer_score_zero_when_nothing_weighted() -> None:
+    assert metrics.weighted_answer_score({}, REPO_WEIGHTS) == 0.0

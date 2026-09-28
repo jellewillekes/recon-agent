@@ -14,7 +14,8 @@ from recon.runtimes.base import Runtime
 
 # Bump when config/rubrics/*.yaml assertions change (docs/contracts.md §8:
 # "Rubric changes are breaking: earlier runs are no longer comparable.").
-RUBRIC_VERSION = "1"
+# "2": answer_score became the weighted mean across dimensions (docs/adr/0014).
+RUBRIC_VERSION = "2"
 
 JUDGED_DESPITE_ERROR_NOTE = "answer judged despite runtime error"
 
@@ -58,7 +59,7 @@ def score_case(
             case, agent_result, rubrics, models_config_path=models_config_path
         )
         rubric_scores = judge_result.rubric_scores
-        answer_score = rubric_scores.get("answer_correctness", 0.0)
+        answer_score = metrics.weighted_answer_score(rubric_scores, rubrics)
         judge_cost_eur = judge_result.cost_eur
 
     score = CaseScore(

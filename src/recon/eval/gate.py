@@ -24,10 +24,9 @@ def check_gate(candidate: EvalRun, baseline: EvalRun) -> list[str]:
 
     candidate_answer = candidate.aggregate.get("answer_score_mean", 0.0)
     baseline_answer = baseline.aggregate.get("answer_score_mean", 0.0)
-    # "Weighted answer_score" per docs/contracts.md §9 — answer_score is
-    # already the single answer_correctness dimension per case (judge.py),
-    # so this is the plain mean across cases; there's no further per-case
-    # weighting defined to apply on top of that.
+    # "Weighted answer_score" per docs/contracts.md §9. Each case's
+    # answer_score is already weighted across rubric dimensions
+    # (metrics.weighted_answer_score), so this is the plain mean of that.
     if baseline_answer > 0:
         relative_drop = (baseline_answer - candidate_answer) / baseline_answer
         if relative_drop > ANSWER_SCORE_DROP_THRESHOLD:

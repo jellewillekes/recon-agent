@@ -5,6 +5,7 @@ explicit not-applicable case.
 """
 
 from recon.contracts import AgentResult, Case
+from recon.eval.rubrics import Rubric
 
 TOOL_PATH_NA_NOTE = "N/A: no expected_tool_path for this case"
 
@@ -73,3 +74,25 @@ def tool_call_accuracy(agent_result: AgentResult) -> float:
         1 for call in agent_result.tool_calls if call.status in USABLE_STATUSES
     )
     return usable / len(agent_result.tool_calls)
+
+
+def weighted_answer_score(
+    rubric_scores: dict[str, float], rubrics: dict[str, Rubric]
+) -> float:
+    """Weighted mean of the per-dimension scores, by each rubric's `weight`.
+
+    This is the "weighted answer_score" `docs/contracts.md` §9 gates on.
+    Only dimensions that were actually scored count, and their weights are
+    renormalized. The judge omits a dimension when a case yields no
+    assertions for it, and that should not count as a zero. Returns 0.0 when
+    nothing scored carries weight. See docs/adr/0014.
+    """
+    weighted = [
+        (rubrics[dimension].weight, score)
+        for dimension, score in rubric_scores.items()
+        if dimension in rubrics
+    ]
+    total_weight = sum(weight for weight, _ in weighted)
+    if total_weight <= 0:
+        return 0.0
+    return sum(weight * score for weight, score in weighted) / total_weight

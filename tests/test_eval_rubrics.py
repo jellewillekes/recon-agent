@@ -62,3 +62,15 @@ def test_assertion_score_if_true_must_be_in_unit_range() -> None:
 def test_rubric_weight_must_be_in_unit_range() -> None:
     with pytest.raises(ValidationError):
         Rubric(dimension="d", version=1, weight=-0.1, assertions=[])
+
+
+@pytest.mark.unit
+def test_load_rubrics_rejects_all_zero_weights(tmp_path: Path) -> None:
+    for name in ("a", "b"):
+        (tmp_path / f"{name}.yaml").write_text(
+            f"dimension: {name}\nversion: 1\nweight: 0.0\nassertions: []\n",
+            encoding="utf-8",
+        )
+
+    with pytest.raises(ValueError, match="positive weight"):
+        load_rubrics(tmp_path)
