@@ -72,5 +72,12 @@ their report dates are needed below.
   it records which snapshot it queried, which is tracked in #62.
 - Name matching is a heuristic. Abbreviated names and wrong tickers in question text
   need a manual fix in the tickers file. `edgar stats` lists cases with no match.
+- `fiscal_period` is classified by duration in days (`_YEAR_DAYS`, `_QUARTER_DAYS` in
+  `sec_edgar_normalize.py`), not by a fiscal calendar. A 52/53-week or 4-4-5 filer's
+  regular quarters and years already fall inside these ranges (a 53-week year's extra
+  week lands in one quarter, stretching it to ~98 days, still within `_QUARTER_DAYS`).
+  An irregular period outside the ranges gets `NULL` rather than a guessed label,
+  consistent with "nothing is computed" above. Accepted for the companies in scope;
+  revisit the ranges if a real filer's period falls outside them.
 - Part B (#59) points the tools at these tables. Tool names and the `ToolResult` shape
   don't change.

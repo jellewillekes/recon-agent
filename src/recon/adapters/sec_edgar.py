@@ -172,9 +172,17 @@ def fetch_to(edgar: EdgarClient, url: str, dest: Path) -> bool:
     return True
 
 
-def fetch_company_tickers(edgar: EdgarClient, raw_dir: Path) -> Path:
-    """SEC's ticker -> CIK map, cached at `raw_dir/company_tickers.json`."""
-    dest = raw_dir / "company_tickers.json"
+def fetch_company_tickers(
+    edgar: EdgarClient, raw_dir: Path, today: date | None = None
+) -> Path:
+    """SEC's ticker -> CIK map, cached per day like every other snapshot.
+
+    Scoping the cache to `snapshot_id()` (rather than a single fixed path)
+    means a stale map from a previous day is never silently reused: each new
+    day's `--from-dataset` run re-fetches it, picking up new IPOs and ticker
+    changes instead of matching against a map that can be arbitrarily old.
+    """
+    dest = raw_dir / snapshot_id(today) / "company_tickers.json"
     if not fetch_to(edgar, TICKERS_URL, dest):
         raise RuntimeError(f"{TICKERS_URL} returned 404. Check the URL in SEC's docs.")
     return dest

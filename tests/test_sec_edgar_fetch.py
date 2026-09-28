@@ -217,3 +217,40 @@ def test_manifest_records_cutoff_and_hashes(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_snapshot_id_is_the_fetch_date() -> None:
     assert sec_edgar.snapshot_id(date(2026, 9, 28)) == "20260928"
+
+
+@pytest.mark.unit
+def test_fetch_company_tickers_is_cached_per_day(tmp_path: Path) -> None:
+    """A day-scoped cache path, not a single fixed file, so a later run on a
+    new day re-fetches instead of silently reusing a stale ticker/CIK map."""
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(200, json={})
+
+    edgar = _edgar(handler)
+
+    dest_day1 = sec_edgar.fetch_company_tickers(edgar, tmp_path, date(2026, 9, 28))
+    dest_day2 = sec_edgar.fetch_company_tickers(edgar, tmp_path, date(2026, 9, 29))
+
+    assert dest_day1 != dest_day2
+    assert dest_day1 == tmp_path / "20260928" / "company_tickers.json"
+    assert requested == [sec_edgar.TICKERS_URL, sec_edgar.TICKERS_URL]
+
+
+@pytest.mark.unit
+def test_fetch_company_tickers_reuses_same_day_cache(tmp_path: Path) -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(200, json={})
+
+    edgar = _edgar(handler)
+    today = date(2026, 9, 28)
+
+    sec_edgar.fetch_company_tickers(edgar, tmp_path, today)
+    sec_edgar.fetch_company_tickers(edgar, tmp_path, today)
+
+    assert requested == [sec_edgar.TICKERS_URL]
