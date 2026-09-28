@@ -10,7 +10,7 @@ import time
 import duckdb
 import pytest
 
-from recon.tools import fixtures, server
+from recon.tools import execution, fixtures, server
 
 
 @pytest.fixture
@@ -73,8 +73,8 @@ def test_list_companies_invalid_input(conn: duckdb.DuckDBPyConnection) -> None:
 def test_list_companies_truncated(conn: duckdb.DuckDBPyConnection) -> None:
     result = server.list_companies(conn, sector=None)
     assert result.status == "truncated"
-    assert len(result.data) == server.MAX_ROWS
-    assert result.row_count > server.MAX_ROWS
+    assert len(result.data) == execution.MAX_ROWS
+    assert result.row_count > execution.MAX_ROWS
 
 
 @pytest.mark.unit
@@ -166,8 +166,8 @@ def test_list_financial_concepts_invalid_input_blank_company(
 def test_list_financial_concepts_truncated(conn: duckdb.DuckDBPyConnection) -> None:
     result = server.list_financial_concepts(conn, "FIRM-003")
     assert result.status == "truncated"
-    assert len(result.data) == server.MAX_ROWS
-    assert result.row_count > server.MAX_ROWS
+    assert len(result.data) == execution.MAX_ROWS
+    assert result.row_count > execution.MAX_ROWS
 
 
 @pytest.mark.unit
@@ -258,8 +258,8 @@ def test_get_financial_fact_invalid_input_bad_fiscal_year(
 def test_get_financial_fact_truncated(conn: duckdb.DuckDBPyConnection) -> None:
     result = server.get_financial_fact(conn, "FIRM-004", "bulk_yearly_revenue")
     assert result.status == "truncated"
-    assert len(result.data) == server.MAX_ROWS
-    assert result.row_count > server.MAX_ROWS
+    assert len(result.data) == execution.MAX_ROWS
+    assert result.row_count > execution.MAX_ROWS
 
 
 @pytest.mark.unit
@@ -332,8 +332,8 @@ def test_search_filings_invalid_input_bad_form_type(
 def test_search_filings_truncated(conn: duckdb.DuckDBPyConnection) -> None:
     result = server.search_filings(conn, "FIRM-002")
     assert result.status == "truncated"
-    assert len(result.data) == server.MAX_ROWS
-    assert result.row_count > server.MAX_ROWS
+    assert len(result.data) == execution.MAX_ROWS
+    assert result.row_count > execution.MAX_ROWS
 
 
 @pytest.mark.unit
@@ -359,7 +359,7 @@ def test_run_bounded_times_out_as_unavailable(
     conn: duckdb.DuckDBPyConnection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     slow = _SlowConnection(conn, delay_s=0.2)
-    monkeypatch.setattr(server, "TIMEOUT_S", 0.01)
+    monkeypatch.setattr(execution, "TIMEOUT_S", 0.01)
 
     result = server.list_companies(slow, sector="Industrials")  # type: ignore[arg-type]
 
