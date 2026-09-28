@@ -157,10 +157,34 @@ FILINGS: list[tuple[str, str, int, str, str, str]] = [
 
 
 def seed(conn: duckdb.DuckDBPyConnection) -> None:
-    """Create and populate companies, financial_facts, and filings on `conn`."""
+    """Create and populate companies, concepts, financial_facts, and filings on `conn`."""
     _seed_companies(conn)
     _seed_financial_facts(conn)
     _seed_filings(conn)
+    _align_with_edgar_schema(conn)
+
+
+def _align_with_edgar_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    """Give the fixture the same tables and columns as the SEC EDGAR snapshot
+    (`adapters/sec_edgar_normalize.py`), so one set of tool queries serves
+    both. Columns the fixture has no data for stay NULL."""
+    for column, kind in [
+        ("taxonomy", "VARCHAR"),
+        ("period_start", "DATE"),
+        ("period_end", "DATE"),
+        ("form", "VARCHAR"),
+        ("filed", "DATE"),
+        ("accession", "VARCHAR"),
+    ]:
+        conn.execute(f"ALTER TABLE financial_facts ADD COLUMN {column} {kind}")
+    conn.execute("UPDATE financial_facts SET taxonomy = 'fixture'")
+    for column in ("accession", "report_date", "primary_document", "items"):
+        conn.execute(f"ALTER TABLE filings ADD COLUMN {column} VARCHAR")
+    conn.execute(
+        "CREATE TABLE concepts AS SELECT DISTINCT company_id, taxonomy, concept, "
+        "concept AS label, NULL::VARCHAR AS description, unit AS units "
+        "FROM financial_facts"
+    )
 
 
 def _seed_companies(conn: duckdb.DuckDBPyConnection) -> None:

@@ -19,6 +19,10 @@ env:
   maxConcurrency: "4"
   # RECON_API_REQUEST_TIMEOUT_S - per-request timeout in seconds.
   requestTimeoutS: "120"
+  # RECON_TOOL_DATA - data the MCP tools query: "edgar" (real SEC data) or
+  # "fixture" (synthetic). The image carries no EDGAR cache, so this stays
+  # "fixture" until one is mounted - "edgar" without it fails /readyz.
+  toolData: "fixture"
 
 secret:
   # Placeholders only - real values via `--set` or an untracked values

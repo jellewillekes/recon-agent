@@ -39,6 +39,16 @@ an empty data directory. After changing `POSTGRES_PASSWORD`, drop the old volume
 Every image is pinned to a version tag. A floating `:latest` Tempo image once broke
 `docker/tempo.yaml` by rejecting a config block the previous schema accepted.
 
+## Tool data in containers
+
+The image carries no SEC EDGAR cache, so the chart (`env.toolData`) and
+`docker/compose.yaml` set `RECON_TOOL_DATA=fixture`. The MCP tools then answer from the
+synthetic fixture, and `/readyz` passes. Serving real data from a container means
+mounting a `data/processed/sec_edgar/<snapshot>/` directory built by
+`recon.cli edgar fetch` and setting `RECON_TOOL_DATA=edgar`. With `edgar` and no
+snapshot, the MCP server refuses to start and `/readyz` fails. That's deliberate: see
+`docs/data-sources.md`.
+
 ## What changes for a managed cluster
 
 ### Ingress

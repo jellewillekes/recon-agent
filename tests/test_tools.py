@@ -85,6 +85,43 @@ def test_list_companies_unavailable(conn: duckdb.DuckDBPyConnection) -> None:
     assert result.data == []
 
 
+@pytest.mark.unit
+def test_list_companies_query_matches_name_case_insensitively(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    result = server.list_companies(conn, query="harbor")
+    assert result.status == "ok"
+    assert {row["company_id"] for row in result.data} == {"FIRM-002", "FIRM-008"}
+
+
+@pytest.mark.unit
+def test_list_companies_query_matches_id(conn: duckdb.DuckDBPyConnection) -> None:
+    result = server.list_companies(conn, query="firm-003")
+    assert [row["company_id"] for row in result.data] == ["FIRM-003"]
+
+
+@pytest.mark.unit
+def test_list_companies_query_and_sector_combine(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    result = server.list_companies(conn, sector="Energy", query="harbor")
+    assert [row["company_id"] for row in result.data] == ["FIRM-008"]
+
+
+@pytest.mark.unit
+def test_list_companies_query_empty(conn: duckdb.DuckDBPyConnection) -> None:
+    result = server.list_companies(conn, query="no such company")
+    assert result.status == "empty"
+    assert "shorter query" in result.message
+
+
+@pytest.mark.unit
+def test_list_companies_blank_query_is_invalid(conn: duckdb.DuckDBPyConnection) -> None:
+    result = server.list_companies(conn, query="")
+    assert result.status == "invalid_input"
+    assert "query" in result.message
+
+
 # --- list_financial_concepts -------------------------------------------------
 
 
@@ -140,6 +177,46 @@ def test_list_financial_concepts_unavailable(conn: duckdb.DuckDBPyConnection) ->
     assert result.status == "unavailable"
 
 
+@pytest.mark.unit
+def test_list_financial_concepts_keyword(conn: duckdb.DuckDBPyConnection) -> None:
+    result = server.list_financial_concepts(conn, "FIRM-001", keyword="REV")
+    assert result.status == "ok"
+    assert result.data == [
+        {
+            "concept": "revenue",
+            "label": "revenue",
+            "units": "USD_M",
+            "taxonomy": "fixture",
+        }
+    ]
+
+
+@pytest.mark.unit
+def test_list_financial_concepts_keyword_empty(conn: duckdb.DuckDBPyConnection) -> None:
+    result = server.list_financial_concepts(conn, "FIRM-001", keyword="dividend")
+    assert result.status == "empty"
+    assert "different keyword" in result.message
+
+
+@pytest.mark.unit
+def test_list_financial_concepts_keyword_narrows_a_truncated_list(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    result = server.list_financial_concepts(
+        conn, "FIRM-003", keyword="bulk_concept_000"
+    )
+    assert result.status == "ok"
+    assert result.row_count == 10
+
+
+@pytest.mark.unit
+def test_list_financial_concepts_blank_keyword_is_invalid(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    result = server.list_financial_concepts(conn, "FIRM-001", keyword="")
+    assert result.status == "invalid_input"
+
+
 # --- get_financial_fact -------------------------------------------------------
 
 
@@ -190,6 +267,27 @@ def test_get_financial_fact_unavailable(conn: duckdb.DuckDBPyConnection) -> None
     conn.close()
     result = server.get_financial_fact(conn, "FIRM-001", "revenue")
     assert result.status == "unavailable"
+
+
+@pytest.mark.unit
+def test_get_financial_fact_rows_carry_period_and_filing_fields(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    result = server.get_financial_fact(
+        conn, "FIRM-001", "revenue", fiscal_year=2024, fiscal_period="FY"
+    )
+    assert set(result.data[0]) == {
+        "fiscal_year",
+        "fiscal_period",
+        "period_start",
+        "period_end",
+        "concept",
+        "value",
+        "unit",
+        "form",
+        "filed",
+        "accession",
+    }
 
 
 # --- search_filings ------------------------------------------------------------
@@ -243,6 +341,14 @@ def test_search_filings_unavailable(conn: duckdb.DuckDBPyConnection) -> None:
     conn.close()
     result = server.search_filings(conn, "FIRM-001")
     assert result.status == "unavailable"
+
+
+@pytest.mark.unit
+def test_search_filings_accepts_wider_form_types(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    result = server.search_filings(conn, "FIRM-001", form_type="DEF 14A")
+    assert result.status == "empty"
 
 
 # --- TIMEOUT_S enforcement (mechanism-level, not per tool) -------------------
