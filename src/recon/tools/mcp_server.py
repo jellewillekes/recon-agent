@@ -17,9 +17,10 @@ from typing import Any, Literal
 import duckdb
 from mcp.server.fastmcp import FastMCP
 
-from recon.tools.fixtures import seed
+from recon.tools.data_source import open_tool_data
 from recon.tools.review_flag import flag_case_for_review
 from recon.tools.server import (
+    FormType,
     get_financial_fact,
     list_companies,
     list_financial_concepts,
@@ -59,36 +60,38 @@ def build_server(conn: duckdb.DuckDBPyConnection) -> FastMCP:
     """Wire the tool functions in `server.py` to an `MCPServer` bound to `conn`."""
     server = FastMCP(name="recon-tools")
 
-    @server.tool()
-    def list_companies_tool(sector: str | None = None) -> dict[str, Any]:
-        """List known companies, optionally filtered by sector."""
-        return list_companies(conn, sector).model_dump()
+    # Each tool's description is the full docstring of the function it wraps
+    # in server.py - that's the guidance the model actually reads.
+    @server.tool(description=list_companies.__doc__)
+    def list_companies_tool(
+        sector: str | None = None, query: str | None = None
+    ) -> dict[str, Any]:
+        return list_companies(conn, sector, query).model_dump()
 
-    @server.tool()
-    def list_financial_concepts_tool(company_id: str) -> dict[str, Any]:
-        """List which financial concepts exist for a company."""
-        return list_financial_concepts(conn, company_id).model_dump()
+    @server.tool(description=list_financial_concepts.__doc__)
+    def list_financial_concepts_tool(
+        company_id: str, keyword: str | None = None
+    ) -> dict[str, Any]:
+        return list_financial_concepts(conn, company_id, keyword).model_dump()
 
-    @server.tool()
+    @server.tool(description=get_financial_fact.__doc__)
     def get_financial_fact_tool(
         company_id: str,
         concept: str,
         fiscal_year: int | None = None,
         fiscal_period: Literal["FY", "Q1", "Q2", "Q3", "Q4"] | None = None,
     ) -> dict[str, Any]:
-        """Look up a financial concept's value for a company."""
         return get_financial_fact(
             conn, company_id, concept, fiscal_year, fiscal_period
         ).model_dump()
 
-    @server.tool()
+    @server.tool(description=search_filings.__doc__)
     def search_filings_tool(
         company_id: str,
         keyword: str | None = None,
-        form_type: Literal["10-K", "10-Q", "8-K"] | None = None,
+        form_type: FormType | None = None,
         fiscal_year: int | None = None,
     ) -> dict[str, Any]:
-        """Search filing summaries for a company."""
         return search_filings(
             conn, company_id, keyword, form_type, fiscal_year
         ).model_dump()
@@ -121,8 +124,7 @@ def build_server(conn: duckdb.DuckDBPyConnection) -> FastMCP:
 
 
 def main() -> None:
-    conn = duckdb.connect(":memory:")
-    seed(conn)
+    conn = open_tool_data()
     server = build_server(conn)
     server.run()
 

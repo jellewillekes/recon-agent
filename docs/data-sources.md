@@ -65,15 +65,48 @@ against what's actually available to us (e.g. local SEC filing data, DuckDB tabl
 populate ourselves), not assumed from this dataset's `context`, which is sparse by
 design.
 
-## Step 3's tool data: synthetic fixture, not real filings
+## Tool data: SEC EDGAR XBRL facts
 
-`src/recon/tools/fixtures.py` seeds three tables (`companies`, `financial_facts`,
-`filings`) into an in-memory DuckDB connection at server startup. Every company,
-fact, and filing summary in it is fictional — it exists to exercise the
-`ToolResult` contract end to end, not to answer finance-agent-bench questions
-correctly. Tool answers against the real benchmark stay near-zero until a real
-data source replaces or extends this fixture; that's tracked as its own,
-separate GitHub issue (fetching structured XBRL facts from SEC EDGAR's public
-API for the tickers the 50 questions actually reference). Qualitative
-questions — board membership, KPI narratives — stay out of reach regardless,
-until step 13 (RAG) exists.
+The MCP tools query structured financial-statement data from SEC EDGAR
+(issues #58 and #59, `docs/adr/0015-sec-edgar-fact-derivation.md`).
+
+- **Source**: SEC EDGAR's public APIs: `company_tickers.json`,
+  `submissions/CIK##########.json` and `api/xbrl/companyfacts/CIK##########.json`.
+- **License**: US government work, not subject to copyright. SEC asks for fair access:
+  at most 10 requests/second and a contact User-Agent, which is read from
+  `SEC_EDGAR_USER_AGENT` and never committed.
+- **Snapshot**: `recon.cli edgar fetch` writes raw JSON to
+  `data/raw/sec_edgar/<fetch date>/` and Parquet tables (`companies`, `concepts`,
+  `financial_facts`, `filings`) to `data/processed/sec_edgar/<fetch date>/`, each with a
+  `manifest.json`. The tools load the latest snapshot. Everything under `data/` is
+  gitignored.
+- **Cutoff**: `filed_cutoff` in `config/sec_edgar.yaml`. Nothing filed after it is kept.
+- **Companies**: listed in gitignored tickers files, never committed (CLAUDE.md).
+  `edgar fetch --from-dataset` derives one from the questions for review. Several files
+  can be merged with a repeated `--tickers-file`.
+
+### What it can and can't answer
+
+`companyfacts` has only standard-taxonomy, non-dimensional facts. That covers
+statement line items (revenue, costs, cash flows, balance-sheet items, share counts,
+tax rates), which is roughly 10–14 of the 50 finance-agent-bench questions. It
+doesn't cover:
+
+- management guidance, which all Beat or Miss questions need (it's in 8-K press
+  release text)
+- company-specific operating metrics (bookings, take rates, per-user figures)
+- segment, regional or share-class breakdowns
+- any document text (qualitative and market-analysis questions)
+
+Those need document retrieval, which is step 13 (#18). `search_filings` lists 8-K
+earnings releases (item 2.02) but can't read them.
+
+## Synthetic fixture
+
+`src/recon/tools/fixtures.py` seeds fictional companies, facts and filings into the same
+schema as the EDGAR tables. It exists to exercise every `ToolResult` status in tests,
+and `tests/conftest.py` points every test at it. `RECON_TOOL_DATA=fixture` also selects
+it at runtime. The container image does this, because it carries no EDGAR cache
+(`docs/deployment.md`). `RECON_TOOL_DATA` defaults to `edgar`, and a missing cache is
+an error rather than a silent fallback, so an evaluation can't score against fake data
+without anyone noticing.

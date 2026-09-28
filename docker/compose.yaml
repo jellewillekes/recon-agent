@@ -62,6 +62,8 @@ services:
       DATABASE_URL: postgresql://recon:${POSTGRES_PASSWORD:?set it in docker/.env - see docker/.env.example}@postgres:5432/recon
       RECON_API_MAX_CONCURRENCY: "4"
       RECON_API_REQUEST_TIMEOUT_S: "120"
+      # No EDGAR cache in the image (docs/deployment.md).
+      RECON_TOOL_DATA: fixture
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
     ports:
       - "8000:8000"

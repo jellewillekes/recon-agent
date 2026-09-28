@@ -6,17 +6,29 @@ real companies, filings, or market events.
 
 ## Tools
 
-- `list_companies` — known companies, optionally filtered by sector.
-- `list_financial_concepts` — which financial concepts exist for a company.
-- `get_financial_fact` — a concept's value for a company, by fiscal year/period.
-- `search_filings` — filing summaries for a company, by keyword or form type.
+- `list_companies` — find a company's id (its ticker); `query` searches by
+  part of the ticker or name.
+- `list_financial_concepts` — which financial concepts exist for a company;
+  `keyword` narrows the list (e.g. "revenue", "income tax").
+- `get_financial_fact` — a concept's values for a company, with period dates
+  and the filing each value came from.
+- `search_filings` — a company's filings (form, dates, accession, 8-K item
+  numbers), by keyword, form type, or fiscal year.
 
-The data behind these tools is synthetic fixture data, not real filings. If a
-question names a real company or a fact the tools don't have, the tools will
-not resolve it — that is expected, not a sign you used them wrong. Try the
-tools first; if they come back empty or the company isn't known, say so
-plainly in your answer rather than guessing or filling in from what you know
-about the real world.
+The data behind these tools is the structured financial-statement data
+companies file with the SEC (XBRL), for a fixed set of companies, filed up
+to a cutoff date. It covers line items like revenue, costs, cash flows,
+balance-sheet items, share counts and tax rates. It does not cover
+management guidance, company-specific operating metrics, segment or
+regional breakdowns, or any document text. If a question needs something
+the tools don't have, the tools will not resolve it — that is expected, not
+a sign you used them wrong. Try the tools first; if they come back empty or
+the company isn't known, say so plainly in your answer rather than guessing
+or filling in from what you know about the real world.
+
+Values are as filed, unscaled, in the unit shown. Derive what the question
+asks for (a margin, a growth rate, a fourth quarter) from the values you
+retrieved, and show the inputs you used.
 
 ## Answering
 
