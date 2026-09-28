@@ -1,5 +1,5 @@
 """Production semantics from issue #13, part 2/3: retry with backoff and
-jitter, a per-connection circuit breaker (`tools/server.py`), and per-run
+jitter, a per-connection circuit breaker (`tools/execution.py`), and per-run
 budgets on tool calls, tokens, and wall-clock time (`runtimes/agent_sdk.py`,
 `runtimes/multi_agent.py`).
 
@@ -24,7 +24,7 @@ from claude_agent_sdk import (
 
 from recon.contracts import Case
 from recon.runtimes import agent_sdk, multi_agent
-from recon.tools import fixtures, server
+from recon.tools import execution, fixtures, server
 
 CASE = Case(
     case_id="finance-agent-bench:abc123",
@@ -48,7 +48,7 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-# --- circuit breaker / retry (tools/server.py) ------------------------------
+# --- circuit breaker / retry (tools/execution.py) ---------------------------
 
 
 @pytest.fixture
@@ -106,7 +106,7 @@ def test_retry_exhausted_returns_unavailable_not_the_breaker_message(
     result = server.list_companies(flaky, sector="Industrials")  # type: ignore[arg-type]
 
     assert result.status == "unavailable"
-    assert flaky.attempts == server._MAX_ATTEMPTS
+    assert flaky.attempts == execution._MAX_ATTEMPTS
     assert "circuit breaker" not in result.message
 
 
@@ -116,7 +116,7 @@ def test_circuit_breaker_opens_after_three_consecutive_failing_calls(
 ) -> None:
     flaky = _FlakyConnection(conn, fail_count=10_000)  # always fails
 
-    for _ in range(server._BREAKER_THRESHOLD):
+    for _ in range(execution._BREAKER_THRESHOLD):
         result = server.list_companies(flaky, sector="Industrials")  # type: ignore[arg-type]
         assert result.status == "unavailable"
 
@@ -133,15 +133,15 @@ def test_circuit_breaker_opens_after_three_consecutive_failing_calls(
 def test_circuit_breaker_closes_after_cooldown_and_a_successful_probe(
     conn: duckdb.DuckDBPyConnection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(server, "_BREAKER_COOLDOWN_S", 0.01)
+    monkeypatch.setattr(execution, "_BREAKER_COOLDOWN_S", 0.01)
     # Each of the _BREAKER_THRESHOLD calls below retries up to _MAX_ATTEMPTS
     # times before giving up - enough failures to exhaust all of them, then
     # succeed on the cooldown probe.
     flaky = _FlakyConnection(
-        conn, fail_count=server._BREAKER_THRESHOLD * server._MAX_ATTEMPTS
+        conn, fail_count=execution._BREAKER_THRESHOLD * execution._MAX_ATTEMPTS
     )
 
-    for _ in range(server._BREAKER_THRESHOLD):
+    for _ in range(execution._BREAKER_THRESHOLD):
         result = server.list_companies(flaky, sector="Industrials")  # type: ignore[arg-type]
         assert result.status == "unavailable"
     result = server.list_companies(flaky, sector="Industrials")  # type: ignore[arg-type]
@@ -189,7 +189,7 @@ def test_timeout_is_not_retried(
     `duckdb.Error`, it is never retried within `_MAX_ATTEMPTS`, since it
     already spent the full (here, monkeypatched-tiny) `TIMEOUT_S` once.
     """
-    monkeypatch.setattr(server, "TIMEOUT_S", 0.01)
+    monkeypatch.setattr(execution, "TIMEOUT_S", 0.01)
     slow = _SlowConnection(conn, delay_s=0.2)
 
     result = server.list_companies(slow, sector="Industrials")  # type: ignore[arg-type]
@@ -206,19 +206,19 @@ def test_circuit_breaker_opens_after_three_consecutive_timeouts_not_nine(
     `_BREAKER_THRESHOLD * _MAX_ATTEMPTS` (9) attempts to open the breaker;
     now it takes exactly `_BREAKER_THRESHOLD` (3), one per call.
     """
-    monkeypatch.setattr(server, "TIMEOUT_S", 0.01)
+    monkeypatch.setattr(execution, "TIMEOUT_S", 0.01)
     slow = _SlowConnection(conn, delay_s=0.2)
 
-    for _ in range(server._BREAKER_THRESHOLD):
+    for _ in range(execution._BREAKER_THRESHOLD):
         result = server.list_companies(slow, sector="Industrials")  # type: ignore[arg-type]
         assert result.status == "unavailable"
 
-    assert slow.attempts == server._BREAKER_THRESHOLD
+    assert slow.attempts == execution._BREAKER_THRESHOLD
 
     fourth = server.list_companies(slow, sector="Industrials")  # type: ignore[arg-type]
     assert "circuit breaker" in fourth.message
     # No new attempt was made - the breaker short-circuited before querying.
-    assert slow.attempts == server._BREAKER_THRESHOLD
+    assert slow.attempts == execution._BREAKER_THRESHOLD
 
 
 # --- run budgets (runtimes/agent_sdk.py, runtimes/multi_agent.py) ----------

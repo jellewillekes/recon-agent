@@ -56,9 +56,8 @@ async def _call_flag_case_for_review(
     return result.model_dump(mode="json")
 
 
-def build_server(conn: duckdb.DuckDBPyConnection) -> FastMCP:
-    """Wire the tool functions in `server.py` to an `MCPServer` bound to `conn`."""
-    server = FastMCP(name="recon-tools")
+def _register_read_tools(server: FastMCP, conn: duckdb.DuckDBPyConnection) -> None:
+    """The four read-only tools in `server.py`, bound to `conn`."""
 
     # Each tool's description is the full docstring of the function it wraps
     # in server.py - that's the guidance the model actually reads.
@@ -96,6 +95,10 @@ def build_server(conn: duckdb.DuckDBPyConnection) -> FastMCP:
             conn, company_id, keyword, form_type, fiscal_year
         ).model_dump()
 
+
+def _register_write_tool(server: FastMCP) -> None:
+    """The write path in `review_flag.py`, which needs no DuckDB connection."""
+
     @server.tool()
     async def flag_case_for_review_tool(
         case_id: str,
@@ -120,6 +123,12 @@ def build_server(conn: duckdb.DuckDBPyConnection) -> FastMCP:
             case_id, reason, idempotency_key, dry_run, confirmed, preview_token
         )
 
+
+def build_server(conn: duckdb.DuckDBPyConnection) -> FastMCP:
+    """Wire the tool functions in `server.py` to an `MCPServer` bound to `conn`."""
+    server = FastMCP(name="recon-tools")
+    _register_read_tools(server, conn)
+    _register_write_tool(server)
     return server
 
 
