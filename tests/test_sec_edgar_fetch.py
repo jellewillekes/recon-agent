@@ -254,3 +254,38 @@ def test_fetch_company_tickers_reuses_same_day_cache(tmp_path: Path) -> None:
     sec_edgar.fetch_company_tickers(edgar, tmp_path, today)
 
     assert requested == [sec_edgar.TICKERS_URL]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "name",
+    [
+        "../../escape.json",
+        "sub/CIK0001234567-submissions-001.json",
+        "CIK0001234567-submissions-001.json/../x.json",
+        "CIK9999999999-submissions-001.json",  # another company's page
+        "CIK0001234567-submissions-001.txt",
+    ],
+)
+def test_unexpected_submissions_page_names_are_refused(
+    tmp_path: Path, name: str
+) -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        return httpx.Response(
+            200, json={"filings": {"recent": {}, "files": [{"name": name}]}}
+        )
+
+    with pytest.raises(ValueError, match="unexpected submissions page"):
+        sec_edgar.fetch_company(_edgar(handler), CIK, tmp_path)
+    assert len(requested) == 1  # only the main file; the bad page is never requested
+    assert sorted(p.name for p in tmp_path.rglob("*") if p.is_file()) == [MAIN]
+
+
+@pytest.mark.unit
+def test_submissions_page_path_accepts_sec_naming(tmp_path: Path) -> None:
+    assert sec_edgar.submissions_page_path(tmp_path, CIK, PAGE) == (
+        tmp_path / "submissions" / PAGE
+    )

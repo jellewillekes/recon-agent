@@ -351,3 +351,17 @@ def test_failed_rebuild_keeps_the_previous_snapshot(
     assert {p.name: p.read_bytes() for p in out.iterdir()} == before
     assert [p.name for p in out.parent.iterdir()] == ["20260928"]
     assert store.latest_snapshot(out.parent) == out
+
+
+@pytest.mark.unit
+def test_normalize_refuses_an_unexpected_cached_page_name(tmp_path: Path) -> None:
+    snapshot = _write_snapshot(tmp_path)
+    main_path = snapshot / "submissions" / f"CIK{CIK:010d}.json"
+    main = json.loads(main_path.read_text())
+    main["filings"]["files"] = [{"name": "../../outside.json"}]
+    main_path.write_text(json.dumps(main))
+
+    with pytest.raises(ValueError, match="unexpected submissions page"):
+        normalize.normalize_snapshot(
+            snapshot, {TICKER: CIK}, CONFIG, tmp_path / "processed" / "20260928"
+        )

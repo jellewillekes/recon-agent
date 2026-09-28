@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 from collections.abc import Callable
@@ -188,6 +189,27 @@ def fetch_company_tickers(
     return dest
 
 
+_PAGE_NAME_RE = re.compile(r"CIK(\d{10})-submissions-\d{3}\.json")
+
+
+def submissions_page_path(snapshot_dir: Path, cik: int, name: str) -> Path:
+    """Where an older submissions page listed by SEC is cached.
+
+    `name` comes from SEC's own response and becomes both a request URL and
+    a local path, so it must match SEC's page naming exactly, for this CIK.
+    Anything else is refused rather than written or read.
+    """
+    match = _PAGE_NAME_RE.fullmatch(name)
+    if match is None or int(match.group(1)) != cik:
+        raise ValueError(
+            f"SEC listed an unexpected submissions page {name!r} for CIK {cik}. "
+            f"Expected CIK{cik:010d}-submissions-NNN.json. Delete the cached "
+            "submissions file for this CIK and fetch again. If it recurs, SEC's "
+            "format changed and the pattern here needs updating."
+        )
+    return snapshot_dir / "submissions" / name
+
+
 def _fetch_submissions(edgar: EdgarClient, cik: int, snapshot_dir: Path) -> list[str]:
     """The main submissions file plus the older pages it lists."""
     main_name = f"CIK{cik:010d}.json"
@@ -198,7 +220,7 @@ def _fetch_submissions(edgar: EdgarClient, cik: int, snapshot_dir: Path) -> list
     payload = json.loads(main_dest.read_bytes())
     for page in payload.get("filings", {}).get("files", []):
         name = page["name"]
-        dest = snapshot_dir / "submissions" / name
+        dest = submissions_page_path(snapshot_dir, cik, name)
         if fetch_to(edgar, SUBMISSIONS_URL.format(name=name), dest):
             fetched.append(name)
     return fetched

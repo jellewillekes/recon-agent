@@ -23,7 +23,12 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from recon.adapters.sec_edgar import MANIFEST_FILENAME, EdgarConfig, atomic_write
+from recon.adapters.sec_edgar import (
+    MANIFEST_FILENAME,
+    EdgarConfig,
+    atomic_write,
+    submissions_page_path,
+)
 from recon.adapters.sec_edgar_store import write_parquet
 
 _YEAR_DAYS = range(350, 381)
@@ -88,7 +93,7 @@ def _filing_arrays(snapshot_dir: Path, cik: int) -> Iterator[dict[str, Any]]:
     main = _load_json(main_path)
     pages = [main["filings"]["recent"]]
     for page in main["filings"].get("files", []):
-        page_path = snapshot_dir / "submissions" / page["name"]
+        page_path = submissions_page_path(snapshot_dir, cik, page["name"])
         if page_path.exists():
             pages.append(_load_json(page_path))
     for arrays in pages:
