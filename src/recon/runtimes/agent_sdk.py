@@ -179,6 +179,20 @@ def _load_run_budget(config: dict[str, Any]) -> RunBudget:
     )
 
 
+# Every Agent SDK session in this project runs isolated from the machine it
+# runs on. Without this the CLI loads the user's and the repo's settings
+# (including CLAUDE.md), the skills listing, and every claude.ai connector
+# and user-level MCP server on the account. Measured: 116k context tokens per
+# turn, almost all foreign tool definitions (mail, notes), versus 4.7k
+# isolated. Those tools were also visible to the agent, which widens what a
+# prompt injection could aim at. See docs/adr/0016-isolated-agent-sdk-sessions.md.
+ISOLATED_SESSION: dict[str, Any] = {
+    "setting_sources": [],
+    "strict_mcp_config": True,
+    "skills": [],
+}
+
+
 def _build_options(
     models_config_path: Path, prompt_path: Path
 ) -> tuple[ClaudeAgentOptions, float, RunBudget]:
@@ -205,6 +219,7 @@ def _build_options(
         },
         allowed_tools=ALLOWED_TOOLS,
         output_format=_ANSWER_SCHEMA,
+        **ISOLATED_SESSION,
     )
     return options, float(config["usd_to_eur_rate"]), _load_run_budget(config)
 
