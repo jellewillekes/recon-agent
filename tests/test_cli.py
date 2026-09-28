@@ -10,6 +10,7 @@ a model, or the real `data/` directories.
 import json
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Self
 
 import pytest
 
@@ -252,7 +253,7 @@ def test_cmd_eval_gate_failure_exits_nonzero(
 class _FakeHttpClient:
     """Stands in for the `httpx.Client` `with` block in `_cmd_edgar_fetch`."""
 
-    def __enter__(self) -> "_FakeHttpClient":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -393,10 +394,10 @@ def test_cmd_edgar_stats_prints_snapshot_summary(
         encoding="utf-8",
     )
     monkeypatch.setattr(
-        cli.sec_edgar_normalize, "latest_snapshot", lambda base: snapshot_dir
+        cli.sec_edgar_store, "latest_snapshot", lambda base: snapshot_dir
     )
     monkeypatch.setattr(
-        cli.sec_edgar_normalize,
+        cli.sec_edgar_store,
         "company_stats",
         lambda directory: [("ABC", 10, 2), ("XYZ", 0, 1)],
     )
@@ -411,3 +412,51 @@ def test_cmd_edgar_stats_prints_snapshot_summary(
     assert "snapshot: 20260928" in out
     assert "cutoff: 2025-04-07" in out
     assert "XYZ" in out and "no XBRL facts" in out
+
+
+@pytest.mark.unit
+def test_cmd_edgar_fetch_merges_repeated_tickers_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_edgar_client_setup(monkeypatch)
+    monkeypatch.setattr(cli.sec_edgar, "snapshot_id", lambda: "20260928")
+    monkeypatch.setattr(
+        cli.sec_edgar, "fetch_company", lambda edgar, cik, snapshot_dir: {}
+    )
+    monkeypatch.setattr(cli.sec_edgar, "write_manifest", lambda *a: tmp_path)
+    fetched: dict[str, object] = {}
+    monkeypatch.setattr(
+        cli.sec_edgar_normalize,
+        "normalize_snapshot",
+        lambda snapshot_dir, tickers, config, out_dir: fetched.update(tickers) or {},
+    )
+    first, second = tmp_path / "a.txt", tmp_path / "b.txt"
+    first.write_text("ABC\t1\n", encoding="utf-8")
+    second.write_text("XYZ\t2\n", encoding="utf-8")
+
+    args = build_parser().parse_args(
+        ["edgar", "fetch", "--tickers-file", str(first), "--tickers-file", str(second)]
+    )
+    args.func(args)
+
+    assert fetched == {"ABC": 1, "XYZ": 2}
+
+
+@pytest.mark.unit
+def test_cmd_edgar_fetch_from_dataset_needs_exactly_one_tickers_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_edgar_client_setup(monkeypatch)
+    args = build_parser().parse_args(
+        [
+            "edgar",
+            "fetch",
+            "--from-dataset",
+            "--tickers-file",
+            "a",
+            "--tickers-file",
+            "b",
+        ]
+    )
+    with pytest.raises(SystemExit, match="exactly one"):
+        args.func(args)

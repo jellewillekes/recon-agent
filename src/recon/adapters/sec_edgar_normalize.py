@@ -13,19 +13,18 @@ Tables, one Parquet file each under `<processed_dir>/<snapshot>/`:
 - `filings`: filing metadata for the forms listed in the config
 """
 
-import csv
 import json
 import os
+import shutil
 import tempfile
 from collections import defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-import duckdb
-
 from recon.adapters.sec_edgar import MANIFEST_FILENAME, EdgarConfig, atomic_write
+from recon.adapters.sec_edgar_store import write_parquet
 
 _YEAR_DAYS = range(350, 381)
 _QUARTER_DAYS = range(80, 101)
@@ -257,49 +256,13 @@ def _company_row(company_id: str, cik: int, snapshot_dir: Path) -> tuple[Any, ..
     )
 
 
-def _write_parquet(
-    rows: Iterable[tuple[Any, ...]], columns: dict[str, str], dest: Path
-) -> int:
-    """Stage `rows` as CSV, then have DuckDB type and write them as Parquet.
-
-    DuckDB's own CSV reader is far faster than row-by-row inserts for the
-    millions of facts a full snapshot holds. Written to a temp file first,
-    then renamed, like every other cache write.
-    """
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    fd, csv_name = tempfile.mkstemp(dir=dest.parent, suffix=".csv")
-    tmp_parquet = f"{dest}.tmp"
-    try:
-        count = 0
-        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(columns)
-            for row in rows:
-                writer.writerow(["" if v is None else v for v in row])
-                count += 1
-        column_spec = ", ".join(f"'{name}': '{kind}'" for name, kind in columns.items())
-        csv_sql = csv_name.replace("'", "''")
-        out_sql = tmp_parquet.replace("'", "''")
-        duckdb.execute(
-            f"COPY (SELECT * FROM read_csv('{csv_sql}', header=true, "
-            f"columns={{{column_spec}}}, nullstr='')) TO '{out_sql}' (FORMAT parquet)"
-        )
-        os.replace(tmp_parquet, dest)
-        return count
-    finally:
-        os.unlink(csv_name)
-        if os.path.exists(tmp_parquet):
-            os.unlink(tmp_parquet)
-
-
-def normalize_snapshot(
+def _build_tables(
     snapshot_dir: Path,
     tickers: dict[str, int],
     config: EdgarConfig,
     out_dir: Path,
 ) -> dict[str, int]:
-    """Build the four Parquet tables for `tickers`. Returns row counts per table,
-    which also go to `out_dir/manifest.json` with the raw manifest."""
+    """Write the four Parquet tables and the manifest into `out_dir`."""
     companies: list[tuple[Any, ...]] = []
     concepts: list[tuple[Any, ...]] = []
     filings: list[tuple[Any, ...]] = []
@@ -323,22 +286,48 @@ def normalize_snapshot(
             )
             yield from company_facts
 
-    fact_count = _write_parquet(
+    fact_count = write_parquet(
         facts(), _FACTS_COLUMNS, out_dir / "financial_facts.parquet"
     )
     counts = {
-        "companies": _write_parquet(
+        "companies": write_parquet(
             companies, _COMPANIES_COLUMNS, out_dir / "companies.parquet"
         ),
-        "concepts": _write_parquet(
+        "concepts": write_parquet(
             concepts, _CONCEPTS_COLUMNS, out_dir / "concepts.parquet"
         ),
         "financial_facts": fact_count,
-        "filings": _write_parquet(
+        "filings": write_parquet(
             filings, _FILINGS_COLUMNS, out_dir / "filings.parquet"
         ),
     }
     _write_processed_manifest(snapshot_dir, out_dir, config, counts)
+    return counts
+
+
+def normalize_snapshot(
+    snapshot_dir: Path,
+    tickers: dict[str, int],
+    config: EdgarConfig,
+    out_dir: Path,
+) -> dict[str, int]:
+    """Build the four Parquet tables for `tickers`. Returns row counts per table,
+    which also go to `out_dir/manifest.json` with the raw manifest.
+
+    Built in a hidden sibling directory and swapped in only once every table
+    and the manifest exist. A crash midway leaves the previous snapshot
+    intact, instead of new tables mixed with old ones under a stale manifest.
+    """
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    building = Path(tempfile.mkdtemp(dir=out_dir.parent, prefix=f".{out_dir.name}-"))
+    try:
+        counts = _build_tables(snapshot_dir, tickers, config, building)
+        if out_dir.exists():
+            shutil.rmtree(out_dir)
+        os.replace(building, out_dir)
+    except BaseException:
+        shutil.rmtree(building, ignore_errors=True)
+        raise
     return counts
 
 
@@ -355,33 +344,3 @@ def _write_processed_manifest(
     atomic_write(
         out_dir / MANIFEST_FILENAME, json.dumps(manifest, indent=2).encode("utf-8")
     )
-
-
-def latest_snapshot(processed_dir: Path) -> Path:
-    """The most recent normalized snapshot directory."""
-    candidates = sorted(
-        p for p in processed_dir.glob("*") if (p / MANIFEST_FILENAME).exists()
-    )
-    if not candidates:
-        raise FileNotFoundError(
-            f"No normalized SEC EDGAR snapshot under {processed_dir}. Run "
-            "`recon.cli edgar fetch` first."
-        )
-    return candidates[-1]
-
-
-def company_stats(snapshot_dir: Path) -> list[tuple[str, int, int]]:
-    """(company_id, fact count, filing count) per company in a snapshot."""
-    path = str(snapshot_dir).replace("'", "''")
-    rows = duckdb.execute(
-        f"""
-        SELECT c.company_id,
-               (SELECT count(*) FROM read_parquet('{path}/financial_facts.parquet') f
-                WHERE f.company_id = c.company_id),
-               (SELECT count(*) FROM read_parquet('{path}/filings.parquet') g
-                WHERE g.company_id = c.company_id)
-        FROM read_parquet('{path}/companies.parquet') c
-        ORDER BY c.company_id
-        """
-    ).fetchall()
-    return [(str(r[0]), int(r[1]), int(r[2])) for r in rows]

@@ -15,6 +15,7 @@ import duckdb
 import pytest
 
 from recon.adapters import sec_edgar_normalize as normalize
+from recon.adapters import sec_edgar_store as store
 from recon.adapters.sec_edgar import EdgarConfig
 
 CIK = 1234567
@@ -296,7 +297,7 @@ def test_company_without_xbrl_facts_still_gets_a_row(tmp_path: Path) -> None:
     snapshot = _write_snapshot(tmp_path, with_facts=False)
     counts = normalize.normalize_snapshot(snapshot, {TICKER: CIK}, CONFIG, out)
     assert (counts["companies"], counts["financial_facts"]) == (1, 0)
-    assert normalize.company_stats(out) == [(TICKER, 0, 5)]
+    assert store.company_stats(out) == [(TICKER, 0, 5)]
 
 
 @pytest.mark.unit
@@ -305,10 +306,48 @@ def test_latest_snapshot(tmp_path: Path) -> None:
         (tmp_path / name).mkdir()
         (tmp_path / name / "manifest.json").write_text("{}")
     (tmp_path / "20261231").mkdir()  # no manifest: an interrupted build
-    assert normalize.latest_snapshot(tmp_path).name == "20260928"
+    assert store.latest_snapshot(tmp_path).name == "20260928"
 
 
 @pytest.mark.unit
 def test_latest_snapshot_missing_says_what_to_run(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="edgar fetch"):
-        normalize.latest_snapshot(tmp_path)
+        store.latest_snapshot(tmp_path)
+
+
+@pytest.mark.unit
+def test_parquet_writer_keeps_quotes_commas_and_newlines(tmp_path: Path) -> None:
+    # Real filing descriptions contain these, e.g. `8-K OF THE COMPANY ("EXWD")`.
+    # DuckDB's CSV sniffer once guessed the escape character wrong on them.
+    tricky = 'FORM 8-K OF THE COMPANY ("EXWD"), items 9\nsecond line'
+    rows = [("EXWD", tricky, 20241231)] + [("PAD", "plain", i) for i in range(50)]
+    dest = tmp_path / "t.parquet"
+    count = store.write_parquet(
+        rows, {"company_id": "VARCHAR", "text": "VARCHAR", "n": "BIGINT"}, dest
+    )
+    assert count == 51
+    row = duckdb.execute(
+        f"SELECT text FROM read_parquet('{dest}') WHERE company_id = 'EXWD'"
+    ).fetchone()
+    assert row is not None and row[0] == tricky
+
+
+@pytest.mark.unit
+def test_failed_rebuild_keeps_the_previous_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "processed" / "20260928"
+    snapshot = _write_snapshot(tmp_path)
+    normalize.normalize_snapshot(snapshot, {TICKER: CIK}, CONFIG, out)
+    before = {p.name: p.read_bytes() for p in out.iterdir()}
+
+    def broken_filing_rows(*args: object, **kwargs: object):
+        raise RuntimeError("malformed filing")
+
+    monkeypatch.setattr(normalize, "_filing_rows", broken_filing_rows)
+    with pytest.raises(RuntimeError, match="malformed filing"):
+        normalize.normalize_snapshot(snapshot, {TICKER: CIK}, CONFIG, out)
+
+    assert {p.name: p.read_bytes() for p in out.iterdir()} == before
+    assert [p.name for p in out.parent.iterdir()] == ["20260928"]
+    assert store.latest_snapshot(out.parent) == out

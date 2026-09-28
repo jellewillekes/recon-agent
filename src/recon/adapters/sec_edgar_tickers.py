@@ -29,8 +29,8 @@ _BARE_TOKEN_RE = re.compile(r"\b([A-Z]{2,5})\b")
 # Uppercase tokens in financial questions that are acronyms, not tickers.
 _NOT_TICKERS = frozenset(
     {
-        "ARPU", "BPS", "CAGR", "CEO", "CFO", "COGS", "CRM", "EBIT", "EBITDA", "EPS",
-        "FCF", "FY", "FYE", "GAAP", "GBV", "GEP", "HCM", "IFP", "KPI", "KPIS", "LTM",
+        "ARPU", "BEAT", "BPS", "CAGR", "CEO", "CFO", "COGS", "CRM", "EBIT", "EBITDA", "EPS",
+        "FCF", "FY", "FYE", "GAAP", "GBV", "GEP", "HCM", "IFP", "KPI", "KPIS", "LTM", "MISS",
         "NT", "PFS", "PFSS", "SEC", "TTM", "US", "USA", "USD", "YE", "YOY", "YTD",
     }
 )  # fmt: skip
@@ -59,6 +59,8 @@ class TickerMatch:
 
 
 def _words(text: str) -> list[str]:
+    # Drop possessives first, so "Name's" matches "Name" rather than "Names".
+    text = re.sub(r"['’]s\b", "", text)
     return re.findall(r"[A-Za-z0-9]+", text.replace("'", "").replace("’", ""))
 
 
@@ -75,9 +77,11 @@ def _capitalized_ngrams(question: str) -> set[tuple[str, ...]]:
     """Every run of up to `_MAX_NGRAM` words starting with a capital or digit.
 
     Requiring the capital keeps a registered name that is also an ordinary
-    word from matching lowercase prose.
+    word from matching lowercase prose. Exchange prefixes such as
+    `(EXCHANGE: TICK)` are removed first, so an exchange operator's own name
+    doesn't match every question that cites a listing.
     """
-    words = _words(question)
+    words = _words(_EXCHANGE_TICKER_RE.sub(" ", question))
     grams: set[tuple[str, ...]] = set()
     for i, word in enumerate(words):
         if not (word[0].isupper() or word[0].isdigit()):
@@ -197,3 +201,23 @@ def read_tickers_file(path: Path) -> dict[str, int]:
                 f"{path} line {line_number}: expected TICKER<TAB>CIK, got {line!r}."
             ) from exc
     return result
+
+
+def read_tickers_files(paths: list[Path]) -> dict[str, int]:
+    """Merge several reviewed tickers files. A ticker listed twice must agree.
+
+    One company can have several tickers (share classes). The first ticker
+    seen for a CIK wins, so each company is fetched and stored once.
+    """
+    merged: dict[str, int] = {}
+    for path in paths:
+        for ticker, cik in read_tickers_file(path).items():
+            if merged.setdefault(ticker, cik) != cik:
+                raise ValueError(
+                    f"{ticker} maps to CIK {merged[ticker]} in one tickers file and "
+                    f"{cik} in {path}. Fix whichever is wrong."
+                )
+    first_ticker: dict[int, str] = {}
+    for ticker, cik in merged.items():
+        first_ticker.setdefault(cik, ticker)
+    return {ticker: cik for cik, ticker in first_ticker.items()}

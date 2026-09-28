@@ -5,7 +5,12 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from recon.adapters import sec_edgar, sec_edgar_normalize, sec_edgar_tickers
+from recon.adapters import (
+    sec_edgar,
+    sec_edgar_normalize,
+    sec_edgar_store,
+    sec_edgar_tickers,
+)
 from recon.adapters.finance_agent_bench import (
     DEFAULT_CACHE_FILENAME,
     fetch_csv,
@@ -126,16 +131,23 @@ def _derive_tickers_file(
     )
 
 
+def _tickers_paths(args: argparse.Namespace) -> list[Path]:
+    paths: list[Path] | None = args.tickers_file
+    return paths or [sec_edgar.DEFAULT_RAW_DIR / sec_edgar.TICKERS_FILENAME]
+
+
 def _cmd_edgar_fetch(args: argparse.Namespace) -> None:
     config = sec_edgar.load_config(args.config)
     raw_dir = sec_edgar.DEFAULT_RAW_DIR
-    tickers_path = raw_dir / sec_edgar.TICKERS_FILENAME
+    tickers_paths = _tickers_paths(args)
     with sec_edgar.build_client(sec_edgar.user_agent_from_env()) as http:
         edgar = sec_edgar.EdgarClient(http, config.max_requests_per_second)
         if args.from_dataset:
-            _derive_tickers_file(edgar, args.path, tickers_path)
+            if len(tickers_paths) != 1:
+                raise SystemExit("--from-dataset writes exactly one --tickers-file.")
+            _derive_tickers_file(edgar, args.path, tickers_paths[0])
             return
-        tickers = sec_edgar_tickers.read_tickers_file(tickers_path)
+        tickers = sec_edgar_tickers.read_tickers_files(tickers_paths)
         snapshot = sec_edgar.snapshot_id()
         snapshot_dir = raw_dir / snapshot
         fetched: dict[str, dict[str, object]] = {}
@@ -154,22 +166,23 @@ def _cmd_edgar_fetch(args: argparse.Namespace) -> None:
 
 
 def _cmd_edgar_stats(args: argparse.Namespace) -> None:
-    snapshot_dir = sec_edgar_normalize.latest_snapshot(sec_edgar.DEFAULT_PROCESSED_DIR)
+    snapshot_dir = sec_edgar_store.latest_snapshot(sec_edgar.DEFAULT_PROCESSED_DIR)
     manifest = json.loads((snapshot_dir / sec_edgar.MANIFEST_FILENAME).read_text())
     print(f"snapshot: {snapshot_dir.name}  cutoff: {manifest['filed_cutoff']}")
     print(f"rows: {manifest['row_counts']}")
     print(f"{'company':<8} {'facts':>8} {'filings':>8}")
-    for company_id, facts, filings in sec_edgar_normalize.company_stats(snapshot_dir):
+    for company_id, facts, filings in sec_edgar_store.company_stats(snapshot_dir):
         flag = "  <- no XBRL facts" if facts == 0 else ""
         print(f"{company_id:<8} {facts:>8} {filings:>8}{flag}")
-    tickers_path = sec_edgar.DEFAULT_RAW_DIR / sec_edgar.TICKERS_FILENAME
-    if tickers_path.exists():
+    for tickers_path in _tickers_paths(args):
+        if not tickers_path.exists():
+            continue
         unmatched = [
             line.removeprefix("# unmatched: ")
             for line in tickers_path.read_text(encoding="utf-8").splitlines()
             if line.startswith("# unmatched: ")
         ]
-        print(f"cases with no matched company: {len(unmatched)}")
+        print(f"{tickers_path}: {len(unmatched)} cases with no matched company")
         for case_id in unmatched:
             print(f"  {case_id}")
 
@@ -202,11 +215,19 @@ def _add_edgar_parser(
     fetch_parser.add_argument(
         "--config", type=Path, default=sec_edgar.DEFAULT_CONFIG_PATH
     )
-    fetch_parser.set_defaults(func=_cmd_edgar_fetch)
-
     stats_parser = edgar_sub.add_parser(
         "stats", help="Row counts per company in the latest snapshot."
     )
+    for sub in (fetch_parser, stats_parser):
+        sub.add_argument(
+            "--tickers-file",
+            type=Path,
+            action="append",
+            help="Tickers file to read (repeatable; companies are merged) or, "
+            "with --from-dataset, to write. Default: "
+            f"{sec_edgar.DEFAULT_RAW_DIR / sec_edgar.TICKERS_FILENAME}.",
+        )
+    fetch_parser.set_defaults(func=_cmd_edgar_fetch)
     stats_parser.set_defaults(func=_cmd_edgar_stats)
 
 

@@ -121,3 +121,52 @@ def test_malformed_row_names_the_line(tmp_path: Path) -> None:
 def test_missing_file_says_how_to_create_it(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="--from-dataset"):
         tickers.read_tickers_file(tmp_path / "tickers.txt")
+
+
+@pytest.mark.unit
+def test_tickers_files_are_merged(tmp_path: Path) -> None:
+    first, second = tmp_path / "a.txt", tmp_path / "b.txt"
+    first.write_text("ABCD\t42\nEFGH\t43\n", encoding="utf-8")
+    second.write_text("EFGH\t43\nIJKL\t44\n", encoding="utf-8")
+    assert tickers.read_tickers_files([first, second]) == {
+        "ABCD": 42,
+        "EFGH": 43,
+        "IJKL": 44,
+    }
+
+
+@pytest.mark.unit
+def test_conflicting_ciks_across_files_are_rejected(tmp_path: Path) -> None:
+    first, second = tmp_path / "a.txt", tmp_path / "b.txt"
+    first.write_text("ABCD\t42\n", encoding="utf-8")
+    second.write_text("ABCD\t99\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="ABCD"):
+        tickers.read_tickers_files([first, second])
+
+
+@pytest.mark.unit
+def test_possessive_name_matches() -> None:
+    assert 1001 in _derive("What was Example Widgets's margin?")
+    assert 1001 in _derive("What was Example Widgets’s margin?")
+
+
+@pytest.mark.unit
+def test_exchange_prefix_is_not_a_name_match() -> None:
+    exchange = [("XCHG", 2001, "Nasdaq, Inc.")]
+    cases = [_case("Revenue at the firm (NASDAQ: EXWD)?", "c0")]
+    assert tickers.derive_tickers(cases, COMPANY_TICKERS + exchange).keys() == {1001}
+
+
+@pytest.mark.unit
+def test_beat_or_miss_is_not_a_ticker() -> None:
+    beat = [("BEAT", 2002, "Heart Monitor Co")]
+    cases = [_case("Did it BEAT or MISS guidance?", "c0")]
+    assert tickers.derive_tickers(cases, COMPANY_TICKERS + beat) == {}
+
+
+@pytest.mark.unit
+def test_share_classes_of_one_company_are_merged(tmp_path: Path) -> None:
+    first, second = tmp_path / "a.txt", tmp_path / "b.txt"
+    first.write_text("ABCA\t42\n", encoding="utf-8")
+    second.write_text("ABCB\t42\nEFGH\t43\n", encoding="utf-8")
+    assert tickers.read_tickers_files([first, second]) == {"ABCA": 42, "EFGH": 43}
