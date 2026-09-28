@@ -1,9 +1,13 @@
 """Tests for `eval/metrics.py` — pure, no-LLM per-case metrics."""
 
+from typing import get_args
+
 import pytest
 
-from recon.contracts import AgentResult, Case, ToolCall
+from recon.contracts import AgentResult, Case, ReviewFlagResult, ToolCall, ToolResult
 from recon.eval import metrics
+
+UNUSABLE_STATUSES = frozenset({"invalid_input", "unavailable"})
 
 CASE_NO_EXPECTED_PATH = Case(
     case_id="finance-agent-bench:abc123",
@@ -145,3 +149,50 @@ def test_tool_call_accuracy_mixed_statuses() -> None:
         ]
     )
     assert metrics.tool_call_accuracy(result) == 0.5
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "status", ["would_write", "confirmation_required", "created", "already_exists"]
+)
+def test_tool_call_accuracy_write_statuses_count_as_usable(status: str) -> None:
+    result = _agent_result(tool_calls=[_tool_call("flag_case_for_review", status)])
+    assert metrics.tool_call_accuracy(result) == 1.0
+
+
+@pytest.mark.unit
+def test_tool_call_accuracy_full_flag_protocol_scores_perfect() -> None:
+    # The sequence langgraph_multi._confirm_flag_node records on an approved flag.
+    result = _agent_result(
+        tool_calls=[
+            _tool_call("get_financial_fact", "ok"),
+            _tool_call("flag_case_for_review", "would_write"),
+            _tool_call("flag_case_for_review", "confirmation_required"),
+            _tool_call("flag_case_for_review", "created"),
+        ]
+    )
+    assert metrics.tool_call_accuracy(result) == 1.0
+
+
+@pytest.mark.unit
+def test_tool_call_accuracy_unknown_status_counts_against() -> None:
+    result = _agent_result(
+        tool_calls=[
+            _tool_call("flag_case_for_review", "created"),
+            _tool_call("flag_case_for_review", "unknown"),
+        ]
+    )
+    assert metrics.tool_call_accuracy(result) == 0.5
+
+
+@pytest.mark.unit
+def test_every_contract_status_is_classified() -> None:
+    contract_statuses = set(
+        get_args(ToolResult.model_fields["status"].annotation)
+    ) | set(get_args(ReviewFlagResult.model_fields["status"].annotation))
+    classified = metrics.USABLE_STATUSES | UNUSABLE_STATUSES
+    assert contract_statuses == classified, (
+        "A ToolResult or ReviewFlagResult status is missing from "
+        "metrics.USABLE_STATUSES / UNUSABLE_STATUSES. Decide whether it is usable "
+        "and add it to one of them."
+    )
