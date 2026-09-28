@@ -1,0 +1,16 @@
+recon-agent deployed. Reach the API with:
+
+  kubectl port-forward svc/{{ include "recon-agent.fullname" . }} 8000:{{ .Values.service.port }}
+  curl localhost:8000/healthz
+  curl localhost:8000/readyz
+
+{{- if .Values.postgresql.enabled }}
+
+A dev-only Postgres is bundled (postgresql.enabled=true) - not for
+production. See docs/deployment.md for pointing at a managed database.
+{{- end }}
+{{- if not .Values.secret.claudeCodeOauthToken }}
+
+secret.claudeCodeOauthToken is empty - /healthz and /readyz work, but
+POST /investigate will fail without a credential.
+{{- end }}

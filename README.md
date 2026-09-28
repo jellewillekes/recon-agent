@@ -11,14 +11,16 @@ build plan this repo follows.
 
 ## Status
 
-Steps 1-9 of the implementation plan are done: contracts, the finance-agent-bench
+Steps 1-10 of the implementation plan are done: contracts, the finance-agent-bench
 dataset adapter, the synthetic-fixture MCP tool server, the FastAPI service
 (`recon.api.main`), the evaluation harness (`recon.cli eval`), guardrails and
 reliability (prompt-injection tests, the review-flag write path, tool-layer retries
-and budgets), and two runtimes (the Agent SDK and LangGraph), each with a single and
-a multi-agent mode. See [`docs/runtimes.md`](docs/runtimes.md) for how the two
-runtimes compare. No baseline score is recorded yet — that's a separate, explicitly-
-requested run (see `docs/implementation-plan.md`).
+and budgets), two runtimes (the Agent SDK and LangGraph, each with a single and a
+multi-agent mode), and containerization/orchestration (`docker/`, `charts/recon-agent/`,
+running locally on k3d — see [`docs/deployment.md`](docs/deployment.md)). See
+[`docs/runtimes.md`](docs/runtimes.md) for how the two runtimes compare. No baseline
+score is recorded yet — that's a separate, explicitly-requested run (see
+`docs/implementation-plan.md`).
 
 ## Runtimes
 

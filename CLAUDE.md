@@ -49,6 +49,7 @@ uv run pytest -m "not llm"          # tests without LLM calls (what CI runs)
 uv run ruff check --fix && uv run ruff format
 uv run python -m recon.cli eval     # evaluation — consumes credit
 uv run uvicorn recon.api.main:app --reload
+cp docker/.env.example docker/.env  # once, then fill in the passwords
 docker compose -f docker/compose.yaml up -d
 helm lint charts/recon-agent
 ```

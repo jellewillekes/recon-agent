@@ -1,0 +1,22 @@
+# Minimal Tempo config: OTLP receivers + local storage. Nothing exports
+# traces to this yet - that's step 12 (docs/implementation-plan.md). Stood
+# up now so the dev stack matches the plan's spec ahead of that step.
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal
