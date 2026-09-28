@@ -1,6 +1,9 @@
 # Dev stack: docs/implementation-plan.md's "Where it runs" table. Kubernetes
 # orchestration (k3d + charts/recon-agent/) is a separate layer - see
 # docs/deployment.md.
+#
+# Passwords come from docker/.env (gitignored). Copy docker/.env.example to
+# docker/.env first; compose refuses to start with them unset.
 
 services:
   postgres:
@@ -8,7 +11,7 @@ services:
     environment:
       POSTGRES_DB: recon
       POSTGRES_USER: recon
-      POSTGRES_PASSWORD: recon-dev-only
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set it in docker/.env - see docker/.env.example}
     ports:
       - "5432:5432"
     volumes:
@@ -20,14 +23,14 @@ services:
       retries: 10
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.2.2
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin-dev-only
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set it in docker/.env - see docker/.env.example}
     ports:
       - "3000:3000"
 
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:3.0.3
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
       - ./tempo.yaml:/etc/tempo/tempo.yaml:ro
@@ -38,14 +41,14 @@ services:
       - "4318:4318" # OTLP HTTP
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.0
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9090:9090"
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.34.4
     volumes:
       - ollama-data:/root/.ollama
     ports:
@@ -56,7 +59,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     environment:
-      DATABASE_URL: postgresql://recon:recon-dev-only@postgres:5432/recon
+      DATABASE_URL: postgresql://recon:${POSTGRES_PASSWORD:?set it in docker/.env - see docker/.env.example}@postgres:5432/recon
       RECON_API_MAX_CONCURRENCY: "4"
       RECON_API_REQUEST_TIMEOUT_S: "120"
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}

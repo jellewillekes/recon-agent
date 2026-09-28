@@ -19,6 +19,26 @@ are tuned for exactly this flow: no registry, no external database. See
 `docs/adr/0012-dev-postgres-bundled-in-helm-chart.md` for why a throwaway Postgres ships
 inside the chart itself rather than requiring a manual setup step before `helm install`.
 
+The bundled Postgres gets a random password on first install, stored in the release's
+Secret as `POSTGRES_PASSWORD` and reused on every `helm upgrade`. Nothing credential-like
+is committed. Read it back with
+`kubectl get secret recon-recon-agent -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d`.
+
+## Local: Docker Compose
+
+```bash
+cp docker/.env.example docker/.env   # then fill in the passwords
+docker compose -f docker/compose.yaml up -d
+```
+
+`docker/.env` is gitignored, and compose refuses to start while `POSTGRES_PASSWORD` or
+`GRAFANA_ADMIN_PASSWORD` is unset. Postgres only reads its password when it initializes
+an empty data directory. After changing `POSTGRES_PASSWORD`, drop the old volume with
+`docker compose -f docker/compose.yaml down -v`.
+
+Every image is pinned to a version tag. A floating `:latest` Tempo image once broke
+`docker/tempo.yaml` by rejecting a config block the previous schema accepted.
+
 ## What changes for a managed cluster
 
 ### Ingress
