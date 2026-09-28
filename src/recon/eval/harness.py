@@ -16,6 +16,8 @@ from recon.runtimes.base import Runtime
 # "Rubric changes are breaking: earlier runs are no longer comparable.").
 RUBRIC_VERSION = "1"
 
+JUDGED_DESPITE_ERROR_NOTE = "answer judged despite runtime error"
+
 
 def _run_id() -> str:
     return f"eval-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
@@ -33,15 +35,21 @@ def score_case(
     exact, exact_note = metrics.tool_path_exact(case, agent_result)
     equivalent, _ = metrics.tool_path_equivalent(case, agent_result)
 
+    has_answer = bool(agent_result.answer.strip())
     notes_parts: list[str] = []
     if agent_result.error is not None:
         notes_parts.append(f"runtime error: {agent_result.error}")
+        if has_answer:
+            notes_parts.append(JUDGED_DESPITE_ERROR_NOTE)
     if exact_note is not None:
         notes_parts.append(exact_note)
 
-    if agent_result.error is not None:
-        # A failed run has nothing meaningful to grade — score it as a hard
-        # miss rather than spending a judge call on an empty/garbage answer.
+    # Gate on the answer, not on `error`: runtimes also set `error` for
+    # non-fatal outcomes that keep a complete answer (a token budget only
+    # checked after the run finished, a LangGraph run paused before its
+    # review-flag write). A real failure always returns an empty answer.
+    # See docs/adr/0013.
+    if not has_answer:
         rubric_scores = {dimension: 0.0 for dimension in rubrics}
         answer_score = 0.0
         judge_cost_eur = 0.0
