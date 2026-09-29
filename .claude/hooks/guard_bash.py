@@ -32,13 +32,14 @@ OVERRIDE_ENV = "RECON_ALLOW_GUARDED"
 # can't hide the second command behind the first.
 _SEGMENT_SPLIT = re.compile(r"&&|\|\||[;&|\n]")
 
-_EVAL = re.compile(r"\brecon\.cli\s+eval\b")
-_LIMIT = re.compile(r"--limit(=|\s+)\d+")
 # A push destination that is the default branch: `main`, `+main`,
 # `HEAD:main`, `refs/heads/main`. Anchored, so `feat/main-menu` isn't one.
 _MAIN_REF = re.compile(r"^\+?(?:[^:]*:)?(?:refs/heads/)?(?:main|master)$")
 # git's global options that take a separate value: `git -c key=value push`.
 _GIT_VALUE_OPTIONS = frozenset({"-c", "-C", "--git-dir", "--work-tree", "--namespace"})
+# Programs that execute SQL. The destructive-SQL check applies only to a
+# command that runs one, so a commit message mentioning DROP TABLE passes.
+_SQL_CLIENTS = frozenset({"psql", "duckdb", "sqlite3", "mysql"})
 # SQL's TRUNCATE makes TABLE optional. The coreutils `truncate` always
 # starts with a flag (`truncate -s 0 file`), so a name after it means SQL.
 _DESTRUCTIVE_SQL = re.compile(
@@ -72,20 +73,25 @@ def _tokens(segment: str) -> list[str]:
         return segment.split()
 
 
-def _git_subcommand(words: list[str]) -> tuple[str, list[str]] | None:
-    """`(subcommand, its args)` if `words` run git, skipping global options.
+def _git_subcommand(words: list[str], cwd: str) -> tuple[str, list[str], str] | None:
+    """`(subcommand, its args, repo dir)` if `words` run git.
 
-    Parsed as tokens rather than a regex: quoted `-c` values made an
-    equivalent regex backtrack exponentially (a CodeQL finding).
+    Skips git's global options, and takes the repo dir from `-C` so a push
+    elsewhere is judged by that repo's branch. Parsed as tokens rather than a
+    regex: quoted `-c` values made an equivalent regex backtrack
+    exponentially (a CodeQL finding).
     """
     if "git" not in words:
         return None
     i = words.index("git") + 1
+    repo = cwd
     while i < len(words) and words[i].startswith("-"):
+        if words[i] == "-C" and i + 1 < len(words):
+            repo = os.path.join(repo, words[i + 1])
         i += 2 if words[i] in _GIT_VALUE_OPTIONS else 1
     if i >= len(words):
         return None
-    return words[i], words[i + 1 :]
+    return words[i], words[i + 1 :], repo
 
 
 def _is_force(arg: str) -> bool:
@@ -111,22 +117,35 @@ def _check_push(args: list[str], cwd: str) -> str | None:
     return None
 
 
+def _is_full_eval(words: list[str]) -> bool:
+    """`recon.cli eval` invoked as a command, with no `--limit N`."""
+    runs_eval = any(
+        word == "recon.cli" and words[i + 1 : i + 2] == ["eval"]
+        for i, word in enumerate(words)
+    )
+    limited = any(
+        (word == "--limit" and words[i + 1 : i + 2] != [])
+        or word.startswith("--limit=")
+        for i, word in enumerate(words)
+    )
+    return runs_eval and not limited
+
+
 def _check_segment(segment: str, cwd: str) -> str | None:
-    if _EVAL.search(segment) and not _LIMIT.search(segment):
+    words = _tokens(segment)
+    if _is_full_eval(words):
         return (
             "recon.cli eval without --limit runs every case and spends Agent SDK "
             "credit (AGENTS.md, Cost). Use --limit 3, or ask the user to run "
             "the full evaluation"
         )
-    git = _git_subcommand(_tokens(segment))
+    git = _git_subcommand(words, cwd)
     if git and git[0] == "push":
-        reason = _check_push(git[1], cwd)
+        reason = _check_push(git[1], git[2])
         if reason:
             return reason
     if git and "--no-verify" in git[1]:
         return "--no-verify skips the pre-commit checks; fix what they report"
-    if _DESTRUCTIVE_SQL.search(segment):
-        return "DROP and TRUNCATE delete data"
     words = segment.split()
     if words and words[0] in _READERS and _ENV_FILE.search(segment):
         return ".env files hold secrets; read .env.example instead"
@@ -135,10 +154,19 @@ def _check_segment(segment: str, cwd: str) -> str | None:
 
 def check(command: str, cwd: str) -> str | None:
     """The reason to block `command`, or None to let it through."""
-    for segment in _SEGMENT_SPLIT.split(command):
-        reason = _check_segment(segment.strip(), cwd)
+    segments = [s.strip() for s in _SEGMENT_SPLIT.split(command)]
+    for segment in segments:
+        reason = _check_segment(segment, cwd)
         if reason:
             return reason
+    # Across the whole command, so `echo 'DROP TABLE x' | psql` is caught.
+    runs_sql = any(
+        os.path.basename(word) in _SQL_CLIENTS
+        for segment in segments
+        for word in _tokens(segment)
+    )
+    if runs_sql and _DESTRUCTIVE_SQL.search(command):
+        return "DROP and TRUNCATE delete data"
     return None
 
 

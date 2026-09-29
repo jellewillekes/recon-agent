@@ -83,6 +83,7 @@ def guard(command: str, cwd: Path, env: dict[str, str] | None = None) -> int:
         "git push -uf origin feat/x",
         "git commit --no-verify -m wip",
         "psql -c 'DROP TABLE review_flags'",
+        "docker compose exec postgres psql -c 'drop table review_flags'",
         "echo 'truncate table review_flags' | psql",
         "psql -c 'TRUNCATE review_flags'",
         "cat docker/.env",
@@ -109,11 +110,36 @@ def test_guard_blocks(command: str, repo: Path) -> None:
         "cat docker/.env.example",
         "cp docker/.env.example docker/.env",
         "truncate -s 0 build.log",
+        "git commit -m 'recon.cli eval: enforce --limit'",
+        "git commit -m 'guard: block DROP TABLE and TRUNCATE via psql'",
+        "gh pr create --body 'recon.cli eval without --limit is blocked'",
         "make check",
     ],
 )
 def test_guard_allows(command: str, repo: Path) -> None:
     assert guard(command, repo) == 0
+
+
+def test_guard_judges_git_dash_c_pushes_by_that_repo(
+    repo: Path, tmp_path: Path
+) -> None:
+    other = tmp_path / "other"
+    other.mkdir()
+    _git(other, "init", "-q", "-b", "main")
+    _git(
+        other,
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "init",
+    )
+    assert guard(f"git -C {other} push", repo) == 2  # other repo is on main
+    assert guard("git push", repo) == 0  # this repo is on feat/x
 
 
 def test_guard_blocks_a_bare_push_while_on_main(repo: Path) -> None:
