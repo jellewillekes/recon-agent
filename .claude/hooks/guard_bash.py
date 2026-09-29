@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 
@@ -33,11 +34,11 @@ _SEGMENT_SPLIT = re.compile(r"&&|\|\||[;&|\n]")
 
 _EVAL = re.compile(r"\brecon\.cli\s+eval\b")
 _LIMIT = re.compile(r"--limit(=|\s+)\d+")
-# `git push`, also with global options first: `git -c key=value push`.
-_GIT_PUSH = re.compile(r"\bgit(\s+(-c\s+('[^']*'|\"[^\"]*\"|\S+)|-C\s+\S+))*\s+push\b")
-_PUSH_TO_MAIN = re.compile(r"(\s|:|\+|refs/heads/)(main|master)(?![\w./-])")
-_FORCE = re.compile(r"\s(--force(?![-\w])|-f\b|-\w*f\w*\b)")
-_NO_VERIFY = re.compile(r"\bgit\b.*\s--no-verify\b")
+# A push destination that is the default branch: `main`, `+main`,
+# `HEAD:main`, `refs/heads/main`. Anchored, so `feat/main-menu` isn't one.
+_MAIN_REF = re.compile(r"^\+?(?:[^:]*:)?(?:refs/heads/)?(?:main|master)$")
+# git's global options that take a separate value: `git -c key=value push`.
+_GIT_VALUE_OPTIONS = frozenset({"-c", "-C", "--git-dir", "--work-tree", "--namespace"})
 _DESTRUCTIVE_SQL = re.compile(
     r"\b(drop\s+(table|schema|database)|truncate\s+table)\b", re.IGNORECASE
 )
@@ -60,13 +61,44 @@ def _current_branch(cwd: str) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _check_push(args: str, cwd: str) -> str | None:
-    """`args` is everything after `push` in one command segment."""
-    if _FORCE.search(args):
+def _tokens(segment: str) -> list[str]:
+    """Shell words of one segment. Unbalanced quotes fall back to whitespace."""
+    try:
+        return shlex.split(segment)
+    except ValueError:
+        return segment.split()
+
+
+def _git_subcommand(words: list[str]) -> tuple[str, list[str]] | None:
+    """`(subcommand, its args)` if `words` run git, skipping global options.
+
+    Parsed as tokens rather than a regex: quoted `-c` values made an
+    equivalent regex backtrack exponentially (a CodeQL finding).
+    """
+    if "git" not in words:
+        return None
+    i = words.index("git") + 1
+    while i < len(words) and words[i].startswith("-"):
+        i += 2 if words[i] in _GIT_VALUE_OPTIONS else 1
+    if i >= len(words):
+        return None
+    return words[i], words[i + 1 :]
+
+
+def _is_force(arg: str) -> bool:
+    if arg == "--force":
+        return True
+    # Short flags only (`-f`, `-uf`); `--force-with-lease` is the safe form.
+    return arg.startswith("-") and not arg.startswith("--") and "f" in arg[1:]
+
+
+def _check_push(args: list[str], cwd: str) -> str | None:
+    """`args` are the words after `git push` in one command segment."""
+    if any(_is_force(a) for a in args):
         return "force-push rewrites shared history; use --force-with-lease"
-    if _PUSH_TO_MAIN.search(args):
+    refspecs = [a for a in args if not a.startswith("-")]
+    if any(_MAIN_REF.match(r) for r in refspecs[1:]):
         return "pushing to main skips review; push a branch and open a PR"
-    refspecs = [a for a in args.split() if not a.startswith("-")]
     if len(refspecs) <= 1 and _current_branch(cwd) in ("main", "master"):
         return "you are on main, so this push would update main directly"
     return None
@@ -79,12 +111,12 @@ def _check_segment(segment: str, cwd: str) -> str | None:
             "credit (AGENTS.md, Cost). Use --limit 3, or ask the user to run "
             "the full evaluation"
         )
-    push = _GIT_PUSH.search(segment)
-    if push:
-        reason = _check_push(segment[push.end() :], cwd)
+    git = _git_subcommand(_tokens(segment))
+    if git and git[0] == "push":
+        reason = _check_push(git[1], cwd)
         if reason:
             return reason
-    if _NO_VERIFY.search(segment):
+    if git and "--no-verify" in git[1]:
         return "--no-verify skips the pre-commit checks; fix what they report"
     if _DESTRUCTIVE_SQL.search(segment):
         return "DROP and TRUNCATE delete data"

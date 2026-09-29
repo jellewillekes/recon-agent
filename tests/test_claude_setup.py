@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
@@ -76,6 +77,7 @@ def guard(command: str, cwd: Path, env: dict[str, str] | None = None) -> int:
         "git push origin +main",
         "git push origin refs/heads/main",
         "git -c credential.helper= -c 'credential.helper=!gh auth x' push origin main",
+        "git -C . --no-pager push origin main",
         "git push --force origin feat/x",
         "git push -f origin feat/x",
         "git push -uf origin feat/x",
@@ -116,6 +118,15 @@ def test_guard_blocks_a_bare_push_while_on_main(repo: Path) -> None:
     _git(repo, "switch", "-q", "-c", "main")
     assert guard("git push", repo) == 2
     assert guard("git push -u origin", repo) == 2
+
+
+def test_guard_is_fast_on_adversarial_quoting(repo: Path) -> None:
+    """CodeQL flagged a regex version of the push check for exponential
+    backtracking on repeated `"" -c ` input."""
+    command = "git" + ' -c ""' * 5000 + " push origin main"
+    started = time.perf_counter()
+    assert guard(command, repo) == 2
+    assert time.perf_counter() - started < 5
 
 
 def test_guard_explains_the_block(repo: Path) -> None:
