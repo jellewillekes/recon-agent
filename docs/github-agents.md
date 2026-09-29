@@ -38,7 +38,7 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   explicitly that a human is needed. This bounds the implement/review exchange;
   it does not run forever.
 - **Human-decision escalation, independent of the round cap.** A concern that
-  falls under CLAUDE.md's "Forbidden without explicit permission" list (golden-
+  falls under AGENTS.md's "Forbidden without explicit permission" list (golden-
   set/expected-answer content, evaluation thresholds, new dependencies,
   repository layout or module boundaries, secrets), or one the PR description
   itself already flags as a draft or a judgement call pending review, isn't the
@@ -61,7 +61,7 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   or label needs write access to the repo (the action's default check) — this
   isn't a public-facing surface.
 - **Voice.** Every workflow adds `--append-system-prompt` pointing at
-  `CLAUDE.md`'s Voice section, so review comments, PR summaries, and issue
+  `AGENTS.md`'s Voice section, so review comments, PR summaries, and issue
   bodies follow the same house style instead of reading like a generated
   report.
 

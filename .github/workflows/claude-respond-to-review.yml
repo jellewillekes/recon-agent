@@ -46,7 +46,7 @@ jobs:
               current approach: don't just comply - explain your reasoning and
               propose your preferred solution. Pushing back with a concrete
               argument is fine and expected.
-            - Falls under CLAUDE.md's "Forbidden without explicit permission"
+            - Falls under AGENTS.md's "Forbidden without explicit permission"
               list (golden-set/expected-answer content, evaluation thresholds,
               new dependencies, repository layout or module boundaries,
               secrets/API keys), or the PR description itself already flags the
@@ -63,4 +63,4 @@ jobs:
           claude_args: |
             --model claude-sonnet-5
             --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),Bash(uv run pytest:*),Bash(uv run ruff:*),mcp__github__get_pull_request_reviews,mcp__github__get_pull_request_review_comments,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__add_issue_comment"
-            --append-system-prompt "Follow CLAUDE.md's Voice section for your summary comment."
+            --append-system-prompt "Follow AGENTS.md's Voice section for your summary comment."
