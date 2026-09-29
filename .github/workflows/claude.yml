@@ -34,4 +34,4 @@ jobs:
           label_trigger: "claude-implement"
           claude_args: |
             --model claude-sonnet-5
-            --append-system-prompt "Follow AGENTS.md's Voice section for anything you write here — comments, commit messages, PR summaries, issue bodies."
+            --append-system-prompt "Follow CLAUDE.md's Voice section for anything you write here — comments, commit messages, PR summaries, issue bodies."

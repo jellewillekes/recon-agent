@@ -54,7 +54,7 @@ jobs:
                genuinely present in the final tree. Don't call such a file "missing"
                without checking whether it actually exists.
             3. Some concerns are not the implementer's to resolve automatically,
-               regardless of round number: anything in AGENTS.md's "Forbidden
+               regardless of round number: anything in CLAUDE.md's "Forbidden
                without explicit permission" list (golden-set/expected-answer
                content, evaluation thresholds, new dependencies, repository
                layout or module boundaries, secrets/API keys), or a point the
@@ -85,4 +85,4 @@ jobs:
           claude_args: |
             --model claude-sonnet-5
             --allowedTools "mcp__github__get_pull_request_reviews,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_files,mcp__github__create_pending_pull_request_review,mcp__github__add_comment_to_pending_review,mcp__github__submit_pending_pull_request_review"
-            --append-system-prompt "Follow AGENTS.md's Voice section for the review body and every inline comment you write."
+            --append-system-prompt "Follow CLAUDE.md's Voice section for the review body and every inline comment you write."
