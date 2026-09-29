@@ -38,10 +38,18 @@ Adapt the framework's pieces locally, crediting the source in each file.
   adapters, contracts, the eval harness) that load only when Claude reads a matching file.
 - `.claude/settings.json` pre-approves the check commands, **asks** before any
   `recon.cli eval`, `run` or `edgar fetch`, and denies reading `.env`.
-- A PreToolUse guard **blocks** `eval` without `--limit`, any push that targets `main`
-  (including `HEAD:main` and a bare push while on `main`), force-push without
-  `--force-with-lease`, `--no-verify`, `DROP`/`TRUNCATE`, and shell reads of `.env`
-  files. Permission rules match the command text Claude usually writes and aren't a
+- A PreToolUse guard **blocks**:
+  - `recon.cli eval` without `--limit`
+  - any push that targets `main`: `main`, `HEAD:main`, `+main`, `refs/heads/main`, or
+    a bare push or `git push origin HEAD` while on `main`. `git -C <dir>` is judged by
+    that repo's branch
+  - force-push without `--force-with-lease`, and `--no-verify`
+  - `DROP` or `TRUNCATE` (with or without `TABLE`) in a pipeline that runs a SQL client
+  - shell reads of `.env` files
+
+  It parses commands into shell tokens, so text inside a quoted commit message or PR
+  body doesn't trigger it. A regex version could backtrack exponentially, which CodeQL
+  flagged. Permission rules match the command text Claude usually writes and aren't a
   security boundary, so the hook catches the variants they miss. `RECON_ALLOW_GUARDED=1`
   in Claude Code's own environment overrides it.
 - A Stop hook runs `make test` when Python files changed and blocks the stop once per
@@ -61,6 +69,10 @@ Adapt the framework's pieces locally, crediting the source in each file.
 - Turns that change Python end about 40 s later. `RECON_STOP_GATE=0` turns it off for
   a session.
 - A full evaluation now needs the user to run it or to set `RECON_ALLOW_GUARDED=1`.
+- One accepted false positive: SQL text inside a pipeline that runs a SQL client is
+  scanned as a whole, so `psql -c "SELECT 'truncate the log'"` is blocked. Telling a
+  string literal from a statement would mean parsing SQL. For a guard, a rare false
+  block is the safer error.
 - The CI bots load the same settings: the guard applies to them, the Stop gate doesn't.
 - Claude Code treats `.claude/` as a protected path, so the unattended review responder
   can't edit hooks, rules or settings. It says so in its summary, and a person or a local

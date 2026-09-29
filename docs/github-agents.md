@@ -86,6 +86,12 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   PR description already flagged as not finalized — the reviewer and responder
   both route these to a human immediately rather than looping on them, per the
   guardrail above.
+- **Fixes under `.claude/`.** Claude Code treats `.claude/` as a protected path,
+  so the responder can't edit the hooks, rules or settings. It explains the fix
+  in its summary comment instead, and a person or a local session applies it.
+- **PRs that change these workflows.** `claude-code-action` skips its run when a
+  PR changes the workflow it runs from, so such a PR gets no bot review. Keep
+  workflow edits in their own small PR.
 - **Merging.** No workflow merges a PR. `APPROVE` from the reviewer is a
   signal, not a merge — a human always clicks merge.
 - **Adjusting the setup.** Scan cadence (`claude-scan.yml`'s cron), the round

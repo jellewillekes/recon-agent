@@ -1,6 +1,6 @@
 # Contributing
 
-Keep changes small, test-backed, and scoped to one plan step per PR. See `CLAUDE.md`
+Keep changes small, test-backed, and scoped to one plan step per PR. See `AGENTS.md`
 for the full set of project conventions — this file is the PR-facing checklist.
 
 ## Before opening a PR
@@ -34,12 +34,33 @@ PR titles must use Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`,
 - `make precommit` — run all pre-commit hooks
 - `make install-hooks` — install git hooks locally
 
+## Working with Claude Code
+
+The repo ships a Claude Code setup in `.claude/` (`docs/adr/0017-claude-code-project-setup.md`).
+`CLAUDE.md` imports `AGENTS.md`, so both Claude Code and other coding agents read the same
+conventions.
+
+- Open Claude Code in the repo interactively once and accept the trust prompt. Until you
+  do, the shared `allow` list (e.g. `make check` without a prompt) is ignored. The hooks
+  and the `ask`/`deny` rules apply either way.
+- A guard hook blocks `recon.cli eval` without `--limit`, pushes to `main`, force-push,
+  `--no-verify`, `DROP`/`TRUNCATE` sent to a SQL client, and shell reads of `.env`. To run
+  one on purpose, run it yourself, or start Claude Code with `RECON_ALLOW_GUARDED=1`.
+- A Stop hook runs `make test` before a turn ends when Python files changed, which adds
+  about 40 s. Start Claude Code with `RECON_STOP_GATE=0` to turn it off for a session.
+- Rules for specific paths are in `.claude/rules/`. Two read-only review subagents,
+  `code-reviewer` and `eval-reviewer`, are in `.claude/agents/`.
+- Personal approvals go to `.claude/settings.local.json` and personal notes to
+  `CLAUDE.local.md`. Both are gitignored.
+- The review bots can't edit `.claude/`, which Claude Code protects. A person or a local
+  session makes changes there.
+
 ## Guardrails
 
 - Don't bypass pre-commit with `--no-verify` — fix the underlying issue
 - Don't `git push --force` to `main`
 - Never fill in, generate, or modify the golden set or expected answers — see
-  `CLAUDE.md`
+  `AGENTS.md`
 - Never lower an evaluation threshold because a test fails
 - Generated or ignored paths (`.venv/`, `__pycache__/`, `data/*` except its
   `README.md`) are not committed — `scripts/precommit_block_forbidden_tracked_paths.sh`
