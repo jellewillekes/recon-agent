@@ -1,6 +1,6 @@
 ---
 paths:
-  - "prompts/**"
+  - "prompts/**/*"
   - "config/roles.yaml"
   - "config/models.yaml"
 ---

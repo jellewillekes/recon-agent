@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 HOOKS = ROOT / ".claude" / "hooks"
@@ -252,3 +253,67 @@ def test_format_hook_formats_python_and_leaves_other_files(tmp_path: Path) -> No
 
     assert source.read_text() == "import os\n\nx = [1, 2, 3]\n"  # import kept
     assert other.read_text() == "x=[1,2 ,3]\n"
+
+
+# --- settings, rules, agents, instruction files -------------------------------
+
+CLAUDE_DIR = ROOT / ".claude"
+READ_ONLY_TOOLS = {"Read", "Grep", "Glob", "Bash"}
+
+
+def _frontmatter(path: Path) -> dict[str, object]:
+    text = path.read_text()
+    assert text.startswith("---\n"), f"{path.name} has no frontmatter"
+    loaded = yaml.safe_load(text.split("---\n")[1])
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+def test_settings_hooks_point_at_existing_scripts() -> None:
+    settings = json.loads((CLAUDE_DIR / "settings.json").read_text())
+    commands = [
+        hook["command"]
+        for groups in settings["hooks"].values()
+        for group in groups
+        for hook in group["hooks"]
+    ]
+    assert len(commands) == 3
+    for command in commands:
+        script = command.split("$CLAUDE_PROJECT_DIR/")[1].rstrip('"')
+        assert (ROOT / script).is_file(), script
+        assert os.access(ROOT / script, os.X_OK), f"{script} is not executable"
+
+
+@pytest.mark.parametrize(
+    "rule", sorted((CLAUDE_DIR / "rules").glob("*.md")), ids=lambda p: p.name
+)
+def test_every_rule_path_matches_a_file(rule: Path) -> None:
+    patterns = _frontmatter(rule)["paths"]
+    assert isinstance(patterns, list) and patterns
+    for pattern in patterns:
+        assert any(p.is_file() for p in ROOT.glob(pattern)), (
+            f"{rule.name}: {pattern!r} matches no file, so the rule never loads"
+        )
+
+
+@pytest.mark.parametrize(
+    "agent", sorted((CLAUDE_DIR / "agents").glob("*.md")), ids=lambda p: p.name
+)
+def test_subagents_are_read_only_and_described(agent: Path) -> None:
+    front = _frontmatter(agent)
+    assert front["name"] == agent.stem
+    description = front["description"]
+    assert isinstance(description, str) and 0 < len(description) < 1536
+    tools = {t.strip() for t in str(front["tools"]).split(",")}
+    assert tools <= READ_ONLY_TOOLS, (
+        f"{agent.name} may write: {tools - READ_ONLY_TOOLS}"
+    )
+
+
+def test_claude_md_imports_agents_md_and_both_stay_short() -> None:
+    claude_md = (ROOT / "CLAUDE.md").read_text()
+    agents_md = (ROOT / "AGENTS.md").read_text()
+    assert claude_md.splitlines()[0] == "@AGENTS.md"
+    assert "<!-- rules:start -->" in agents_md and "<!-- rules:end -->" in agents_md
+    for text in (claude_md, agents_md):
+        assert len(text.splitlines()) < 200

@@ -1,6 +1,6 @@
 ---
 paths:
-  - "tests/**"
+  - "tests/**/*"
 ---
 
 # Tests

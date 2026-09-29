@@ -1,8 +1,8 @@
 ---
 paths:
-  - "evals/**"
-  - "config/rubrics/**"
-  - "src/recon/eval/**"
+  - "evals/**/*"
+  - "config/rubrics/**/*"
+  - "src/recon/eval/**/*"
 ---
 
 # Evaluation harness

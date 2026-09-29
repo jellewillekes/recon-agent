@@ -1,6 +1,6 @@
 ---
 paths:
-  - "src/recon/adapters/**"
+  - "src/recon/adapters/**/*"
   - "config/sec_edgar.yaml"
 ---
 
