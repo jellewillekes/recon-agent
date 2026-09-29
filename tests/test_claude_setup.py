@@ -1,0 +1,143 @@
+"""The Claude Code project setup in `.claude/`: hooks, settings, rules, agents.
+
+Hooks run as subprocesses fed the same JSON Claude Code sends on stdin, so
+these tests exercise the real scripts with no model and no network. See
+docs/adr/0017-claude-code-project-setup.md.
+"""
+
+import json
+import os
+import subprocess
+import sys
+from collections.abc import Mapping
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+HOOKS = ROOT / ".claude" / "hooks"
+
+pytestmark = pytest.mark.unit
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    """A throwaway git repo on a feature branch, with one commit."""
+    _git(tmp_path, "init", "-q", "-b", "feat/x")
+    _git(tmp_path, "config", "user.email", "test@example.com")
+    _git(tmp_path, "config", "user.name", "test")
+    (tmp_path / "README.md").write_text("x\n")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "init")
+    return tmp_path
+
+
+def _clean_env(**extra: str) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("RECON_")}
+    env.pop("GITHUB_ACTIONS", None)
+    return {**env, **extra}
+
+
+def run_hook(
+    name: str, event: Mapping[str, object], env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(HOOKS / name)],
+        input=json.dumps(event),
+        text=True,
+        capture_output=True,
+        env=env if env is not None else _clean_env(),
+        check=False,
+    )
+
+
+def guard(command: str, cwd: Path, env: dict[str, str] | None = None) -> int:
+    event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}
+    return run_hook("guard_bash.py", event, env).returncode
+
+
+# --- guard_bash.py -----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "uv run python -m recon.cli eval",
+        "uv run python -m recon.cli eval --mode multi --runtime langgraph",
+        "make check && uv run python -m recon.cli eval",
+        "git push origin main",
+        "git push origin HEAD:main",
+        "git push origin +main",
+        "git push origin refs/heads/main",
+        "git -c credential.helper= -c 'credential.helper=!gh auth x' push origin main",
+        "git push --force origin feat/x",
+        "git push -f origin feat/x",
+        "git push -uf origin feat/x",
+        "git commit --no-verify -m wip",
+        "psql -c 'DROP TABLE review_flags'",
+        "echo 'truncate table review_flags' | psql",
+        "cat docker/.env",
+        "grep PASSWORD .env",
+    ],
+)
+def test_guard_blocks(command: str, repo: Path) -> None:
+    assert guard(command, repo) == 2
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "uv run python -m recon.cli eval --limit 3",
+        "uv run python -m recon.cli eval --limit=3 --mode multi",
+        "uv run python -m recon.cli run --case-id abc",
+        "git push -u origin feat/main-menu",
+        "git push origin main-menu",
+        "git push --force-with-lease origin feat/x",
+        "git -c credential.helper= -c 'credential.helper=!gh auth x' push -u origin feat/x",
+        "git push",
+        "git commit -m 'explain how to push to main'",
+        "cat docker/.env.example",
+        "cp docker/.env.example docker/.env",
+        "truncate -s 0 build.log",
+        "make check",
+    ],
+)
+def test_guard_allows(command: str, repo: Path) -> None:
+    assert guard(command, repo) == 0
+
+
+def test_guard_blocks_a_bare_push_while_on_main(repo: Path) -> None:
+    _git(repo, "switch", "-q", "-c", "main")
+    assert guard("git push", repo) == 2
+    assert guard("git push -u origin", repo) == 2
+
+
+def test_guard_explains_the_block(repo: Path) -> None:
+    event = {
+        "tool_input": {"command": "uv run python -m recon.cli eval"},
+        "cwd": str(repo),
+    }
+    result = run_hook("guard_bash.py", event)
+    assert "--limit" in result.stderr
+    assert "Do not retry" in result.stderr
+
+
+def test_guard_override_only_from_the_process_environment(repo: Path) -> None:
+    command = "uv run python -m recon.cli eval"
+    assert guard(f"RECON_ALLOW_GUARDED=1 {command}", repo) == 2
+    assert guard(command, repo, env=_clean_env(RECON_ALLOW_GUARDED="1")) == 0
+
+
+def test_guard_ignores_malformed_input() -> None:
+    result = subprocess.run(
+        [sys.executable, str(HOOKS / "guard_bash.py")],
+        input="not json",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
