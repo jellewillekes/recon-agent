@@ -65,6 +65,12 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   bodies follow the same house style instead of reading like a generated
   report.
 
+- **Project settings apply to the bots too.** The action runs Claude Code in the
+  checkout, so it loads `.claude/settings.json`. The Bash guard applies (no push
+  to `main`, no `eval` without `--limit`). The Stop gate skips itself when
+  `GITHUB_ACTIONS` is set, since the bots have no synced venv. See
+  `docs/adr/0017-claude-code-project-setup.md`.
+
 ## Where a human steps in
 
 - **Deciding what gets worked on.** The scanner only files issues; it never
