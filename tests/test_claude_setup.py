@@ -113,6 +113,7 @@ def test_guard_blocks(command: str, repo: Path) -> None:
         "git commit -m 'recon.cli eval: enforce --limit'",
         "git commit -m 'guard: block DROP TABLE and TRUNCATE via psql'",
         "gh pr create --body 'recon.cli eval without --limit is blocked'",
+        "git commit -m 'truncate the table on reset' && psql -c 'SELECT 1'",
         "make check",
     ],
 )

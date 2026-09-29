@@ -31,6 +31,8 @@ OVERRIDE_ENV = "RECON_ALLOW_GUARDED"
 # Segments are checked one at a time, so `make check && recon.cli eval`
 # can't hide the second command behind the first.
 _SEGMENT_SPLIT = re.compile(r"&&|\|\||[;&|\n]")
+# Commands joined by `&&`, `||`, `;` or newlines. Each may be a `|` pipeline.
+_PIPELINE_SPLIT = re.compile(r"&&|\|\||[;\n]")
 
 # A push destination that is the default branch: `main`, `+main`,
 # `HEAD:main`, `refs/heads/main`. Anchored, so `feat/main-menu` isn't one.
@@ -159,14 +161,16 @@ def check(command: str, cwd: str) -> str | None:
         reason = _check_segment(segment, cwd)
         if reason:
             return reason
-    # Across the whole command, so `echo 'DROP TABLE x' | psql` is caught.
-    runs_sql = any(
-        os.path.basename(word) in _SQL_CLIENTS
-        for segment in segments
-        for word in _tokens(segment)
-    )
-    if runs_sql and _DESTRUCTIVE_SQL.search(command):
-        return "DROP and TRUNCATE delete data"
+    # Per pipeline, so `echo 'DROP TABLE x' | psql` is caught, but a commit
+    # message next to an unrelated psql call (`git commit ... && psql`) isn't.
+    for pipeline in _PIPELINE_SPLIT.split(command):
+        runs_sql = any(
+            os.path.basename(word) in _SQL_CLIENTS
+            for stage in pipeline.split("|")
+            for word in _tokens(stage)
+        )
+        if runs_sql and _DESTRUCTIVE_SQL.search(pipeline):
+            return "DROP and TRUNCATE delete data"
     return None
 
 
