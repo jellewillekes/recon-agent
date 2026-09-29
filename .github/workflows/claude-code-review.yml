@@ -17,6 +17,27 @@ jobs:
         with:
           fetch-depth: 1
 
+      # claude-code-action restores .claude/ and CLAUDE.md from the default
+      # branch because the PR head is untrusted, but not AGENTS.md, which
+      # CLAUDE.md imports. Without this step a PR could rewrite the rules its
+      # own reviewer follows. skip-worktree keeps git from committing the
+      # restored copy over the PR's own AGENTS.md. A no-op until the default
+      # branch has an AGENTS.md. See docs/adr/0017-claude-code-project-setup.md.
+      - name: Use the default branch's AGENTS.md (PR head is untrusted)
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$DEFAULT_BRANCH"
+          if git cat-file -e FETCH_HEAD:AGENTS.md 2>/dev/null; then
+            git show FETCH_HEAD:AGENTS.md > AGENTS.md
+            if git ls-files --error-unmatch AGENTS.md >/dev/null 2>&1; then
+              git update-index --skip-worktree AGENTS.md
+            fi
+            echo "AGENTS.md restored from $DEFAULT_BRANCH"
+          else
+            echo "No AGENTS.md on $DEFAULT_BRANCH; nothing to restore"
+          fi
+
       - uses: anthropics/claude-code-action@56cf60fde42f7b19c3abfd5c9c48b69a1288461f # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -54,7 +75,7 @@ jobs:
                genuinely present in the final tree. Don't call such a file "missing"
                without checking whether it actually exists.
             3. Some concerns are not the implementer's to resolve automatically,
-               regardless of round number: anything in CLAUDE.md's "Forbidden
+               regardless of round number: anything in AGENTS.md's "Forbidden
                without explicit permission" list (golden-set/expected-answer
                content, evaluation thresholds, new dependencies, repository
                layout or module boundaries, secrets/API keys), or a point the
@@ -85,4 +106,4 @@ jobs:
           claude_args: |
             --model claude-sonnet-5
             --allowedTools "mcp__github__get_pull_request_reviews,mcp__github__get_pull_request,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_files,mcp__github__create_pending_pull_request_review,mcp__github__add_comment_to_pending_review,mcp__github__submit_pending_pull_request_review"
-            --append-system-prompt "Follow CLAUDE.md's Voice section for the review body and every inline comment you write."
+            --append-system-prompt "Follow AGENTS.md's Voice section for the review body and every inline comment you write."
