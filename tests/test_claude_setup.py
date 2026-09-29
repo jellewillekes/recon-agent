@@ -176,7 +176,7 @@ def test_stop_gate_skips_when_no_python_changed(repo: Path) -> None:
     assert not runs.exists()
 
 
-def test_stop_gate_blocks_once_then_hands_back_a_note(repo: Path) -> None:
+def test_stop_gate_blocks_once_then_warns_the_user(repo: Path) -> None:
     _with_make_test(repo, passes=False)
     (repo / "pkg").mkdir()
     (repo / "pkg" / "new_module.py").write_text("x = 1\n")
@@ -186,11 +186,12 @@ def test_stop_gate_blocks_once_then_hands_back_a_note(repo: Path) -> None:
     assert first.returncode == 2
     assert "FAILED tests/test_x.py" in first.stderr
 
+    # additionalContext would start another turn; a systemMessage doesn't.
     second = stop(repo, **prompt)
     assert second.returncode == 0
-    note = json.loads(second.stdout)["hookSpecificOutput"]
-    assert note["hookEventName"] == "Stop"
-    assert "still fails" in note["additionalContext"]
+    output = json.loads(second.stdout)
+    assert "still fails" in output["systemMessage"]
+    assert "hookSpecificOutput" not in output
 
     assert stop(repo, **_prompt()).returncode == 2  # a new prompt checks again
 
@@ -198,8 +199,9 @@ def test_stop_gate_blocks_once_then_hands_back_a_note(repo: Path) -> None:
 def test_stop_gate_falls_back_to_stop_hook_active(repo: Path) -> None:
     _with_make_test(repo, passes=False)
     (repo / "a.py").write_text("x = 1\n")
-    assert stop(repo, stop_hook_active=True).returncode == 2
-    assert stop(repo, stop_hook_active=False).returncode == 0
+    # Claude Code sends false on a prompt's first stop, true after a block.
+    assert stop(repo, stop_hook_active=False).returncode == 2
+    assert stop(repo, stop_hook_active=True).returncode == 0
 
 
 def test_stop_gate_passes_when_tests_pass(repo: Path) -> None:

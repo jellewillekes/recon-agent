@@ -45,9 +45,11 @@ Adapt the framework's pieces locally, crediting the source in each file.
   security boundary, so the hook catches the variants they miss. `RECON_ALLOW_GUARDED=1`
   in Claude Code's own environment overrides it.
 - A Stop hook runs `make test` when Python files changed and blocks the stop once per
-  prompt. If tests still fail at the next stop, it lets Claude finish with a note that
-  it must report the failure, rather than looping. It is off in GitHub Actions, where
-  the bots have no synced venv, and with `RECON_STOP_GATE=0`.
+  prompt. If tests still fail at the next stop, it lets Claude finish and shows the
+  user a warning (`systemMessage`). It doesn't hand Claude a note through
+  `additionalContext`. A live run showed that a Stop hook's `additionalContext` starts
+  another turn, which looped until `max_turns`. It is off in GitHub Actions, where the
+  bots have no synced venv, and with `RECON_STOP_GATE=0`.
 - A PostToolUse hook runs `ruff format` after each Python edit. It doesn't run
   `ruff check --fix`, which deletes an import added one edit before its first use.
 - Two read-only subagents: `code-reviewer` (correctness and scope only, a finding
@@ -60,6 +62,11 @@ Adapt the framework's pieces locally, crediting the source in each file.
   a session.
 - A full evaluation now needs the user to run it or to set `RECON_ALLOW_GUARDED=1`.
 - The CI bots load the same settings: the guard applies to them, the Stop gate doesn't.
+- Project `allow` rules take effect only after the workspace is trusted, by opening
+  Claude Code here interactively once. Hooks, `ask` and `deny` rules apply before that.
+- On Claude Code 2.1.284 the Stop event's `stop_hook_active` is false on a prompt's first
+  stop and true after a block. The gate keys on `session_id` and `prompt_id` instead, and
+  uses the flag only as a fallback.
 - The agents this harness evaluates are unaffected. Their sessions pass
   `setting_sources=[]` (ADR 0016), so they never load `.claude/`, and scores stay
   comparable.

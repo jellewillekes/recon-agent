@@ -3,8 +3,8 @@
 
 A failing run blocks the stop once per prompt (exit 2) and shows Claude the
 tail of the output. If the tests still fail at the next stop for the same
-prompt, the hook lets Claude finish and adds a note it must pass on, rather
-than looping. Adapted from the agentic-framework repo's `stop_gate.py`; see
+prompt, the hook lets Claude finish and warns the user instead, rather than
+looping. Adapted from the agentic-framework repo's `stop_gate.py`; see
 docs/adr/0017-claude-code-project-setup.md.
 
 Skipped in GitHub Actions (the review bots have no synced venv) and when
@@ -66,11 +66,13 @@ def _already_blocked(event: dict[str, object]) -> bool:
 
     Tracked in a marker file keyed on session and prompt, so a fresh prompt
     always gets one blocking check. Falls back to Claude Code's
-    `stop_hook_active` flag when the event carries no `prompt_id`.
+    `stop_hook_active` flag when the event carries no `prompt_id`. Observed
+    on Claude Code 2.1.284: it is false on a prompt's first stop and true on
+    the stops that follow a block.
     """
     session, prompt = event.get("session_id"), event.get("prompt_id")
     if not session or not prompt:
-        return event.get("stop_hook_active") is False
+        return event.get("stop_hook_active") is True
     key = hashlib.sha256(f"{session}:{prompt}".encode()).hexdigest()[:32]
     marker = _BLOCKED_DIR / key
     if marker.exists():
@@ -112,12 +114,14 @@ def main() -> int:
     if passed:
         return 0
     if _already_blocked(event):
-        note = (
-            "`make test` still fails. Do not claim the work is done: tell the "
-            f"user which tests fail and why.\n\n{output}"
+        # A warning for the user, not `additionalContext`: Claude already saw
+        # the failure when this prompt was blocked, and additionalContext on a
+        # Stop event starts another turn, which would loop until max_turns.
+        warning = (
+            "Stop gate: `make test` still fails after one retry. Claude was "
+            "told once. Check the failing tests before trusting this turn."
         )
-        context = {"hookEventName": "Stop", "additionalContext": note}
-        print(json.dumps({"hookSpecificOutput": context}))
+        print(json.dumps({"systemMessage": warning}))
         return 0
     print(
         "Stop gate: `make test` fails after your changes. Fix the cause before "
