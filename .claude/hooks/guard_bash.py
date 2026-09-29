@@ -39,8 +39,11 @@ _LIMIT = re.compile(r"--limit(=|\s+)\d+")
 _MAIN_REF = re.compile(r"^\+?(?:[^:]*:)?(?:refs/heads/)?(?:main|master)$")
 # git's global options that take a separate value: `git -c key=value push`.
 _GIT_VALUE_OPTIONS = frozenset({"-c", "-C", "--git-dir", "--work-tree", "--namespace"})
+# SQL's TRUNCATE makes TABLE optional. The coreutils `truncate` always
+# starts with a flag (`truncate -s 0 file`), so a name after it means SQL.
 _DESTRUCTIVE_SQL = re.compile(
-    r"\b(drop\s+(table|schema|database)|truncate\s+table)\b", re.IGNORECASE
+    r"\b(drop\s+(table|schema|database)\b|truncate\s+(table\s+)?[a-z_\"])",
+    re.IGNORECASE,
 )
 _READERS = frozenset(
     {"cat", "less", "more", "head", "tail", "bat", "grep", "rg", "awk", "sed"}
@@ -99,7 +102,11 @@ def _check_push(args: list[str], cwd: str) -> str | None:
     refspecs = [a for a in args if not a.startswith("-")]
     if any(_MAIN_REF.match(r) for r in refspecs[1:]):
         return "pushing to main skips review; push a branch and open a PR"
-    if len(refspecs) <= 1 and _current_branch(cwd) in ("main", "master"):
+    # No destination, or `HEAD`, pushes the current branch.
+    pushes_current = len(refspecs) <= 1 or any(
+        r.lstrip("+") == "HEAD" for r in refspecs[1:]
+    )
+    if pushes_current and _current_branch(cwd) in ("main", "master"):
         return "you are on main, so this push would update main directly"
     return None
 

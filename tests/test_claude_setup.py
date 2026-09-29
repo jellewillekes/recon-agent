@@ -84,6 +84,7 @@ def guard(command: str, cwd: Path, env: dict[str, str] | None = None) -> int:
         "git commit --no-verify -m wip",
         "psql -c 'DROP TABLE review_flags'",
         "echo 'truncate table review_flags' | psql",
+        "psql -c 'TRUNCATE review_flags'",
         "cat docker/.env",
         "grep PASSWORD .env",
     ],
@@ -103,6 +104,7 @@ def test_guard_blocks(command: str, repo: Path) -> None:
         "git push --force-with-lease origin feat/x",
         "git -c credential.helper= -c 'credential.helper=!gh auth x' push -u origin feat/x",
         "git push",
+        "git push origin HEAD",
         "git commit -m 'explain how to push to main'",
         "cat docker/.env.example",
         "cp docker/.env.example docker/.env",
@@ -118,6 +120,8 @@ def test_guard_blocks_a_bare_push_while_on_main(repo: Path) -> None:
     _git(repo, "switch", "-q", "-c", "main")
     assert guard("git push", repo) == 2
     assert guard("git push -u origin", repo) == 2
+    assert guard("git push origin HEAD", repo) == 2
+    assert guard("git push -u origin +HEAD", repo) == 2
 
 
 def test_guard_is_fast_on_adversarial_quoting(repo: Path) -> None:

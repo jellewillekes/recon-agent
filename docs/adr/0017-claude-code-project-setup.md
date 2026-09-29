@@ -62,6 +62,11 @@ Adapt the framework's pieces locally, crediting the source in each file.
   a session.
 - A full evaluation now needs the user to run it or to set `RECON_ALLOW_GUARDED=1`.
 - The CI bots load the same settings: the guard applies to them, the Stop gate doesn't.
+- Claude Code treats `.claude/` as a protected path, so the unattended review responder
+  can't edit hooks, rules or settings. It says so in its summary, and a person or a local
+  session applies those fixes. Seen on this PR's first review round.
+- `claude-code-action` skips its run when a PR changes the workflow it runs from. Keep
+  workflow edits out of PRs that need a bot review.
 - Project `allow` rules take effect only after the workspace is trusted, by opening
   Claude Code here interactively once. Hooks, `ask` and `deny` rules apply before that.
 - On Claude Code 2.1.284 the Stop event's `stop_hook_active` is false on a prompt's first
