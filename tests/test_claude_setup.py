@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -141,3 +142,113 @@ def test_guard_ignores_malformed_input() -> None:
         check=False,
     )
     assert result.returncode == 0
+
+
+# --- stop_gate.py ------------------------------------------------------------
+
+
+def _with_make_test(repo: Path, *, passes: bool) -> Path:
+    """Give `repo` a `make test` that passes or fails and records each run."""
+    runs = repo / "test-runs.log"
+    status = 0 if passes else 1
+    (repo / "Makefile").write_text(
+        f"test:\n\t@echo run >> {runs}\n\t@echo 'FAILED tests/test_x.py'\n\t@exit {status}\n"
+    )
+    _git(repo, "add", "Makefile")
+    _git(repo, "commit", "-q", "-m", "make")
+    return runs
+
+
+def stop(repo: Path, **fields: object) -> subprocess.CompletedProcess[str]:
+    event = {"hook_event_name": "Stop", "cwd": str(repo), **fields}
+    return run_hook("stop_gate.py", event)
+
+
+def _prompt() -> dict[str, str]:
+    return {"session_id": uuid.uuid4().hex, "prompt_id": uuid.uuid4().hex}
+
+
+def test_stop_gate_skips_when_no_python_changed(repo: Path) -> None:
+    runs = _with_make_test(repo, passes=False)
+    (repo / "notes.md").write_text("changed\n")
+    assert stop(repo, **_prompt()).returncode == 0
+    assert not runs.exists()
+
+
+def test_stop_gate_blocks_once_then_hands_back_a_note(repo: Path) -> None:
+    _with_make_test(repo, passes=False)
+    (repo / "pkg").mkdir()
+    (repo / "pkg" / "new_module.py").write_text("x = 1\n")
+    prompt = _prompt()
+
+    first = stop(repo, **prompt)
+    assert first.returncode == 2
+    assert "FAILED tests/test_x.py" in first.stderr
+
+    second = stop(repo, **prompt)
+    assert second.returncode == 0
+    note = json.loads(second.stdout)["hookSpecificOutput"]
+    assert note["hookEventName"] == "Stop"
+    assert "still fails" in note["additionalContext"]
+
+    assert stop(repo, **_prompt()).returncode == 2  # a new prompt checks again
+
+
+def test_stop_gate_falls_back_to_stop_hook_active(repo: Path) -> None:
+    _with_make_test(repo, passes=False)
+    (repo / "a.py").write_text("x = 1\n")
+    assert stop(repo, stop_hook_active=True).returncode == 2
+    assert stop(repo, stop_hook_active=False).returncode == 0
+
+
+def test_stop_gate_passes_when_tests_pass(repo: Path) -> None:
+    runs = _with_make_test(repo, passes=True)
+    (repo / "a.py").write_text("x = 1\n")
+    assert stop(repo, **_prompt()).returncode == 0
+    assert runs.read_text().count("run") == 1
+
+
+def test_stop_gate_sees_renamed_and_ignores_deleted_files(repo: Path) -> None:
+    runs = _with_make_test(repo, passes=True)
+    (repo / "old.py").write_text("x = 1\n")
+    (repo / "gone.py").write_text("y = 1\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "py")
+
+    _git(repo, "rm", "-q", "gone.py")
+    assert stop(repo, **_prompt()).returncode == 0
+    assert not runs.exists()
+
+    _git(repo, "mv", "old.py", "renamed.py")
+    assert stop(repo, **_prompt()).returncode == 0
+    assert runs.exists()
+
+
+@pytest.mark.parametrize("env", [{"GITHUB_ACTIONS": "true"}, {"RECON_STOP_GATE": "0"}])
+def test_stop_gate_is_off_in_ci_and_on_request(repo: Path, env: dict[str, str]) -> None:
+    runs = _with_make_test(repo, passes=False)
+    (repo / "a.py").write_text("x = 1\n")
+    event = {"cwd": str(repo), **_prompt()}
+    assert run_hook("stop_gate.py", event, _clean_env(**env)).returncode == 0
+    assert not runs.exists()
+
+
+# --- format_python.py --------------------------------------------------------
+
+
+def test_format_hook_formats_python_and_leaves_other_files(tmp_path: Path) -> None:
+    source = tmp_path / "messy.py"
+    source.write_text("import os\nx=[1,2 ,3]\n")
+    other = tmp_path / "notes.md"
+    other.write_text("x=[1,2 ,3]\n")
+
+    for path in (source, other):
+        event = {
+            "tool_name": "Edit",
+            "tool_input": {"file_path": str(path)},
+            "cwd": str(ROOT),
+        }
+        assert run_hook("format_python.py", event).returncode == 0
+
+    assert source.read_text() == "import os\n\nx = [1, 2, 3]\n"  # import kept
+    assert other.read_text() == "x=[1,2 ,3]\n"
