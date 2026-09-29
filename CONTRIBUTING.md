@@ -52,8 +52,9 @@ conventions.
   `code-reviewer` and `eval-reviewer`, are in `.claude/agents/`.
 - Personal approvals go to `.claude/settings.local.json` and personal notes to
   `CLAUDE.local.md`. Both are gitignored.
-- The review bots can't edit `.claude/`, which Claude Code protects. A person or a local
-  session makes changes there.
+- The review bots always run with `main`'s `.claude/` and `CLAUDE.md`, never a PR's, so
+  they can't test or fix a PR's changes there. A person or a local session does that.
+  They do read a PR's own `AGENTS.md`, so review changes to it by hand.
 
 ## Guardrails
 

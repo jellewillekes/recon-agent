@@ -66,11 +66,18 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   report. `CLAUDE.md` imports `AGENTS.md`, so the workflows still resolve to
   the same rules; only the file the workflows literally name is `CLAUDE.md`.
 
-- **Project settings apply to the bots too.** The action runs Claude Code in the
-  checkout, so it loads `.claude/settings.json`. The Bash guard applies (no push
-  to `main`, no `eval` without `--limit`). The Stop gate skips itself when
-  `GITHUB_ACTIONS` is set, since the bots have no synced venv. See
+- **The bots use `main`'s Claude Code setup, never the PR's.** Before running,
+  the action restores `.claude/`, `CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json`
+  and a few other files from `origin/main`, because the PR head is untrusted. It
+  moves the PR's copies to `.claude-pr/` without executing them. So a PR's
+  hooks and settings never run in CI. From `main`, the Bash guard applies (no
+  push to `main`, no `eval` without `--limit`), and the Stop gate skips itself
+  when `GITHUB_ACTIONS` is set, since the bots have no synced venv. See
   `docs/adr/0017-claude-code-project-setup.md`.
+- **`AGENTS.md` is not on that restore list.** `CLAUDE.md` imports it, so the
+  bots read the PR's own `AGENTS.md`, and a PR can change the rules its reviewer
+  follows. Until the workflows restore it from `main` too, check `AGENTS.md`
+  changes in a PR by hand.
 
 ## Where a human steps in
 
@@ -86,9 +93,10 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   PR description already flagged as not finalized — the reviewer and responder
   both route these to a human immediately rather than looping on them, per the
   guardrail above.
-- **Fixes under `.claude/`.** Claude Code treats `.claude/` as a protected path,
-  so the responder can't edit the hooks, rules or settings. It explains the fix
-  in its summary comment instead, and a person or a local session applies it.
+- **Fixes under `.claude/`.** The responder works on `main`'s `.claude/`, not
+  the PR's, so it can't fix the PR's hooks, rules or settings. It explains the
+  fix in its summary comment instead, and a person or a local session applies
+  it.
 - **PRs that change these workflows.** `claude-code-action` skips its run when a
   PR changes the workflow it runs from, so such a PR gets no bot review. Keep
   workflow edits in their own small PR.

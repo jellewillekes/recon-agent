@@ -73,10 +73,17 @@ Adapt the framework's pieces locally, crediting the source in each file.
   scanned as a whole, so `psql -c "SELECT 'truncate the log'"` is blocked. Telling a
   string literal from a statement would mean parsing SQL. For a guard, a rare false
   block is the safer error.
-- The CI bots load the same settings: the guard applies to them, the Stop gate doesn't.
-- Claude Code treats `.claude/` as a protected path, so the unattended review responder
-  can't edit hooks, rules or settings. It says so in its summary, and a person or a local
-  session applies those fixes. Seen on this PR's first review round.
+- The CI bots use `main`'s setup, never a PR's. `claude-code-action` restores `.claude/`,
+  `CLAUDE.md` and related files from `origin/main` before running, because a PR head is
+  untrusted, and moves the PR's copies to `.claude-pr/` unexecuted. So this setup
+  reaches the bots only once merged. From then on the guard applies to them and the Stop
+  gate skips itself. The five review rounds on the PR that added it ran without hooks.
+- For the same reason the review responder can't fix a PR's `.claude/` files. It says
+  so in its summary, and a person or a local session applies the fix.
+- `AGENTS.md` isn't on the action's restore list, and `CLAUDE.md` imports it. So on a PR,
+  the bots read the PR's own `AGENTS.md`, and a PR (including one the implement bot
+  opens) can change the rules its reviewer follows. Restoring `AGENTS.md` from `main`
+  in the workflows closes this. It's a workflow change, so it belongs in its own PR.
 - `claude-code-action` skips its run when a PR changes the workflow it runs from. Keep
   workflow edits out of PRs that need a bot review.
 - Project `allow` rules take effect only after the workspace is trusted, by opening
