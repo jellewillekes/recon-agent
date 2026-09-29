@@ -66,7 +66,7 @@ DuckDB has a single writer per file and breaks under concurrent runs. Postgres i
 ```bash
 make check                          # format, lint, types, tests without LLM calls (what CI runs)
 make fix                            # format + safe autofix
-uv run pytest                       # all tests
+uv run pytest                       # all tests, including llm-marked ones that spend credit
 uv run python -m recon.cli eval --limit 3   # evaluation — consumes credit
 uv run uvicorn recon.api.main:app --reload
 cp docker/.env.example docker/.env  # once, then fill in the passwords
@@ -78,11 +78,10 @@ helm lint charts/recon-agent
 
 A step is done only when **all** of these hold:
 
-1. `uv run pytest` is green — you ran it; do not report done based on reading the code
-2. `uv run ruff check` is clean
-3. The step's verification command was executed and the output matches
-4. New public functions have type hints and a docstring
-5. No TODOs or `pass` stubs left behind
+1. `make check` is green (format, lint, types, and `pytest -m "not llm"`, the same as CI) — you ran it; do not report done based on reading the code. `llm`-marked tests spend credit and run only with the user's go-ahead
+2. The step's verification command was executed and the output matches
+3. New public functions have type hints and a docstring
+4. No TODOs or `pass` stubs left behind
 
 ## Forbidden without explicit permission
 
@@ -106,7 +105,7 @@ A step is done only when **all** of these hold:
 
 ## Evaluations and CI
 
-LLM evaluations run **locally**, not in CI — GitHub Actions has no model credentials. Run `recon.cli eval` locally, commit the result under `evals/results/`, and CI verifies it clears `config/thresholds.yaml`. Do not try to make CI call a model.
+LLM evaluations run **locally**, not in CI — GitHub Actions has no model credentials. Run `recon.cli eval` locally and commit the result under `evals/results/`. A CI job that checks the result against `config/thresholds.yaml` is planned in #16; neither exists yet. Do not try to make CI call a model.
 
 ## Git
 
