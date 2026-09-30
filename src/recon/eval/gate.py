@@ -48,7 +48,7 @@ def comparability_failures(
         failures.append(
             f"tool_data_snapshot differs: baseline {baseline.tool_data_snapshot!r}, "
             f"candidate {tool_data_snapshot!r}. Use the baseline's snapshot, or "
-            f"{regenerate[0].lower()}{regenerate[1:]}"
+            "regenerate the baseline through an explicit PR."
         )
     baseline_ids = {s.case_id for s in baseline.case_scores}
     if set(case_ids) != baseline_ids:
