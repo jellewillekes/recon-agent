@@ -2,8 +2,11 @@
 
 Compares a candidate `EvalRun`'s aggregate metrics against a baseline
 `EvalRun` and returns the rules that failed. Empty means the candidate is
-promotable.
+promotable. Runs that don't measure the same thing are refused before any
+metric is compared; see docs/adr/0018-run-comparability-in-the-gate.md.
 """
+
+from collections.abc import Collection
 
 from recon.contracts import EvalRun
 
@@ -11,8 +14,64 @@ ANSWER_SCORE_DROP_THRESHOLD = 0.02  # 2%
 COST_RISE_THRESHOLD = 0.20  # 20%
 
 
-def check_gate(candidate: EvalRun, baseline: EvalRun) -> list[str]:
+def comparability_failures(
+    *,
+    rubric_version: str,
+    dataset: str,
+    tool_data_snapshot: str | None,
+    case_ids: Collection[str],
+    baseline: EvalRun,
+) -> list[str]:
+    """Why a candidate with these properties can't be compared with `baseline`.
+
+    Takes plain values rather than an `EvalRun` so `recon.cli eval` can check
+    before a run starts, instead of spending credit on a run the gate is
+    bound to refuse.
+    """
+    regenerate = "Regenerate the baseline through an explicit PR."
     failures: list[str] = []
+    if rubric_version != baseline.rubric_version:
+        failures.append(
+            f"rubric_version differs: baseline {baseline.rubric_version!r}, "
+            f"candidate {rubric_version!r}. Scores aren't comparable. {regenerate}"
+        )
+    if dataset != baseline.dataset:
+        failures.append(
+            f"dataset differs: baseline {baseline.dataset!r}, candidate {dataset!r}."
+        )
+    if baseline.tool_data_snapshot is None:
+        failures.append(
+            "the baseline doesn't record which tool data it queried "
+            f"(tool_data_snapshot). {regenerate}"
+        )
+    elif tool_data_snapshot != baseline.tool_data_snapshot:
+        failures.append(
+            f"tool_data_snapshot differs: baseline {baseline.tool_data_snapshot!r}, "
+            f"candidate {tool_data_snapshot!r}. Use the baseline's snapshot, or "
+            f"{regenerate[0].lower()}{regenerate[1:]}"
+        )
+    baseline_ids = {s.case_id for s in baseline.case_scores}
+    if set(case_ids) != baseline_ids:
+        missing, extra = baseline_ids - set(case_ids), set(case_ids) - baseline_ids
+        failures.append(
+            f"case sets differ: {len(missing)} baseline case(s) not run, "
+            f"{len(extra)} case(s) not in the baseline. Rerun on the baseline's "
+            f"{len(baseline_ids)} cases (a --limit run can't be compared with a "
+            "full baseline)."
+        )
+    return failures
+
+
+def check_gate(candidate: EvalRun, baseline: EvalRun) -> list[str]:
+    failures = comparability_failures(
+        rubric_version=candidate.rubric_version,
+        dataset=candidate.dataset,
+        tool_data_snapshot=candidate.tool_data_snapshot,
+        case_ids=[s.case_id for s in candidate.case_scores],
+        baseline=baseline,
+    )
+    if failures:
+        return failures
 
     candidate_completion = candidate.aggregate.get("task_completion_rate", 0.0)
     baseline_completion = baseline.aggregate.get("task_completion_rate", 0.0)

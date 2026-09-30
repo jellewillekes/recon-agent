@@ -59,3 +59,11 @@ def test_render_markdown_escapes_pipe_in_notes() -> None:
     md = render_markdown(_run(case_scores=[_case_score(notes="a | b")]))
 
     assert "a / b" in md
+
+
+@pytest.mark.unit
+def test_render_markdown_shows_the_tool_data_snapshot() -> None:
+    assert "- Tool data: 20260928" in render_markdown(
+        _run(tool_data_snapshot="20260928")
+    )
+    assert "- Tool data: not recorded" in render_markdown(_run())

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from recon.contracts import EvalRun
+from recon.contracts import CaseScore, EvalRun
 from recon.eval.gate import check_gate
 
 
@@ -23,6 +23,7 @@ def _run(**overrides: object) -> EvalRun:
         "case_scores": [],
         "aggregate": {"task_completion_rate": 1.0, "answer_score_mean": 1.0},
         "total_cost_eur": 0.10,
+        "tool_data_snapshot": "fixture",
     }
     defaults.update(overrides)
     return EvalRun(**defaults)  # type: ignore[arg-type]
@@ -93,5 +94,80 @@ def test_cost_rise_allowed_when_completion_also_rises() -> None:
         aggregate={"task_completion_rate": 0.95, "answer_score_mean": 0.9},
         total_cost_eur=1.30,
     )
+
+    assert check_gate(candidate, baseline) == []
+
+
+# --- comparability: refused before any metric (docs/contracts.md §9) --------
+
+
+def _score(case_id: str) -> CaseScore:
+    return CaseScore(
+        case_id=case_id,
+        task_completion=True,
+        answer_score=1.0,
+        tool_path_exact=False,
+        tool_path_equivalent=False,
+        tool_call_accuracy=1.0,
+        rubric_scores={},
+        cost_eur=0.05,
+        elapsed_ms=1,
+        notes="",
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("baseline_overrides", "expected"),
+    [
+        ({"rubric_version": "2"}, "rubric_version differs"),
+        ({"dataset": "other-dataset"}, "dataset differs"),
+        ({"tool_data_snapshot": "20260928"}, "tool_data_snapshot differs"),
+        ({"tool_data_snapshot": None}, "doesn't record which tool data"),
+        ({"case_scores": [_score("a"), _score("b")]}, "case sets differ"),
+    ],
+    ids=["rubric", "dataset", "snapshot", "no-snapshot", "cases"],
+)
+def test_refuses_incomparable_runs(
+    baseline_overrides: dict[str, object], expected: str
+) -> None:
+    baseline = _run(**baseline_overrides)
+    candidate = _run(
+        run_id="eval-2",
+        case_scores=[_score("a")] if "case_scores" in baseline_overrides else [],
+    )
+
+    failures = check_gate(candidate, baseline)
+
+    assert len(failures) == 1
+    assert expected in failures[0]
+
+
+@pytest.mark.unit
+def test_incomparable_runs_skip_the_metric_rules() -> None:
+    """A worse score on an incomparable run says nothing, so it isn't reported."""
+    baseline = _run(rubric_version="2")
+    candidate = _run(aggregate={"task_completion_rate": 0.1, "answer_score_mean": 0.1})
+
+    failures = check_gate(candidate, baseline)
+
+    assert failures and all("rubric_version" in f for f in failures)
+
+
+@pytest.mark.unit
+def test_case_set_message_counts_missing_and_extra_cases() -> None:
+    baseline = _run(case_scores=[_score("a"), _score("b"), _score("c")])
+    candidate = _run(case_scores=[_score("a"), _score("z")])
+
+    (failure,) = check_gate(candidate, baseline)
+
+    assert "2 baseline case(s) not run" in failure
+    assert "1 case(s) not in the baseline" in failure
+
+
+@pytest.mark.unit
+def test_same_cases_in_a_different_order_are_comparable() -> None:
+    baseline = _run(case_scores=[_score("a"), _score("b")])
+    candidate = _run(run_id="eval-2", case_scores=[_score("b"), _score("a")])
 
     assert check_gate(candidate, baseline) == []

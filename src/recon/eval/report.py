@@ -11,6 +11,7 @@ def render_markdown(run: EvalRun) -> str:
         f"- Runtime: {run.runtime} / mode: {run.mode}",
         f"- Timestamp: {run.timestamp_utc.isoformat()}",
         f"- Rubric version: {run.rubric_version}",
+        f"- Tool data: {run.tool_data_snapshot or 'not recorded'}",
         f"- Cases: {len(run.case_scores)}",
         f"- Total cost: €{run.total_cost_eur:.4f}",
         "",

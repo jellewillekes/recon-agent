@@ -177,3 +177,34 @@ def test_unknown_source_names_the_valid_ones(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv(data_source.TOOL_DATA_ENV, "live")
     with pytest.raises(ValueError, match="'edgar'.*'fixture'"):
         data_source.open_tool_data()
+
+
+@pytest.mark.unit
+def test_snapshot_id_is_fixture_for_the_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "fixture")
+    assert data_source.tool_data_snapshot_id() == "fixture"
+
+
+@pytest.mark.unit
+def test_snapshot_id_names_the_snapshot_open_tool_data_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "edgar")
+    processed = _build(tmp_path)
+    snapshot = data_source.tool_data_snapshot_id(processed)
+    assert (processed / snapshot / "financial_facts.parquet").is_file()
+    assert snapshot == data_source.latest_snapshot(processed).name
+
+
+@pytest.mark.unit
+def test_snapshot_id_raises_like_open_tool_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "edgar")
+    with pytest.raises(FileNotFoundError, match="edgar fetch"):
+        data_source.tool_data_snapshot_id(tmp_path / "empty")
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "live")
+    with pytest.raises(ValueError, match="'edgar'.*'fixture'"):
+        data_source.tool_data_snapshot_id()
