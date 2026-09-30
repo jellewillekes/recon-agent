@@ -2,6 +2,9 @@
 
 Status: Accepted
 Date: 2026-09-28
+Checked: 2026-09-30. `setting_sources`, `strict_mcp_config` and `skills` still exist on
+`ClaudeAgentOptions` in claude-agent-sdk 0.2.150 (`tests/test_sdk_isolation.py`). The token
+figures below were measured on 2026-09-28 and not re-measured.
 
 ## Context
 
