@@ -105,7 +105,7 @@ A step is done only when **all** of these hold:
 
 ## Evaluations and CI
 
-LLM evaluations run **locally**, not in CI — GitHub Actions has no model credentials. Run `recon.cli eval` locally and commit the result under `evals/results/`. A CI job that checks the result against `config/thresholds.yaml` is planned in #16; neither exists yet. Do not try to make CI call a model.
+LLM evaluations run **locally**, not in CI — GitHub Actions has no model credentials. Run `recon.cli eval` locally and commit the result under `evals/results/`. CI checks that `prompts/` still matches `evals/baseline.json`. A job checking the baseline against `config/thresholds.yaml` comes with the first baseline (#16). Neither file exists yet. Do not try to make CI call a model. See `docs/ci.md`.
 
 ## Git
 

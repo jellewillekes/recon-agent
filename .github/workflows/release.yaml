@@ -1,0 +1,72 @@
+name: Release
+
+# On a version tag: build the image, scan it with the same gate as CI, push it
+# to GHCR, and publish its digest and a CycloneDX SBOM. Deploy by the digest,
+# not the tag: a tag can be moved, a digest can't. See docs/ci.md.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build, scan and push image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Trivy
+        run: scripts/install_pinned_tool.sh trivy "$RUNNER_TEMP/bin"
+
+      - name: Build image
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "IMAGE=${image}" >> "$GITHUB_ENV"
+          docker build -f docker/Dockerfile \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            -t "${image}:${GITHUB_REF_NAME}" .
+
+      - name: Scan image
+        run: |
+          "$RUNNER_TEMP/bin/trivy" image --quiet --severity HIGH,CRITICAL \
+            --ignore-unfixed --exit-code 1 "${IMAGE}:${GITHUB_REF_NAME}"
+
+      - name: Push image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          docker push "${IMAGE}:${GITHUB_REF_NAME}"
+          digest_ref="$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE}:${GITHUB_REF_NAME}")"
+          docker logout ghcr.io
+          {
+            echo "### Image"
+            echo
+            echo "Deploy by digest: \`${digest_ref}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate SBOM
+        run: |
+          "$RUNNER_TEMP/bin/trivy" image --quiet --format cyclonedx \
+            --output sbom.cdx.json "${IMAGE}:${GITHUB_REF_NAME}"
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-${{ github.ref_name }}
+          path: sbom.cdx.json
+          if-no-files-found: error

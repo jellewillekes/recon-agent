@@ -1,3 +1,7 @@
+# commit-msg runs the company-name check on the message being written.
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.14
@@ -20,6 +24,11 @@ repos:
       - id: check-added-large-files
         args: ["--maxkb=1024"]
 
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0 # same version as .github/workflows/gitleaks.yml
+    hooks:
+      - id: gitleaks
+
   - repo: local
     hooks:
       - id: block-forbidden-tracked-paths
@@ -28,3 +37,24 @@ repos:
         language: script
         pass_filenames: false
         stages: [pre-commit, pre-push]
+
+      - id: prompt-baseline
+        name: Prompts match evals/baseline.json
+        entry: uv run python scripts/check_prompt_baseline.py
+        language: system
+        files: ^(prompts/.*\.md|evals/baseline\.json)$
+        pass_filenames: false
+
+      # Needs the gitignored .hygiene-denylist; without it this prints a notice.
+      - id: company-names
+        name: No company names in files
+        entry: uv run python scripts/check_hygiene.py check
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: company-names-message
+        name: No company names in the commit message
+        entry: uv run python scripts/check_hygiene.py check --message-file
+        language: system
+        stages: [commit-msg]

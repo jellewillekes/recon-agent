@@ -56,6 +56,9 @@ jobs:
       - name: Ruff lint
         run: uv run ruff check --output-format=github .
 
+      - name: Prompts match evals/baseline.json
+        run: uv run python scripts/check_prompt_baseline.py
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -103,3 +106,45 @@ jobs:
 
       - name: Run tests (excluding llm marker)
         run: uv run pytest -q -m "not llm"
+
+  image:
+    name: Image build and scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: hygiene
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build image
+        run: docker build -f docker/Dockerfile -t recon-agent:ci .
+
+      - name: Install Trivy
+        run: scripts/install_pinned_tool.sh trivy "$RUNNER_TEMP/bin"
+
+      # Fails on HIGH and CRITICAL findings that have a fixed version. Unfixed
+      # base-image CVEs have nothing to upgrade to, so they're listed but don't
+      # fail the job. See docs/ci.md.
+      - name: Scan image
+        run: |
+          "$RUNNER_TEMP/bin/trivy" image --quiet --severity HIGH,CRITICAL \
+            --ignore-unfixed --exit-code 1 recon-agent:ci
+
+  helm:
+    name: Helm lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: hygiene
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Helm
+        run: scripts/install_pinned_tool.sh helm "$RUNNER_TEMP/bin"
+
+      - name: Lint chart
+        run: '"$RUNNER_TEMP/bin/helm" lint charts/recon-agent'

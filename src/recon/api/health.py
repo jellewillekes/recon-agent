@@ -7,6 +7,7 @@ liveness probe that fails on a database blip restarts a healthy pod.
 """
 
 import asyncio
+import os
 import sys
 
 import asyncpg
@@ -20,11 +21,17 @@ async def check_mcp_server(timeout_s: float) -> tuple[bool, str]:
     """Spawn the same stdio subprocess `AgentSdkRuntime` uses and complete one
     MCP handshake against it. Reuses the production connection path rather
     than inventing a second way to decide the server is reachable.
+
+    Passes the full environment, as the runtimes do. Without `env`, the MCP
+    SDK hands the subprocess only a few default variables, so it misses
+    `RECON_TOOL_DATA=fixture` and refuses to start in a container.
     """
     try:
         async with asyncio.timeout(timeout_s):
             params = StdioServerParameters(
-                command=MCP_SERVER_COMMAND[0], args=MCP_SERVER_COMMAND[1:]
+                command=MCP_SERVER_COMMAND[0],
+                args=MCP_SERVER_COMMAND[1:],
+                env=dict(os.environ),
             )
             async with (
                 stdio_client(params) as (read, write),

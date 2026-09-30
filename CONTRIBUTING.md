@@ -32,7 +32,10 @@ PR titles must use Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`,
 - `make check` — format check, lint, typecheck, tests (excluding `llm`-marked)
 - `make fix` — format + safe autofix
 - `make precommit` — run all pre-commit hooks
-- `make install-hooks` — install git hooks locally
+- `make install-hooks` — install the `pre-commit` and `commit-msg` hooks locally. Re-run it
+  if you installed before the `commit-msg` stage existed
+- `.hygiene-denylist` (gitignored) — the company names the hooks check for; see
+  `docs/ci.md`
 
 ## Working with Claude Code
 

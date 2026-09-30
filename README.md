@@ -23,6 +23,8 @@ k3d — see [`docs/deployment.md`](docs/deployment.md)). See
 Since then, the tools answer from real SEC EDGAR data instead of a synthetic fixture
 ([`docs/data-sources.md`](docs/data-sources.md)), and the promotion gate refuses to
 compare runs that don't measure the same thing (`docs/adr/0018-run-comparability-in-the-gate.md`).
+CI also builds the image, scans it with Trivy and lints the chart, and a version tag
+publishes the image to GHCR ([`docs/ci.md`](docs/ci.md)).
 No baseline score is recorded yet. That full run is the next step, and it needs an
 explicit go-ahead because it spends credit (see
 [`docs/implementation-plan.md`](docs/implementation-plan.md)).
