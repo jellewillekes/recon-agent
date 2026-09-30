@@ -28,6 +28,8 @@ usd_to_eur_rate: 0.92
 # ChatAnthropic only reports token counts (usage_metadata), never a computed
 # dollar cost - this table is what turns those into AgentResult.cost_eur.
 # Source: platform.claude.com/docs/en/about-claude/pricing, 2026-09-08.
+# Checked 2026-09-30: $2/$10 for claude-sonnet-5 is now the standard price, not
+# the introductory one; the planned rise to $3/$15 was cancelled.
 # Static and manually updated, same as usd_to_eur_rate above - bump
 # deliberately if pricing changes.
 pricing:

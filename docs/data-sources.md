@@ -2,6 +2,8 @@
 
 ## finance-agent-bench
 
+Checked: 2026-09-30. The repository's licence is still MIT.
+
 - **Source**: [`vals-ai/finance-agent`](https://github.com/vals-ai/finance-agent), file `data/public.csv`
 - **Pinned commit**: `8ba65f81ab759a8e0d44e72aabc5a47cf839d563` (`main`, 2026-07-21). The
   adapter fetches this exact commit, not `main`, so the schema can't shift under it.
@@ -66,6 +68,9 @@ populate ourselves), not assumed from this dataset's `context`, which is sparse 
 design.
 
 ## Tool data: SEC EDGAR XBRL facts
+
+Checked: 2026-09-30. SEC's fair-access page still sets a maximum of 10 requests per
+second and asks for a User-Agent with a contact address.
 
 The MCP tools query structured financial-statement data from SEC EDGAR
 (issues #58 and #59, `docs/adr/0015-sec-edgar-fact-derivation.md`).

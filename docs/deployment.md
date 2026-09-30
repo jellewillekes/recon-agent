@@ -3,6 +3,9 @@
 `charts/recon-agent` runs unchanged on k3d and on a managed cluster (GKE, AKS, EKS) — this
 page covers what actually changes between the two, not a full operator's guide.
 
+Checked: 2026-09-30. `helm lint charts/recon-agent` is clean on Helm v4.2.1. The k3d
+walk-through below was not re-run.
+
 ## Local: k3d
 
 ```bash

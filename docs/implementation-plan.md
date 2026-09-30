@@ -131,7 +131,7 @@ and the follow-up ticket for real data.
 
 ---
 
-## Step 5 — evaluation harness (2.5 hours) → **POC**
+## Step 5 — evaluation harness (2.5 hours) → **done**, baseline run outstanding
 
 > Build `src/recon/eval/`. Metrics per `docs/contracts.md`: task completion, answer score from rubric, tool path exact and equivalent, tool-call accuracy, cost, latency.
 >
@@ -149,9 +149,11 @@ and the follow-up ticket for real data.
 
 Then run once in full, record the result as the baseline, and put your score next to the published reference figure in the README.
 
+**Status:** the harness is done (#10), and #55–#57 fixed three scoring bugs in it (#51–#53, ADRs 0013 and 0014). The full run hasn't happened yet. It is now its own step before step 11, because #82 made the gate refuse the only committed result as a baseline.
+
 ---
 
-## Step 6 — FastAPI service (1 hour)
+## Step 6 — FastAPI service (1 hour) → **done**
 
 Covers *API development, microservices* from the requirements, and makes the Helm chart in step 10 meaningful.
 
@@ -165,7 +167,7 @@ Covers *API development, microservices* from the requirements, and makes the Hel
 
 ---
 
-## Step 7 — multi-agent (2 hours)
+## Step 7 — multi-agent (2 hours) → **done**
 
 > Extend `runtimes/agent_sdk.py` with a multi-agent mode using subagents: a supervisor that decomposes and routes, two specialised workers each with their own tool subset, and a critic that checks the conclusion against `evidence` and rejects a conclusion without support.
 >
@@ -179,7 +181,7 @@ Run both modes in full. **If single wins, publish that.**
 
 ---
 
-## Step 8 — guardrails and reliability (2 hours)
+## Step 8 — guardrails and reliability (2 hours) → **done**
 
 > Three things.
 >
@@ -193,7 +195,7 @@ Run both modes in full. **If single wins, publish that.**
 
 ---
 
-## Step 9 — LangGraph as a second runtime (2 hours)
+## Step 9 — LangGraph as a second runtime (2 hours) → **done**
 
 The largest gap against the target role, and cheap because the tools live in MCP.
 
@@ -207,7 +209,7 @@ The largest gap against the target role, and cheap because the tools live in MCP
 
 ---
 
-## Step 10 — Docker, k3d and Helm (1.5 hours)
+## Step 10 — Docker, k3d and Helm (1.5 hours) → **done**
 
 Covers *containerization (Docker) and basic orchestration (Kubernetes)*.
 
@@ -231,6 +233,30 @@ kubectl wait --for=condition=ready pod -l app=recon-agent --timeout=120s
 
 ---
 
+## After step 10 — work outside the numbered steps → **done**
+
+Found while running the harness against the real benchmark, not planned up front.
+
+- **Real financial data (#23).** The synthetic fixture couldn't answer questions about real companies. #63 fetches and normalizes SEC EDGAR XBRL facts into Parquet (ADR 0015), and #68 points the MCP tools at them (the fixture stays for tests and containers). XBRL can answer roughly 10–14 of the 50 finance-agent-bench questions. Guidance (Beat or Miss) lives in 8-K press-release text, and qualitative questions need document text, so both wait for step 13.
+- **Isolated Agent SDK sessions (#67, ADR 0016).** Without it, every run loaded the machine's settings and connectors: about 110k extra tokens per turn. Three cases went from 1.8M to 91k tokens.
+- **`tools/server.py` split (#69)** under the module and function size limits.
+- **Claude Code project setup (#80, #81, ADR 0017).** `AGENTS.md`, path-scoped rules, hooks that block a full eval and pushes to `main`, a Stop gate on `make test`, and review subagents. The CI review bots read `AGENTS.md` from `main`, not from the PR.
+- **Run comparability in the gate (#82, ADR 0018).** The gate refuses to compare runs with a different rubric version, dataset pin, tool-data snapshot or case set, and `recon.cli eval --baseline` checks that before spending credit.
+
+---
+
+## Baseline run — before step 11 → **next**
+
+Step 11 checks a committed baseline, and none exists. The one committed result predates #82's fields, so the gate refuses it.
+
+> Run `uv run python -m recon.cli eval` in full once, on the current EDGAR snapshot, for the runtime and mode chosen as the reference. Commit the result as `evals/baseline.json` in its own PR, and fill in the README table.
+
+This spends credit, so it needs the user's explicit go-ahead on runtime, mode and case count.
+
+**Verify:** `evals/baseline.json` loads as an `EvalRun` with `tool_data_snapshot` set, and `recon.cli eval --baseline evals/baseline.json` against the same setup passes the gate.
+
+---
+
 ## Step 11 — CI/CD (1 hour)
 
 Covers *CI/CD pipelines, production deployment*.
@@ -245,6 +271,8 @@ Covers *CI/CD pipelines, production deployment*.
 
 **Verify:** push a branch → all jobs green. A deliberately degraded prompt without a new baseline makes the pre-commit hook fail.
 
+Already in place: ruff, pytest, mypy, gitleaks, CodeQL, zizmor and the review bots. `config/thresholds.yaml` doesn't exist yet; step 11 creates it next to the baseline.
+
 ---
 
 ## Step 12 — observability (1.5 hours)
@@ -256,6 +284,8 @@ Covers *CI/CD pipelines, production deployment*.
 ---
 
 ## Step 13 — RAG (2 hours)
+
+**Revised corpus.** Generic markdown in `data/knowledge/` wouldn't help the benchmark. The questions XBRL can't answer need filing text, so the corpus becomes EDGAR filing documents: 8-K exhibit 99.1 earnings releases and 10-K sections, fetched through the #63 cache under the same `filed_cutoff`. **Open decision for the user:** the prompt below gives `search_knowledge` to the supervisor and critic only, while lookups happen in the workers. With filing text as the corpus, the workers may need it too.
 
 > Add a local retrieval layer. Corpus in `data/knowledge/` as markdown. Chunking with overlap, embeddings via `sentence-transformers` locally, storage in **pgvector** in the existing Postgres. Hybrid search combining `rank_bm25` with dense retrieval via reciprocal rank fusion, plus reranking with a local cross-encoder.
 >
@@ -309,6 +339,8 @@ And this project is cloud-ready without cloud: the Helm chart, OTLP export and t
 - Setting rubric assertions — that is your judgement about what a good answer looks like
 
 ## Order
+
+Steps 1 through 10 are done. Next is the baseline run, then step 11, whose CI check needs that baseline.
 
 Steps 1 through 5 are the core. Start there and do not stop until `eval` runs. After that, steps 6 and 10 together are the cheapest jump in coverage: 2.5 hours for three requirements.
 
