@@ -32,6 +32,9 @@ jobs:
             git show FETCH_HEAD:AGENTS.md > AGENTS.md
             if git ls-files --error-unmatch AGENTS.md >/dev/null 2>&1; then
               git update-index --skip-worktree AGENTS.md
+            else
+              # The PR deleted it: keep the restored copy out of `git add -A`.
+              echo AGENTS.md >> "$(git rev-parse --git-path info/exclude)"
             fi
             echo "AGENTS.md restored from $DEFAULT_BRANCH"
           else

@@ -37,6 +37,9 @@ jobs:
             git show FETCH_HEAD:AGENTS.md > AGENTS.md
             if git ls-files --error-unmatch AGENTS.md >/dev/null 2>&1; then
               git update-index --skip-worktree AGENTS.md
+            else
+              # The PR deleted it: keep the restored copy out of `git add -A`.
+              echo AGENTS.md >> "$(git rev-parse --git-path info/exclude)"
             fi
             echo "AGENTS.md restored from $DEFAULT_BRANCH"
           else
@@ -76,6 +79,10 @@ jobs:
               the summary comment that it needs the user's decision.
             - Ambiguous, and not one of the above: say what you'd do and why,
               and note the tradeoff.
+            - Needs a change to AGENTS.md or anything under .claude/: you can't
+              make it here. This checkout holds the default branch's copies,
+              and git won't commit edits to them. Describe the exact change in
+              the summary comment for the user to apply.
 
             Post one summary comment on the PR (mcp__github__add_issue_comment,
             issue number = PR number): one bullet per point raised, covering what
