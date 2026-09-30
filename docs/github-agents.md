@@ -38,7 +38,7 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   explicitly that a human is needed. This bounds the implement/review exchange;
   it does not run forever.
 - **Human-decision escalation, independent of the round cap.** A concern that
-  falls under CLAUDE.md's "Forbidden without explicit permission" list (golden-
+  falls under AGENTS.md's "Forbidden without explicit permission" list (golden-
   set/expected-answer content, evaluation thresholds, new dependencies,
   repository layout or module boundaries, secrets), or one the PR description
   itself already flags as a draft or a judgement call pending review, isn't the
@@ -63,7 +63,21 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
 - **Voice.** Every workflow adds `--append-system-prompt` pointing at
   `CLAUDE.md`'s Voice section, so review comments, PR summaries, and issue
   bodies follow the same house style instead of reading like a generated
-  report.
+  report. `CLAUDE.md` imports `AGENTS.md`, so the workflows still resolve to
+  the same rules; only the file the workflows literally name is `CLAUDE.md`.
+
+- **The bots use `main`'s Claude Code setup, never the PR's.** Before running,
+  the action restores `.claude/`, `CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json`
+  and a few other files from `origin/main`, because the PR head is untrusted. It
+  moves the PR's copies to `.claude-pr/` without executing them. So a PR's
+  hooks and settings never run in CI. From `main`, the Bash guard applies (no
+  push to `main`, no `eval` without `--limit`), and the Stop gate skips itself
+  when `GITHUB_ACTIONS` is set, since the bots have no synced venv. See
+  `docs/adr/0017-claude-code-project-setup.md`.
+- **`AGENTS.md` is not on that restore list.** `CLAUDE.md` imports it, so the
+  bots read the PR's own `AGENTS.md`, and a PR can change the rules its reviewer
+  follows. Until the workflows restore it from `main` too, check `AGENTS.md`
+  changes in a PR by hand.
 
 ## Where a human steps in
 
@@ -79,6 +93,13 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   PR description already flagged as not finalized — the reviewer and responder
   both route these to a human immediately rather than looping on them, per the
   guardrail above.
+- **Fixes under `.claude/`.** The responder works on `main`'s `.claude/`, not
+  the PR's, so it can't fix the PR's hooks, rules or settings. It explains the
+  fix in its summary comment instead, and a person or a local session applies
+  it.
+- **PRs that change these workflows.** `claude-code-action` skips its run when a
+  PR changes the workflow it runs from, so such a PR gets no bot review. Keep
+  workflow edits in their own small PR.
 - **Merging.** No workflow merges a PR. `APPROVE` from the reviewer is a
   signal, not a merge — a human always clicks merge.
 - **Adjusting the setup.** Scan cadence (`claude-scan.yml`'s cron), the round

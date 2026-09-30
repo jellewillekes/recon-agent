@@ -10,3 +10,7 @@ data/*
 
 .env
 .DS_Store
+
+# Claude Code: personal approvals and notes stay local
+.claude/settings.local.json
+CLAUDE.local.md
