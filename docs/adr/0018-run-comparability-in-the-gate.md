@@ -25,10 +25,17 @@ added on the user's approval.
 
 ## Decision
 
-- `EvalRun` gains an optional `tool_data_snapshot`: `"fixture"`, or the EDGAR snapshot's
-  id. `tools.data_source.tool_data_snapshot_id()` computes it with the same selection
-  logic as `open_tool_data()`. `recon.cli eval` passes it to the harness, so the harness
-  depends on no tool module.
+- `EvalRun` gains an optional `tool_data_snapshot`: `<fetch date>-<content hash>` of
+  the four EDGAR tables, e.g. `20260928-173c57a28fbf`, or `fixture-<hash>` of the
+  fixture's source. The date alone isn't enough: a same-day re-fetch overwrites the same
+  directory, for example after moving `filed_cutoff`. Normalizing the same raw data twice
+  writes byte-identical tables (checked on the real 421k-fact snapshot), so unchanged
+  data keeps its id. `tools.data_source.tool_data_snapshot_id()` computes it with the
+  same selection logic as `open_tool_data()`. `recon.cli eval` passes it to the harness,
+  so the harness depends on no tool module.
+- `EvalRun.dataset` records the pinned dataset commit as well as its name, e.g.
+  `finance-agent-bench@8ba65f81ab75`. A case id hashes only the question, so a pin bump
+  that corrects an answer for an unchanged question would otherwise go unnoticed.
 - `gate.comparability_failures` refuses a comparison when `rubric_version`, `dataset`,
   `tool_data_snapshot` or the set of case ids differ, or when the baseline has no
   `tool_data_snapshot`. `check_gate` runs it first and skips the metric rules when it
@@ -40,11 +47,13 @@ added on the user's approval.
 ## Consequences
 
 - Effect on existing results: the one committed result still loads, with
-  `tool_data_snapshot` empty. It can't serve as a baseline. No `evals/baseline.json`
+  `tool_data_snapshot` empty and the old `dataset` value. It can't serve as a baseline. No `evals/baseline.json`
   exists yet, so nothing that exists breaks.
 - A baseline is tied to one snapshot. Re-fetching EDGAR means regenerating the baseline
   through an explicit PR, which costs a full run.
 - Case order doesn't matter, only the set. A `--limit` run can only be gated against a
   baseline with the same limit.
 - `runtime`, `mode`, prompts and model config may differ between the runs. Comparing
-  those is the point of the gate.
+  those is the point of the gate. The Markdown report shows the model-config and prompt
+  hashes, so a reader can see what changed without opening the JSON.
+- The content hash and the dataset pin came from an `eval-reviewer` pass on this change.

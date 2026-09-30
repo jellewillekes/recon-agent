@@ -183,7 +183,7 @@ class CaseScore(BaseModel):
 class EvalRun(BaseModel):
     run_id: str
     timestamp_utc: datetime
-    dataset: str
+    dataset: str                       # "<source>@<pinned commit>", e.g. finance-agent-bench@8ba65f81ab75
     dataset_license: str
     dataset_attribution: str
     runtime: str
@@ -194,7 +194,7 @@ class EvalRun(BaseModel):
     case_scores: list[CaseScore]
     aggregate: dict[str, float]
     total_cost_eur: float
-    tool_data_snapshot: str | None = None  # "fixture" or the EDGAR snapshot id; None before this field existed
+    tool_data_snapshot: str | None = None  # "<fetch date>-<content hash>" or "fixture-<hash>"; None before this field existed
 ```
 
 **`prompt_hashes` is not optional.** Without it a score is not reproducible and the promotion gate cannot work.

@@ -12,8 +12,8 @@ from recon.adapters import (
     sec_edgar_tickers,
 )
 from recon.adapters.finance_agent_bench import (
+    DATASET_ID,
     DEFAULT_CACHE_FILENAME,
-    SOURCE,
     fetch_csv,
     load_cases,
 )
@@ -89,7 +89,7 @@ def _refuse_incomparable_baseline(
     """Stop before any credit is spent if the gate would refuse the comparison."""
     failures = comparability_failures(
         rubric_version=RUBRIC_VERSION,
-        dataset=SOURCE,
+        dataset=DATASET_ID,
         tool_data_snapshot=tool_data_snapshot,
         case_ids=[case.case_id for case in cases],
         baseline=baseline,

@@ -15,9 +15,11 @@ from typing import Self
 import pytest
 
 from recon import cli
+from recon.adapters.finance_agent_bench import DATASET_ID
 from recon.cli import build_parser, compute_dataset_stats
 from recon.contracts import Case, CaseScore, EvalRun
 from recon.eval.harness import RUBRIC_VERSION
+from recon.tools import data_source
 
 
 def _case(
@@ -90,7 +92,7 @@ def _eval_run(**overrides: object) -> EvalRun:
     defaults: dict[str, object] = {
         "run_id": "eval-fixed",
         "timestamp_utc": datetime.now(UTC),
-        "dataset": "finance-agent-bench",
+        "dataset": DATASET_ID,
         "dataset_license": "MIT",
         "dataset_attribution": "attribution",
         "runtime": "agent_sdk",
@@ -101,7 +103,7 @@ def _eval_run(**overrides: object) -> EvalRun:
         "case_scores": [_score("1")],
         "aggregate": {"task_completion_rate": 1.0, "answer_score_mean": 1.0},
         "total_cost_eur": 0.05,
-        "tool_data_snapshot": "fixture",
+        "tool_data_snapshot": data_source.tool_data_snapshot_id(),
     }
     defaults.update(overrides)
     return EvalRun(**defaults)  # type: ignore[arg-type]
@@ -293,7 +295,9 @@ def test_cmd_eval_records_the_tool_data_snapshot(
     args = build_parser().parse_args(["eval", "--limit", "1"])
     args.func(args)
 
-    assert seen["snapshot"] == "fixture"  # tests/conftest.py pins the fixture
+    # tests/conftest.py pins the fixture.
+    assert seen["snapshot"] == data_source.tool_data_snapshot_id()
+    assert str(seen["snapshot"]).startswith("fixture-")
 
 
 @pytest.mark.unit

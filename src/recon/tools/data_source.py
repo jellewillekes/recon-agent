@@ -6,6 +6,7 @@ the agent against fake data without anyone noticing. Containers set
 `RECON_TOOL_DATA=fixture` explicitly, since they carry no EDGAR cache.
 """
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -26,7 +27,7 @@ def load_edgar(conn: duckdb.DuckDBPyConnection, snapshot_dir: Path) -> None:
         conn.execute(f"CREATE TABLE {table} AS SELECT * FROM read_parquet('{path}')")
 
 
-FIXTURE_SNAPSHOT_ID = "fixture"
+_FIXTURE_SOURCE = Path(__file__).with_name("fixtures.py")
 
 
 def _selected_source() -> str:
@@ -39,17 +40,28 @@ def _selected_source() -> str:
     return source
 
 
+def _content_hash(paths: list[Path]) -> str:
+    digest = hashlib.sha256()
+    for path in paths:
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
 def tool_data_snapshot_id(processed_dir: Path = DEFAULT_PROCESSED_DIR) -> str:
     """Which tool data `open_tool_data` would load, as recorded on an `EvalRun`.
 
-    `"fixture"` for the synthetic data, else the EDGAR snapshot's id (its
-    directory name, the fetch date). Two runs against different snapshots
-    aren't comparable, so the promotion gate checks this. Raises like
-    `open_tool_data` when the EDGAR cache is missing.
+    `<fetch date>-<hash>` for an EDGAR snapshot, `fixture-<hash>` for the
+    synthetic data. The hash covers what the tools actually read (the four
+    Parquet tables, or the fixture's source), because the directory name
+    alone repeats when a same-day re-fetch moves the cutoff. Normalizing the
+    same raw data twice writes byte-identical tables, so unchanged data keeps
+    its id. Raises like `open_tool_data` when the EDGAR cache is missing.
     """
     if _selected_source() == "fixture":
-        return FIXTURE_SNAPSHOT_ID
-    return latest_snapshot(processed_dir).name
+        return f"fixture-{_content_hash([_FIXTURE_SOURCE])}"
+    snapshot = latest_snapshot(processed_dir)
+    tables = [snapshot / f"{table}.parquet" for table in EDGAR_TABLES]
+    return f"{snapshot.name}-{_content_hash(tables)}"
 
 
 def open_tool_data(

@@ -5,7 +5,7 @@ model config, assemble an `EvalRun`. See `docs/contracts.md` §7.
 from datetime import UTC, datetime
 from pathlib import Path
 
-from recon.adapters.finance_agent_bench import ATTRIBUTION, LICENSE, SOURCE
+from recon.adapters.finance_agent_bench import ATTRIBUTION, DATASET_ID, LICENSE
 from recon.contracts import AgentResult, Case, CaseScore, EvalRun
 from recon.eval import hashing, metrics
 from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH, judge_case
@@ -161,7 +161,7 @@ def run_evaluation(
     return EvalRun(
         run_id=_run_id(),
         timestamp_utc=datetime.now(UTC),
-        dataset=SOURCE,
+        dataset=DATASET_ID,
         dataset_license=LICENSE,
         dataset_attribution=ATTRIBUTION,
         runtime=runtime_name,
