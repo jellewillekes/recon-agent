@@ -61,10 +61,9 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   or label needs write access to the repo (the action's default check) — this
   isn't a public-facing surface.
 - **Voice.** Every workflow adds `--append-system-prompt` pointing at
-  `CLAUDE.md`'s Voice section, so review comments, PR summaries, and issue
+  `AGENTS.md`'s Voice section, so review comments, PR summaries, and issue
   bodies follow the same house style instead of reading like a generated
-  report. `CLAUDE.md` imports `AGENTS.md`, so the workflows still resolve to
-  the same rules; only the file the workflows literally name is `CLAUDE.md`.
+  report.
 
 - **The bots use `main`'s Claude Code setup, never the PR's.** Before running,
   the action restores `.claude/`, `CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json`
@@ -74,10 +73,14 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   push to `main`, no `eval` without `--limit`), and the Stop gate skips itself
   when `GITHUB_ACTIONS` is set, since the bots have no synced venv. See
   `docs/adr/0017-claude-code-project-setup.md`.
-- **`AGENTS.md` is not on that restore list.** `CLAUDE.md` imports it, so the
-  bots read the PR's own `AGENTS.md`, and a PR can change the rules its reviewer
-  follows. Until the workflows restore it from `main` too, check `AGENTS.md`
-  changes in a PR by hand.
+- **`AGENTS.md` is restored by the workflows themselves.** It isn't on the
+  action's restore list, and `CLAUDE.md` imports it, so a PR could otherwise
+  change the rules its own reviewer follows. The review and respond workflows
+  copy it from `main` before the action runs, and mark it `--skip-worktree` so
+  the responder never commits `main`'s copy over the PR's own.
+  `claude.yml` isn't covered: on a PR comment the action checks out the PR
+  branch itself, after any step the workflow runs. Look over a PR's
+  `AGENTS.md` changes before asking `@claude` to act on that PR.
 
 ## Where a human steps in
 
