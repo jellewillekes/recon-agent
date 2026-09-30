@@ -51,6 +51,11 @@ added on the user's approval.
   exists yet, so nothing that exists breaks.
 - A baseline is tied to one snapshot. Re-fetching EDGAR means regenerating the baseline
   through an explicit PR, which costs a full run.
+- Byte-identical Parquet is guaranteed only within one DuckDB version, which `uv.lock`
+  pins. An upgrade may change writer metadata, and with it every snapshot id, so a
+  DuckDB bump can make the baseline look stale although the data didn't change. That
+  fails safe: an unnecessary refusal, never a false match. After a DuckDB upgrade,
+  re-normalize the snapshot and regenerate the baseline in the same PR.
 - Case order doesn't matter, only the set. A `--limit` run can only be gated against a
   baseline with the same limit.
 - `runtime`, `mode`, prompts and model config may differ between the runs. Comparing
