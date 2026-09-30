@@ -188,6 +188,24 @@ def test_snapshot_id_for_the_fixture_is_stable(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.unit
+def test_fixture_id_follows_the_seeded_rows_not_the_source_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "fixture")
+    before = data_source.tool_data_snapshot_id()
+    real_seed = data_source.seed
+
+    def seed_one_more_company(conn: duckdb.DuckDBPyConnection) -> None:
+        real_seed(conn)
+        conn.execute(
+            "INSERT INTO companies (company_id, name) VALUES ('FIRM-NEW', 'New Co')"
+        )
+
+    monkeypatch.setattr(data_source, "seed", seed_one_more_company)
+    assert data_source.tool_data_snapshot_id() != before
+
+
+@pytest.mark.unit
 def test_snapshot_id_names_the_snapshot_open_tool_data_loads(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

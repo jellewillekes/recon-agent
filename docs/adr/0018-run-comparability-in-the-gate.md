@@ -27,7 +27,7 @@ added on the user's approval.
 
 - `EvalRun` gains an optional `tool_data_snapshot`: `<fetch date>-<content hash>` of
   the four EDGAR tables, e.g. `20260928-173c57a28fbf`, or `fixture-<hash>` of the
-  fixture's source. The date alone isn't enough: a same-day re-fetch overwrites the same
+  fixture's seeded rows, so a comment edit in `fixtures.py` keeps the id. The date alone isn't enough: a same-day re-fetch overwrites the same
   directory, for example after moving `filed_cutoff`. Normalizing the same raw data twice
   writes byte-identical tables (checked on the real 421k-fact snapshot), so unchanged
   data keeps its id. `tools.data_source.tool_data_snapshot_id()` computes it with the
