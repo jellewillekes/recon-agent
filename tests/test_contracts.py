@@ -277,3 +277,11 @@ def test_docs_contracts_fields_match_models() -> None:
             f"{name}: docs/contracts.md fields {sorted(documented[name])} != "
             f"contracts.py fields {sorted(actual_fields)}"
         )
+
+
+@pytest.mark.unit
+def test_results_recorded_before_tool_data_snapshot_still_load() -> None:
+    """Adding EvalRun.tool_data_snapshot must not break committed results."""
+    for path in sorted(Path("evals/results").glob("*.json")):
+        run = EvalRun.model_validate_json(path.read_text(encoding="utf-8"))
+        assert run.tool_data_snapshot is None

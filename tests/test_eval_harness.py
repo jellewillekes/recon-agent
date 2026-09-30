@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from recon.adapters.finance_agent_bench import DATASET_ID
 from recon.contracts import AgentResult, Case
 from recon.eval import harness
 from recon.eval.judge import JudgeResult
@@ -259,10 +260,13 @@ def test_run_evaluation_end_to_end_with_fake_runtime(
         rubrics_dir=REPO_RUBRICS_DIR,
         prompts_dir=REPO_PROMPTS_DIR,
         models_config_path=REPO_MODELS_CONFIG,
+        tool_data_snapshot="20260928",
     )
 
     assert len(run.case_scores) == 2
-    assert run.dataset == "finance-agent-bench"
+    assert run.dataset == DATASET_ID
+    assert run.dataset.startswith("finance-agent-bench@")
+    assert run.tool_data_snapshot == "20260928"
     assert run.rubric_version == harness.RUBRIC_VERSION
     assert run.prompt_hashes  # non-empty, per docs/contracts.md §7
     assert run.aggregate["case_count"] == 2.0

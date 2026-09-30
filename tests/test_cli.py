@@ -15,8 +15,11 @@ from typing import Self
 import pytest
 
 from recon import cli
+from recon.adapters.finance_agent_bench import DATASET_ID
 from recon.cli import build_parser, compute_dataset_stats
-from recon.contracts import Case, EvalRun
+from recon.contracts import Case, CaseScore, EvalRun
+from recon.eval.harness import RUBRIC_VERSION
+from recon.tools import data_source
 
 
 def _case(
@@ -70,21 +73,37 @@ def test_compute_dataset_stats_on_empty_dataset() -> None:
     assert stats["cases_with_expected_tool_path"] == 0
 
 
+def _score(case_id: str) -> CaseScore:
+    return CaseScore(
+        case_id=case_id,
+        task_completion=True,
+        answer_score=1.0,
+        tool_path_exact=False,
+        tool_path_equivalent=False,
+        tool_call_accuracy=1.0,
+        rubric_scores={},
+        cost_eur=0.05,
+        elapsed_ms=1,
+        notes="",
+    )
+
+
 def _eval_run(**overrides: object) -> EvalRun:
     defaults: dict[str, object] = {
         "run_id": "eval-fixed",
         "timestamp_utc": datetime.now(UTC),
-        "dataset": "finance-agent-bench",
+        "dataset": DATASET_ID,
         "dataset_license": "MIT",
         "dataset_attribution": "attribution",
         "runtime": "agent_sdk",
         "mode": "single",
         "model_config_hash": "abc",
         "prompt_hashes": {"investigator": "abc"},
-        "rubric_version": "1",
-        "case_scores": [],
+        "rubric_version": RUBRIC_VERSION,
+        "case_scores": [_score("1")],
         "aggregate": {"task_completion_rate": 1.0, "answer_score_mean": 1.0},
         "total_cost_eur": 0.05,
+        "tool_data_snapshot": data_source.tool_data_snapshot_id(),
     }
     defaults.update(overrides)
     return EvalRun(**defaults)  # type: ignore[arg-type]
@@ -101,7 +120,7 @@ def test_cmd_eval_writes_json_and_markdown(
 ) -> None:
     _patch_dataset_loading(monkeypatch)
     monkeypatch.setattr(
-        cli, "run_evaluation", lambda cases, runtime, limit: _eval_run()
+        cli, "run_evaluation", lambda cases, runtime, tool_data_snapshot: _eval_run()
     )
     monkeypatch.chdir(tmp_path)
 
@@ -119,7 +138,9 @@ def test_cmd_eval_mode_flag_reaches_runtime(
     _patch_dataset_loading(monkeypatch)
     captured: dict[str, object] = {}
 
-    def fake_run_evaluation(cases: object, runtime: object, limit: object) -> EvalRun:
+    def fake_run_evaluation(
+        cases: object, runtime: object, tool_data_snapshot: object
+    ) -> EvalRun:
         captured["mode"] = runtime._mode  # type: ignore[attr-defined]
         return _eval_run()
 
@@ -139,7 +160,9 @@ def test_cmd_eval_defaults_to_single_mode(
     _patch_dataset_loading(monkeypatch)
     captured: dict[str, object] = {}
 
-    def fake_run_evaluation(cases: object, runtime: object, limit: object) -> EvalRun:
+    def fake_run_evaluation(
+        cases: object, runtime: object, tool_data_snapshot: object
+    ) -> EvalRun:
         captured["mode"] = runtime._mode  # type: ignore[attr-defined]
         return _eval_run()
 
@@ -159,7 +182,9 @@ def test_cmd_eval_runtime_flag_reaches_langgraph_runtime(
     _patch_dataset_loading(monkeypatch)
     captured: dict[str, object] = {}
 
-    def fake_run_evaluation(cases: object, runtime: object, limit: object) -> EvalRun:
+    def fake_run_evaluation(
+        cases: object, runtime: object, tool_data_snapshot: object
+    ) -> EvalRun:
         captured["runtime_type"] = type(runtime).__name__
         return _eval_run()
 
@@ -179,7 +204,9 @@ def test_cmd_eval_defaults_to_sdk_runtime(
     _patch_dataset_loading(monkeypatch)
     captured: dict[str, object] = {}
 
-    def fake_run_evaluation(cases: object, runtime: object, limit: object) -> EvalRun:
+    def fake_run_evaluation(
+        cases: object, runtime: object, tool_data_snapshot: object
+    ) -> EvalRun:
         captured["runtime_type"] = type(runtime).__name__
         return _eval_run()
 
@@ -212,7 +239,7 @@ def test_cmd_eval_gate_passes_prints_message(
 ) -> None:
     _patch_dataset_loading(monkeypatch)
     monkeypatch.setattr(
-        cli, "run_evaluation", lambda cases, runtime, limit: _eval_run()
+        cli, "run_evaluation", lambda cases, runtime, tool_data_snapshot: _eval_run()
     )
     monkeypatch.chdir(tmp_path)
     baseline_path = tmp_path / "baseline.json"
@@ -230,7 +257,7 @@ def test_cmd_eval_gate_failure_exits_nonzero(
     monkeypatch.setattr(
         cli,
         "run_evaluation",
-        lambda cases, runtime, limit: _eval_run(
+        lambda cases, runtime, tool_data_snapshot: _eval_run(
             aggregate={"task_completion_rate": 0.5, "answer_score_mean": 0.5}
         ),
     )
@@ -248,6 +275,82 @@ def test_cmd_eval_gate_failure_exits_nonzero(
         args.func(args)
 
     assert exc_info.value.code == 1
+
+
+@pytest.mark.unit
+def test_cmd_eval_records_the_tool_data_snapshot(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    seen: dict[str, object] = {}
+
+    def fake_run_evaluation(
+        cases: object, runtime: object, tool_data_snapshot: object
+    ) -> EvalRun:
+        seen["snapshot"] = tool_data_snapshot
+        return _eval_run()
+
+    monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
+    monkeypatch.chdir(tmp_path)
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    args.func(args)
+
+    # tests/conftest.py pins the fixture.
+    assert seen["snapshot"] == data_source.tool_data_snapshot_id()
+    assert str(seen["snapshot"]).startswith("fixture-")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "baseline_overrides",
+    [
+        {"rubric_version": "1"},
+        {"dataset": "other-dataset"},
+        {"tool_data_snapshot": "20260928"},
+        {"tool_data_snapshot": None},
+        {"case_scores": [_score("1"), _score("2")]},
+    ],
+    ids=["rubric", "dataset", "snapshot", "no-snapshot", "cases"],
+)
+def test_cmd_eval_refuses_an_incomparable_baseline_before_running(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    baseline_overrides: dict[str, object],
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+
+    def must_not_run(*args: object, **kwargs: object) -> EvalRun:
+        raise AssertionError("the eval ran, spending credit, before refusing")
+
+    monkeypatch.setattr(cli, "run_evaluation", must_not_run)
+    monkeypatch.chdir(tmp_path)
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        _eval_run(**baseline_overrides).model_dump_json(), encoding="utf-8"
+    )
+
+    args = build_parser().parse_args(["eval", "--baseline", str(baseline_path)])
+    with pytest.raises(SystemExit) as exc_info:
+        args.func(args)
+
+    assert exc_info.value.code == 1
+
+
+@pytest.mark.unit
+def test_cmd_eval_fails_on_a_missing_edgar_cache_before_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    monkeypatch.setenv("RECON_TOOL_DATA", "edgar")
+    monkeypatch.chdir(tmp_path)  # no data/processed/sec_edgar here
+
+    def must_not_run(*args: object, **kwargs: object) -> EvalRun:
+        raise AssertionError("the eval started without tool data")
+
+    monkeypatch.setattr(cli, "run_evaluation", must_not_run)
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    with pytest.raises(SystemExit, match="edgar fetch"):
+        args.func(args)
 
 
 class _FakeHttpClient:

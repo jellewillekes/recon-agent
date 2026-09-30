@@ -164,6 +164,10 @@ class EvalRun(BaseModel):
     case_scores: list[CaseScore]
     aggregate: dict[str, float]
     total_cost_eur: float
+    # "<fetch date>-<content hash>" of the EDGAR tables the tools queried, or
+    # "fixture-<hash>". None on runs recorded before this field existed; the
+    # promotion gate refuses those.
+    tool_data_snapshot: str | None = None
 
     @model_validator(mode="after")
     def _prompt_hashes_required(self) -> "EvalRun":

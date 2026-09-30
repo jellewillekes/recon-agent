@@ -12,17 +12,19 @@ from recon.adapters import (
     sec_edgar_tickers,
 )
 from recon.adapters.finance_agent_bench import (
+    DATASET_ID,
     DEFAULT_CACHE_FILENAME,
     fetch_csv,
     load_cases,
 )
 from recon.contracts import Case, EvalRun
-from recon.eval.gate import check_gate
-from recon.eval.harness import run_evaluation
+from recon.eval.gate import check_gate, comparability_failures
+from recon.eval.harness import RUBRIC_VERSION, run_evaluation
 from recon.eval.report import render_markdown
 from recon.runtimes.agent_sdk import AgentSdkRuntime
 from recon.runtimes.base import Runtime
 from recon.runtimes.langgraph import LangGraphRuntime
+from recon.tools.data_source import tool_data_snapshot_id
 
 # Filename carries the pinned commit, so bumping the pin in the adapter also
 # changes the default fetch destination here — an old pin's cached file is
@@ -81,11 +83,43 @@ def _cmd_run(args: argparse.Namespace) -> None:
     print(result.model_dump_json(indent=2))
 
 
+def _refuse_incomparable_baseline(
+    baseline: EvalRun, cases: list[Case], tool_data_snapshot: str
+) -> None:
+    """Stop before any credit is spent if the gate would refuse the comparison."""
+    failures = comparability_failures(
+        rubric_version=RUBRIC_VERSION,
+        dataset=DATASET_ID,
+        tool_data_snapshot=tool_data_snapshot,
+        case_ids=[case.case_id for case in cases],
+        baseline=baseline,
+    )
+    if failures:
+        for failure in failures:
+            print(f"GATE REFUSED (before running): {failure}")
+        raise SystemExit(1)
+
+
 def _cmd_eval(args: argparse.Namespace) -> None:
-    csv_path = fetch_csv(args.path)
-    cases = load_cases(csv_path)
+    cases = load_cases(fetch_csv(args.path))
+    if args.limit is not None:
+        cases = cases[: args.limit]
+    # Fails now, not mid-run, when the EDGAR cache is missing.
+    try:
+        tool_data_snapshot = tool_data_snapshot_id()
+    except (FileNotFoundError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
+    baseline = (
+        EvalRun.model_validate_json(args.baseline.read_text(encoding="utf-8"))
+        if args.baseline is not None
+        else None
+    )
+    if baseline is not None:
+        _refuse_incomparable_baseline(baseline, cases, tool_data_snapshot)
     run = run_evaluation(
-        cases, _build_runtime(args.runtime, args.mode), limit=args.limit
+        cases,
+        _build_runtime(args.runtime, args.mode),
+        tool_data_snapshot=tool_data_snapshot,
     )
 
     results_dir = Path("evals/results")
@@ -103,10 +137,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
         f"total_cost_eur={run.total_cost_eur:.4f}"
     )
 
-    if args.baseline is not None:
-        baseline = EvalRun.model_validate_json(
-            args.baseline.read_text(encoding="utf-8")
-        )
+    if baseline is not None:
         failures = check_gate(run, baseline)
         if failures:
             for failure in failures:

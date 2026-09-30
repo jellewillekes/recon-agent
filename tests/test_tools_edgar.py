@@ -177,3 +177,75 @@ def test_unknown_source_names_the_valid_ones(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv(data_source.TOOL_DATA_ENV, "live")
     with pytest.raises(ValueError, match="'edgar'.*'fixture'"):
         data_source.open_tool_data()
+
+
+@pytest.mark.unit
+def test_snapshot_id_for_the_fixture_is_stable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "fixture")
+    snapshot = data_source.tool_data_snapshot_id()
+    assert snapshot.startswith("fixture-")
+    assert data_source.tool_data_snapshot_id() == snapshot
+
+
+@pytest.mark.unit
+def test_fixture_id_follows_the_seeded_rows_not_the_source_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "fixture")
+    before = data_source.tool_data_snapshot_id()
+    real_seed = data_source.seed
+
+    def seed_one_more_company(conn: duckdb.DuckDBPyConnection) -> None:
+        real_seed(conn)
+        conn.execute(
+            "INSERT INTO companies (company_id, name) VALUES ('FIRM-NEW', 'New Co')"
+        )
+
+    monkeypatch.setattr(data_source, "seed", seed_one_more_company)
+    assert data_source.tool_data_snapshot_id() != before
+
+
+@pytest.mark.unit
+def test_snapshot_id_names_the_snapshot_open_tool_data_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "edgar")
+    processed = _build(tmp_path)
+    snapshot = data_source.tool_data_snapshot_id(processed)
+    date_part, content_hash = snapshot.split("-")
+    assert date_part == data_source.latest_snapshot(processed).name == "20260928"
+    assert len(content_hash) == 12
+    assert data_source.tool_data_snapshot_id(processed) == snapshot
+
+
+@pytest.mark.unit
+def test_same_day_snapshot_with_different_data_gets_a_new_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A same-day re-fetch overwrites the same directory, e.g. after a moved
+    filed_cutoff drops facts. The date alone would call the runs comparable."""
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "edgar")
+    processed = _build(tmp_path)
+    before = data_source.tool_data_snapshot_id(processed)
+    facts = processed / "20260928" / "financial_facts.parquet"
+    path = str(facts).replace("'", "''")
+    duckdb.connect().execute(
+        f"COPY (SELECT * FROM read_parquet('{path}') LIMIT 0) "
+        f"TO '{path}.new' (FORMAT parquet)"
+    )
+    Path(f"{facts}.new").replace(facts)
+    after = data_source.tool_data_snapshot_id(processed)
+    assert after.split("-")[0] == before.split("-")[0] == "20260928"
+    assert after != before
+
+
+@pytest.mark.unit
+def test_snapshot_id_raises_like_open_tool_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "edgar")
+    with pytest.raises(FileNotFoundError, match="edgar fetch"):
+        data_source.tool_data_snapshot_id(tmp_path / "empty")
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "live")
+    with pytest.raises(ValueError, match="'edgar'.*'fixture'"):
+        data_source.tool_data_snapshot_id()

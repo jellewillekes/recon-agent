@@ -183,7 +183,7 @@ class CaseScore(BaseModel):
 class EvalRun(BaseModel):
     run_id: str
     timestamp_utc: datetime
-    dataset: str
+    dataset: str                       # "<source>@<pinned commit>", e.g. finance-agent-bench@8ba65f81ab75
     dataset_license: str
     dataset_attribution: str
     runtime: str
@@ -194,6 +194,7 @@ class EvalRun(BaseModel):
     case_scores: list[CaseScore]
     aggregate: dict[str, float]
     total_cost_eur: float
+    tool_data_snapshot: str | None = None  # "<fetch date>-<content hash>" or "fixture-<hash>"; None before this field existed
 ```
 
 **`prompt_hashes` is not optional.** Without it a score is not reproducible and the promotion gate cannot work.
@@ -225,7 +226,9 @@ Rubric changes are breaking: earlier runs are no longer comparable. Bump `rubric
 
 ## 9. Promotion gate
 
-A new prompt version or model configuration is rejected when:
+Two runs are compared only when they share `rubric_version`, `dataset`, `tool_data_snapshot` and the same set of case ids. Otherwise the gate refuses before looking at any metric: the numbers measure different things. A baseline with no `tool_data_snapshot` is refused too. The fix is a new baseline through an explicit PR, or rerunning the candidate on the baseline's cases.
+
+A comparable new prompt version or model configuration is rejected when:
 
 - `task_completion` drops against the baseline, or
 - weighted `answer_score` drops by more than 2%, or

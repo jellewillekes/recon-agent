@@ -20,6 +20,9 @@ from recon.contracts import Case
 SOURCE = "finance-agent-bench"
 
 PINNED_COMMIT = "8ba65f81ab759a8e0d44e72aabc5a47cf839d563"
+# What EvalRun.dataset records: the pin, not just the name, so a pin bump that
+# corrects a label for an unchanged question makes old runs incomparable.
+DATASET_ID = f"{SOURCE}@{PINNED_COMMIT[:12]}"
 RAW_CSV_URL = f"https://raw.githubusercontent.com/vals-ai/finance-agent/{PINNED_COMMIT}/data/public.csv"
 
 # The pin is part of the cache filename, not just a comment: bumping

@@ -5,7 +5,7 @@ model config, assemble an `EvalRun`. See `docs/contracts.md` §7.
 from datetime import UTC, datetime
 from pathlib import Path
 
-from recon.adapters.finance_agent_bench import ATTRIBUTION, LICENSE, SOURCE
+from recon.adapters.finance_agent_bench import ATTRIBUTION, DATASET_ID, LICENSE
 from recon.contracts import AgentResult, Case, CaseScore, EvalRun
 from recon.eval import hashing, metrics
 from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH, judge_case
@@ -131,6 +131,11 @@ def run_evaluation(
     # harness depends only on the Runtime protocol, never a specific runtime
     # module (see this module's docstring).
     roles_config_path: Path = Path("config/roles.yaml"),
+    # Which tool data the runtime's MCP server queries, from
+    # tools.data_source.tool_data_snapshot_id(). Passed in rather than
+    # looked up here, so the harness depends on no tool module. None records
+    # "unknown", which the promotion gate refuses to compare.
+    tool_data_snapshot: str | None = None,
 ) -> EvalRun:
     if limit is not None:
         cases = cases[:limit]
@@ -156,7 +161,7 @@ def run_evaluation(
     return EvalRun(
         run_id=_run_id(),
         timestamp_utc=datetime.now(UTC),
-        dataset=SOURCE,
+        dataset=DATASET_ID,
         dataset_license=LICENSE,
         dataset_attribution=ATTRIBUTION,
         runtime=runtime_name,
@@ -167,4 +172,5 @@ def run_evaluation(
         case_scores=case_scores,
         aggregate=_aggregate(cases, case_scores),
         total_cost_eur=sum(s.cost_eur for s in case_scores),
+        tool_data_snapshot=tool_data_snapshot,
     )
