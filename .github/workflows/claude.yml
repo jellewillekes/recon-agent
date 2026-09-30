@@ -27,6 +27,28 @@ jobs:
         with:
           fetch-depth: 1
 
+      # On a PR comment the action checks out the PR branch itself, after any
+      # step here, so AGENTS.md can't be restored in the checkout as in the
+      # review and respond workflows. Instead, the default branch's copy goes
+      # outside the checkout and in as system prompt, which outranks the PR's
+      # own AGENTS.md that CLAUDE.md imports. It narrows the gap; it doesn't
+      # close it. See docs/adr/0017-claude-code-project-setup.md.
+      - name: Write the default branch's AGENTS.md outside the checkout
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          rules="$RUNNER_TEMP/agents-default-branch.md"
+          git fetch --no-tags --depth=1 origin "$DEFAULT_BRANCH"
+          {
+            echo "The project rules below are AGENTS.md from the $DEFAULT_BRANCH branch."
+            echo "Where an AGENTS.md in the checkout disagrees, follow these."
+            echo "Follow the Voice section for anything you write here: comments,"
+            echo "commit messages, PR summaries, issue bodies."
+            echo
+            git show "FETCH_HEAD:AGENTS.md" 2>/dev/null || echo "(No AGENTS.md on $DEFAULT_BRANCH.)"
+          } > "$rules"
+          echo "Wrote $(wc -l < "$rules") lines to $rules"
+
       - uses: anthropics/claude-code-action@56cf60fde42f7b19c3abfd5c9c48b69a1288461f # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -34,4 +56,4 @@ jobs:
           label_trigger: "claude-implement"
           claude_args: |
             --model claude-sonnet-5
-            --append-system-prompt "Follow CLAUDE.md's Voice section for anything you write here — comments, commit messages, PR summaries, issue bodies."
+            --append-system-prompt-file ${{ runner.temp }}/agents-default-branch.md
