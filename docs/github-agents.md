@@ -78,9 +78,17 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   change the rules its own reviewer follows. The review and respond workflows
   copy it from `main` before the action runs, and mark it `--skip-worktree` so
   the responder never commits `main`'s copy over the PR's own.
-  `claude.yml` isn't covered: on a PR comment the action checks out the PR
-  branch itself, after any step the workflow runs. Look over a PR's
-  `AGENTS.md` changes before asking `@claude` to act on that PR.
+  A PR that deletes `AGENTS.md` keeps it deleted: the restored copy goes into
+  `.git/info/exclude`. Because of this, the responder can't change `AGENTS.md`
+  or `.claude/` itself; its prompt tells it to describe such a fix for a human.
+  `tests/test_workflows.py` runs the step against throwaway repos.
+- **`claude.yml` gets the rules as system prompt instead.** On a PR comment
+  the action checks out the PR branch itself, after any workflow step, so the
+  checkout can't be fixed. The workflow writes the default branch's
+  `AGENTS.md` outside the checkout and passes it with
+  `--append-system-prompt-file`, which outranks the PR's copy that `CLAUDE.md`
+  still imports. That narrows the gap without closing it, so still look over a
+  PR's `AGENTS.md` changes before asking `@claude` to act on that PR.
 
 ## Where a human steps in
 

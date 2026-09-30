@@ -55,8 +55,8 @@ conventions.
 - The review bots always run with `main`'s `.claude/` and `CLAUDE.md`, never a PR's, so
   they can't test or fix a PR's changes there. A person or a local session does that.
   The review and respond workflows also use `main`'s `AGENTS.md`. `@claude` runs on a
-  PR (`claude.yml`) still read the PR's own copy, so look over `AGENTS.md` changes
-  before asking `@claude` to act on that PR.
+  PR (`claude.yml`) get `main`'s copy as system prompt but still see the PR's own, so
+  look over `AGENTS.md` changes before asking `@claude` to act on that PR.
 
 ## Guardrails
 

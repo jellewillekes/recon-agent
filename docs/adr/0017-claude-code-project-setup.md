@@ -84,8 +84,10 @@ Adapt the framework's pieces locally, crediting the source in each file.
   the bots read the PR's own `AGENTS.md`, and a PR (including one the implement bot
   opens) can change the rules its reviewer follows. Restoring `AGENTS.md` from `main`
   in the workflows closes this. It's a workflow change, so it belongs in its own PR.
-  #81 did this for the review and respond workflows. `claude.yml` isn't covered,
-  because the action checks out the PR branch itself after any workflow step.
+  #81 did this for the review and respond workflows. `claude.yml` can't restore the
+  checkout, because the action checks out the PR branch itself after any workflow
+  step, so it passes the default branch's `AGENTS.md` as `--append-system-prompt-file`
+  instead. That outranks the PR's copy but doesn't remove it.
 - `claude-code-action` skips its run when a PR changes the workflow it runs from. Keep
   workflow edits out of PRs that need a bot review.
 - Project `allow` rules take effect only after the workspace is trusted, by opening
