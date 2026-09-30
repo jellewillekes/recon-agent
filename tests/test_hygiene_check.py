@@ -87,6 +87,33 @@ def test_a_commit_message_being_written_fails(repo: Path) -> None:
     assert result.stdout.splitlines()[0] == "commit message line 3"
 
 
+def test_git_comments_and_the_verbose_diff_are_not_scanned(repo: Path) -> None:
+    """Git strips these before committing, e.g. a branch name in the status
+    comment, or a removed name in the `commit -v` diff."""
+    message = repo / "COMMIT_EDITMSG"
+    message.write_text(
+        "docs: describe by role\n\n"
+        "# On branch zorblax-widgets\n"
+        "# ------------------------ >8 ------------------------\n"
+        "-see Zorblax Widgets' filing\n"
+    )
+    result = _run(repo, "check", "--message-file", str(message), HYGIENE_DENYLIST=NAME)
+    assert result.returncode == 0, result.stdout
+
+
+def test_a_name_in_a_file_path_fails(repo: Path) -> None:
+    (repo / "zorblax_widgets.bin").write_bytes(b"\xff\xfe")
+    _commit(repo, "zorblax_widgets_10k.md", "about Zorblax Widgets\n")
+    result = _run(repo, "check", HYGIENE_DENYLIST=NAME)
+    assert result.returncode == 1
+    assert result.stdout.splitlines()[:3] == [
+        "file name: entry 2 of `git ls-files`",
+        "file name: entry 3 of `git ls-files`",
+        "entry 3 of `git ls-files`:1",
+    ]
+    assert "zorblax" not in result.stdout.lower()
+
+
 def test_a_name_in_the_pr_title_or_body_fails(repo: Path) -> None:
     result = _run(
         repo,

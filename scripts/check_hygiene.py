@@ -67,14 +67,22 @@ def _git(*args: str) -> str:
 
 
 def scan_tracked_files(pattern: re.Pattern[str]) -> list[str]:
-    """`path:line` for every tracked text file line that contains a name."""
+    """`path:line` for every tracked text file line that contains a name, and
+    the `git ls-files` position of every path that contains one."""
     hits = []
-    for path in filter(None, _git("ls-files", "-z").split("\0")):
+    paths = filter(None, _git("ls-files", "-z").split("\0"))
+    for index, path in enumerate(paths, 1):
+        # A path holding a name is reported by position, so the log doesn't
+        # repeat it. That goes for line hits inside the file too.
+        shown = path
+        if pattern.search(path):
+            shown = f"entry {index} of `git ls-files`"
+            hits.append(f"file name: {shown}")
         try:
             text = Path(path).read_text(encoding="utf-8")
         except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
             continue  # binary, or deleted/submodule in the working tree
-        hits += [f"{path}:{n}" for n in matching_lines(text, pattern)]
+        hits += [f"{shown}:{n}" for n in matching_lines(text, pattern)]
     return hits
 
 
@@ -89,6 +97,18 @@ def scan_commits(rev_range: str, pattern: re.Pattern[str]) -> list[str]:
             for n in matching_lines(message, pattern)
         ]
     return hits
+
+
+def committed_message(raw: str) -> str:
+    """The part of a commit message file git keeps: no `#` comment lines, and
+    nothing from the `git commit -v` scissors line down. Comment lines are
+    blanked, not dropped, so line numbers still match the editor's."""
+    kept = []
+    for line in raw.splitlines():
+        if line.startswith("# ------------------------ >8 ------------------------"):
+            break
+        kept.append("" if line.startswith("#") else line)
+    return "\n".join(kept)
 
 
 def scan_pull_request(pattern: re.Pattern[str]) -> list[str]:
@@ -130,7 +150,7 @@ def _check(args: argparse.Namespace) -> int:
     if args.commits:
         hits += scan_commits(args.commits, pattern)
     if args.message_file:
-        message = args.message_file.read_text(encoding="utf-8")
+        message = committed_message(args.message_file.read_text(encoding="utf-8"))
         hits += [f"commit message line {n}" for n in matching_lines(message, pattern)]
     if not hits:
         print(f"No company names found ({len(names)} names checked).")
