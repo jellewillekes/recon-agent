@@ -4,7 +4,7 @@ An agent evaluation platform for financial research tasks. The agent answers ana
 questions using tools; the harness measures how well it does that — not just the
 answer, but the path taken to reach it.
 
-The harness is the product, not the agent. See `CLAUDE.md` for project conventions,
+The harness is the product, not the agent. See `AGENTS.md` for project conventions,
 `docs/contracts.md` for the module boundaries, and
 [`docs/implementation-plan.md`](docs/implementation-plan.md) for the step-by-step
 build plan this repo follows.
@@ -36,7 +36,7 @@ offers and where they differ.
 | langgraph | multi | — (pending) | — (pending) | — (pending) | — (pending) | — |
 
 Populated from real `recon.cli eval` runs, not placeholders — held pending explicit
-go-ahead per `CLAUDE.md`'s Cost section. Verify command:
+go-ahead per `AGENTS.md`'s Cost section. Verify command:
 `uv run python -m recon.cli eval --runtime <sdk|langgraph> --mode <single|multi> --limit N`.
 
 ## Setup
