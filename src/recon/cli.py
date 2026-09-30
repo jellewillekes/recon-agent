@@ -104,8 +104,11 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     cases = load_cases(fetch_csv(args.path))
     if args.limit is not None:
         cases = cases[: args.limit]
-    # Raises now, not mid-run, when the EDGAR cache is missing.
-    tool_data_snapshot = tool_data_snapshot_id()
+    # Fails now, not mid-run, when the EDGAR cache is missing.
+    try:
+        tool_data_snapshot = tool_data_snapshot_id()
+    except (FileNotFoundError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
     baseline = (
         EvalRun.model_validate_json(args.baseline.read_text(encoding="utf-8"))
         if args.baseline is not None

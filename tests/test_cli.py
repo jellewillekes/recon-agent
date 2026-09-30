@@ -349,7 +349,7 @@ def test_cmd_eval_fails_on_a_missing_edgar_cache_before_running(
 
     monkeypatch.setattr(cli, "run_evaluation", must_not_run)
     args = build_parser().parse_args(["eval", "--limit", "1"])
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(SystemExit, match="edgar fetch"):
         args.func(args)
 
 

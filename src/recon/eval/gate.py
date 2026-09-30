@@ -37,7 +37,8 @@ def comparability_failures(
         )
     if dataset != baseline.dataset:
         failures.append(
-            f"dataset differs: baseline {baseline.dataset!r}, candidate {dataset!r}."
+            f"dataset differs: baseline {baseline.dataset!r}, candidate {dataset!r}. "
+            f"A new dataset or pin needs a new baseline. {regenerate}"
         )
     if baseline.tool_data_snapshot is None:
         failures.append(
