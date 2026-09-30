@@ -38,7 +38,10 @@ def broken_links(doc: Path) -> list[str]:
             if target.startswith(EXTERNAL) or target.startswith("#"):
                 continue
             path = target.split("#", 1)[0]
-            if not (doc.parent / path).exists():
+            # A root-relative link means the repo root on GitHub. Joined to
+            # doc.parent as-is, pathlib would resolve it from "/" instead.
+            base = ROOT if path.startswith("/") else doc.parent
+            if not (base / path.lstrip("/")).exists():
                 broken.append(target)
     return broken
 
@@ -59,3 +62,10 @@ def test_the_check_catches_a_broken_link_and_ignores_the_rest(tmp_path: Path) ->
         "```\n[inside a fence](also-missing.md)\n```\n"
     )
     assert broken_links(doc) == ["missing.md"]
+
+
+def test_root_relative_links_resolve_from_the_repo_root(tmp_path: Path) -> None:
+    doc = tmp_path / "doc.md"
+    doc.write_text("[ok](/AGENTS.md) [broken](/tmp) [broken too](/no-such-file.md)\n")
+    # /tmp exists on the filesystem but not in the repo, so it must not pass.
+    assert broken_links(doc) == ["/tmp", "/no-such-file.md"]
