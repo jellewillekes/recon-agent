@@ -118,6 +118,10 @@ SEC_EDGAR_USER_AGENT="Your Name you@example.com" uv run python -m recon.cli edga
 DATABASE_URL=postgresql://... uv run python -m recon.cli edgar index-text
 ```
 
+The compose Postgres works for `index-text`. If another service holds port 5432 on
+your machine, set `POSTGRES_HOST_PORT` in `docker/.env` and use that port in
+`DATABASE_URL`.
+
 `fetch-text` caches the documents in the raw snapshot and writes
 `knowledge_chunks.parquet` to the processed one (`--offline` rebuilds the chunks from
 the cache). `index-text` embeds the chunks into pgvector and downloads the models on
