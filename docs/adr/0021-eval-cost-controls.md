@@ -48,3 +48,11 @@ committed result doesn't split agent from judge cost, so neither share was known
   case is bounded by `run_budget` in `config/models.yaml`.
 - Whether Haiku grades reliably enough is untested. If its scores look wrong on the
   first run, moving back is a config change and another `RUBRIC_VERSION` bump.
+
+## Update, 2026-10-01: measured cost
+
+The first smoke run (`evals/results/eval-20261001T085035Z.json`) cost €0.68 for 7
+cases, not the estimated €0.35. The agent took €0.51 and the judge on Haiku €0.18,
+so the judge is about a quarter of the cost. Single cases ranged from €0.03 to €0.24.
+The pre-run estimate is now €0.10 per case. The planned second run for #77's noise
+measurement was skipped to save credit.

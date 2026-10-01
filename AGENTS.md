@@ -160,7 +160,7 @@ before/after examples are in `docs/voice-examples.md`.
 The runtime uses the Agent SDK credit on a personal subscription, not an API key. Every evaluation run consumes credit.
 
 - Never run a full evaluation unless the user asks for it
-- Use `--cases evals/smoke-cases.txt` (7 cases, about €0.35) or `--limit 3` when testing harness changes
+- Use `--cases evals/smoke-cases.txt` (7 cases, about €0.70) or `--limit 3` when testing harness changes
 - `eval` refuses to start above `--max-cost-eur` (€1 by default) and stops before a case that could pass it. Don't raise the cap without the user's go-ahead
 - Report tokens and cost in every evaluation result
 

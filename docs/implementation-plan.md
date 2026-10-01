@@ -251,7 +251,7 @@ Step 11 checks a committed baseline, and none exists. The one committed result p
 
 > Run `uv run python -m recon.cli eval` in full once, on the current EDGAR snapshot, for the runtime and mode chosen as the reference. Commit the result as `evals/baseline.json` in its own PR, and fill in the README table.
 
-**Revised (ADR 0021):** the user asked to keep cost as low as possible. The first baseline runs the 7-case smoke set (`--cases evals/smoke-cases.txt`, about €0.35) with the judge on Haiku 4.5, not all 50 cases. The cost controls (subsets, a €1 cap per run, the agent/judge cost split) landed first, without any model run.
+**Revised (ADR 0021):** the user asked to keep cost as low as possible. The first baseline runs the 7-case smoke set (`--cases evals/smoke-cases.txt`, about €0.70) with the judge on Haiku 4.5, not all 50 cases. The cost controls (subsets, a €1 cap per run, the agent/judge cost split) landed first, without any model run.
 
 This spends credit, so it needs the user's explicit go-ahead on runtime and mode.
 

@@ -33,10 +33,10 @@ from recon.tools.data_source import tool_data_snapshot_id
 DEFAULT_DATASET_PATH = Path("data/raw/finance_agent_bench") / DEFAULT_CACHE_FILENAME
 
 DEFAULT_MAX_COST_EUR = 1.0
-# Per case, agent plus judge, for the pre-run estimate only. From #67's
-# isolated measurement (3 cases, €0.128). Replace it with the agent_cost_eur
-# and judge_cost_eur of a real run once one exists.
-ESTIMATED_COST_EUR_PER_CASE = 0.05
+# Per case, agent plus judge, for the pre-run estimate only. Measured on the
+# smoke set (eval-20261001T085035Z: €0.68 for 7 cases, €0.51 agent and
+# €0.18 judge). Single cases ranged from €0.03 to €0.24.
+ESTIMATED_COST_EUR_PER_CASE = 0.10
 
 
 def compute_dataset_stats(cases: list[Case]) -> dict[str, object]:
