@@ -35,7 +35,9 @@ Trivy fails the job on HIGH and CRITICAL findings that have a fixed version, and
 ignores unfixed ones (`--ignore-unfixed`). The Debian base image carries dozens of
 HIGH CVEs with no Debian fix yet. Failing on those would keep CI red with nothing to
 upgrade to. A finding with a fix is usually a Python package, and `uv lock
---upgrade-package <name>` clears it.
+--upgrade-package <name>` clears it. Trivy downloads its vulnerability database on each
+run, so a newly published advisory can turn the job red on a PR that didn't change any
+dependency.
 
 Trivy runs as a binary installed by `scripts/install_pinned_tool.sh`, which pins the
 version and the archive's SHA-256. It doesn't use `aquasecurity/trivy-action`, whose
