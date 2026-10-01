@@ -234,6 +234,9 @@ A comparable new prompt version or model configuration is rejected when:
 - weighted `answer_score` drops by more than 2%, or
 - `total_cost_eur` rises by more than 20% without a rise in task completion
 
+The two limits live in `config/thresholds.yaml`, with the correct-answer cutoff for
+`cost_per_correct_answer_eur` and the minimums the baseline must reach.
+
 Baseline lives in `evals/baseline.json`. Replaced only through an explicit PR, never automatically.
 
 ---

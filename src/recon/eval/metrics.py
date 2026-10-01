@@ -4,7 +4,7 @@ accuracy. See `docs/contracts.md` §7 (`CaseScore`) and `docs/data-sources.md`'s
 explicit not-applicable case.
 """
 
-from recon.contracts import AgentResult, Case
+from recon.contracts import AgentResult, Case, CaseScore
 from recon.eval.rubrics import Rubric
 
 TOOL_PATH_NA_NOTE = "N/A: no expected_tool_path for this case"
@@ -96,3 +96,17 @@ def weighted_answer_score(
     if total_weight <= 0:
         return 0.0
     return sum(weight * score for weight, score in weighted) / total_weight
+
+
+def cost_per_correct_answer_eur(
+    case_scores: list[CaseScore], correct_answer_score: float
+) -> float | None:
+    """Total cost divided by the cases whose answer_score reaches the cutoff.
+
+    None when no case is correct: there's no finite cost per correct answer.
+    The cutoff comes from config/thresholds.yaml and is the user's (#77).
+    """
+    correct = sum(1 for s in case_scores if s.answer_score >= correct_answer_score)
+    if correct == 0:
+        return None
+    return sum(s.cost_eur for s in case_scores) / correct

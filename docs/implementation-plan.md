@@ -275,7 +275,7 @@ Covers *CI/CD pipelines, production deployment*.
 
 **Part 1 done (#84):** the image build, Trivy scan and `helm lint` jobs, `release.yaml`, the pre-commit hooks (gitleaks, and the prompt-baseline check, also run in CI), and `docs/ci.md`. The same PR trimmed the image's dependencies (#54). See `docs/ci.md`.
 
-**Part 2, after the baseline run:** `config/thresholds.yaml` and the job checking `evals/baseline.json` against it. The minimum score is the user's decision.
+**Part 2:** `config/thresholds.yaml` (the gate's limits, moved unchanged) and `scripts/check_baseline.py`, run in CI, are in. The minimums and the correct-answer cutoff are the user's, set after the first smoke baseline.
 
 ---
 

@@ -20,6 +20,7 @@ from recon.cli import build_parser, compute_dataset_stats
 from recon.contracts import Case, CaseScore, EvalRun
 from recon.eval.gate import SKIPPED_AT_COST_CAP
 from recon.eval.harness import RUBRIC_VERSION
+from recon.eval.thresholds import load_thresholds
 from recon.tools import data_source
 
 
@@ -108,6 +109,13 @@ def _eval_run(**overrides: object) -> EvalRun:
     }
     defaults.update(overrides)
     return EvalRun(**defaults)  # type: ignore[arg-type]
+
+
+@pytest.fixture(autouse=True)
+def _repo_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests here chdir to tmp_path; read the repo's thresholds anyway."""
+    path = Path(__file__).resolve().parent.parent / "config" / "thresholds.yaml"
+    monkeypatch.setattr(cli, "load_thresholds", lambda: load_thresholds(path))
 
 
 def _patch_dataset_loading(monkeypatch: pytest.MonkeyPatch) -> None:

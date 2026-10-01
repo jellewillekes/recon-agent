@@ -12,8 +12,8 @@ their own action (`docs/github-agents.md`) and never run `recon.cli eval`.
 
 So `recon.cli eval` runs locally, and its result is committed under `evals/results/`.
 CI checks what can be checked without a model: that the prompts still match the
-committed baseline (below), and later that the baseline clears `config/thresholds.yaml`.
-That second check comes with the first real baseline; see the implementation plan.
+committed baseline, and that the baseline is usable and clears the minimums in
+`config/thresholds.yaml` (both below).
 
 ## Checks on every PR
 
@@ -57,6 +57,12 @@ provenance first (`gh attestation verify <archive> --repo aquasecurity/trivy`).
   prompt, so the gate would compare against a different agent. Run a full eval and
   replace the baseline in the same PR, or revert the prompt. Until a baseline exists
   it prints a notice. CI runs the same check in the Lint job.
+
+CI's Lint job also runs `scripts/check_baseline.py`. It fails when `evals/baseline.json`
+isn't a valid `EvalRun`, records no tool data, stopped at its cost cap, or falls below a
+minimum in `config/thresholds.yaml`. The minimums and the correct-answer cutoff are the
+user's to set, after reviewing the first baseline. Until a baseline exists, the check
+prints a notice.
 
 ## Release
 

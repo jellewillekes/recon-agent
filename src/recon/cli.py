@@ -15,8 +15,13 @@ from recon.adapters.finance_agent_bench import (
 from recon.contracts import Case, EvalRun
 from recon.eval import case_selection
 from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate, comparability_failures
-from recon.eval.harness import RUBRIC_VERSION, run_evaluation
+from recon.eval.harness import (
+    RUBRIC_VERSION,
+    run_evaluation,
+    with_cost_per_correct_answer,
+)
 from recon.eval.report import render_markdown
+from recon.eval.thresholds import load_thresholds
 from recon.runtimes.agent_sdk import AgentSdkRuntime
 from recon.runtimes.base import Runtime
 from recon.runtimes.langgraph import LangGraphRuntime
@@ -141,6 +146,8 @@ def _refuse_over_cap(case_count: int, max_cost_eur: float) -> None:
 def _cmd_eval(args: argparse.Namespace) -> None:
     cases = _select_cases(args)
     _refuse_over_cap(len(cases), args.max_cost_eur)
+    # Read now, so a broken thresholds file fails before credit is spent.
+    thresholds = load_thresholds()
     # Fails now, not mid-run, when the EDGAR cache is missing.
     try:
         tool_data_snapshot = tool_data_snapshot_id()
@@ -159,6 +166,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
         tool_data_snapshot=tool_data_snapshot,
         max_cost_eur=args.max_cost_eur,
     )
+    run = with_cost_per_correct_answer(run, thresholds.correct_answer_score)
 
     results_dir = Path("evals/results")
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -182,7 +190,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
         )
 
     if baseline is not None:
-        failures = check_gate(run, baseline)
+        failures = check_gate(run, baseline, thresholds.gate)
         if failures:
             for failure in failures:
                 print(f"GATE FAILED: {failure}")

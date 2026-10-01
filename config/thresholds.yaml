@@ -1,0 +1,21 @@
+# Thresholds for the promotion gate and the committed baseline (docs/contracts.md
+# §9). AGENTS.md: never lower one to make a run pass. Changing a value is the
+# user's decision, in its own PR.
+
+gate:
+  # A candidate fails when its answer_score_mean drops by more than this share
+  # of the baseline's.
+  answer_score_max_relative_drop: 0.02
+  # ...or when total_cost_eur rises by more than this share without a rise in
+  # task completion.
+  cost_max_relative_rise: 0.20
+
+# A case counts as correct when its answer_score is at least this, for
+# cost_per_correct_answer_eur (#77). Set by the user after the first baseline
+# runs; null leaves the metric out.
+correct_answer_score: null
+
+# Aggregate metrics evals/baseline.json must reach, checked in CI
+# (scripts/check_baseline.py). Set by the user after reviewing the first
+# baseline, e.g. `answer_score_mean: 0.4`. Empty checks none.
+baseline_minimums: {}
