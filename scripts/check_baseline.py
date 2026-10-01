@@ -12,6 +12,7 @@ import argparse
 import sys
 from pathlib import Path
 
+import yaml
 from pydantic import ValidationError
 
 from recon.contracts import EvalRun
@@ -45,7 +46,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--thresholds", type=Path, default=DEFAULT_THRESHOLDS_PATH)
     args = parser.parse_args(argv)
 
-    thresholds = load_thresholds(args.thresholds)
+    try:
+        thresholds = load_thresholds(args.thresholds)
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        print(f"{args.thresholds} can't be read: {exc}")
+        return 1
     if not args.baseline.exists():
         print(f"{args.baseline} doesn't exist yet; nothing to check.")
         return 0

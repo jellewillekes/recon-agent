@@ -163,3 +163,17 @@ def test_a_malformed_baseline_fails(tmp_path: Path) -> None:
     )
     assert result.returncode == 1
     assert "isn't a valid EvalRun" in result.stdout
+
+
+def test_a_broken_thresholds_file_fails_with_a_message(tmp_path: Path) -> None:
+    thresholds = tmp_path / "thresholds.yaml"
+    thresholds.write_text("gate: [unclosed\n")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--thresholds", str(thresholds)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "can't be read" in result.stdout
+    assert "Traceback" not in result.stderr
