@@ -301,6 +301,8 @@ Covers *CI/CD pipelines, production deployment*.
 
 **Verify:** `uv run pytest tests/test_retrieval.py -q` green; new metrics appear in `EvalRun.aggregate`.
 
+**Part 1 done (#91):** corpus, pgvector index, `search_knowledge`, retrieval metrics (ADR 0025). Part 2: the user's labels and a smoke run with the tool.
+
 ---
 
 ## Step 14 — provider abstraction (1.5 hours)

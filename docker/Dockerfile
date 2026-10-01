@@ -7,7 +7,7 @@
 # docs/adr/0011-container-base-image-and-size.md). No build tools land in the
 # runtime stage - the venv built here is copied in as-is.
 #
-# Measures ~195MB (docs/deployment.md), under the 300MB target named in
+# Measures ~206MB (docs/deployment.md), under the 300MB target named in
 # issue #15, despite claude-agent-sdk bundling a native `claude` CLI binary
 # inside its own wheel. langgraph/langchain-anthropic ship too: `recon.cli`
 # needs them, this API image doesn't. See the ADR above for how that was measured.

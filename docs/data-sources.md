@@ -103,8 +103,25 @@ doesn't cover:
 - segment, regional or share-class breakdowns
 - any document text (qualitative and market-analysis questions)
 
-Those need document retrieval, which is step 13 (#18). `search_filings` lists 8-K
-earnings releases (item 2.02) but can't read them.
+`search_filings` lists 8-K earnings releases (item 2.02) but can't read them. Step 13
+(#18) adds the text, below.
+
+## Tool data: SEC filing text
+
+`search_knowledge` searches the EX-99.1 earnings releases of results 8-Ks and the risk
+factors, MD&A and market-risk sections of 10-Ks, filed in the two years before
+`filed_cutoff`. Build it once per EDGAR snapshot:
+
+```bash
+uv sync --extra knowledge
+SEC_EDGAR_USER_AGENT="Your Name you@example.com" uv run python -m recon.cli edgar fetch-text
+DATABASE_URL=postgresql://... uv run python -m recon.cli edgar index-text
+```
+
+`fetch-text` caches the documents in the raw snapshot and writes
+`knowledge_chunks.parquet` to the processed one (`--offline` rebuilds the chunks from
+the cache). `index-text` embeds the chunks into pgvector and downloads the models on
+first use. See `docs/adr/0025-retrieval-over-filing-text.md`.
 
 ## Synthetic fixture
 

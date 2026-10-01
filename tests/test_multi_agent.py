@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
@@ -440,3 +441,13 @@ def test_supervisor_gets_only_the_flag_tool() -> None:
         "search_filings_tool",
     ):
         assert f"mcp__recon-tools__{read_tool}" not in supervisor_options.allowed_tools
+
+
+@pytest.mark.unit
+def test_no_role_is_granted_search_knowledge_until_its_prompts_say_so() -> None:
+    """ADR 0025: the grants (investigator, worker_facts, critic) land with the
+    prompt changes and a new baseline in step 13 part 2. Until then the
+    prompts say there is no document text, so no role may call the tool."""
+    roles = yaml.safe_load(Path("config/roles.yaml").read_text())
+    assert not any("search_knowledge" in c.get("tools", []) for c in roles.values())
+    assert not any("search_knowledge" in tool for tool in agent_sdk.ALLOWED_TOOLS)

@@ -12,6 +12,11 @@ from pathlib import Path
 
 import duckdb
 
+from recon.adapters.knowledge_corpus import (
+    CHUNKS_FILENAME,
+    corpus_id,
+    load_knowledge_config,
+)
 from recon.adapters.sec_edgar import DEFAULT_PROCESSED_DIR
 from recon.adapters.sec_edgar_store import latest_snapshot
 from recon.tools.fixtures import seed
@@ -71,7 +76,24 @@ def tool_data_snapshot_id(processed_dir: Path = DEFAULT_PROCESSED_DIR) -> str:
         return f"fixture-{_fixture_hash()}"
     snapshot = latest_snapshot(processed_dir)
     tables = [snapshot / f"{table}.parquet" for table in EDGAR_TABLES]
-    return f"{snapshot.name}-{_content_hash(tables)}"
+    snapshot_id = f"{snapshot.name}-{_content_hash(tables)}"
+    # A filing-text corpus is tool data too (search_knowledge reads it). Runs
+    # without one keep the id they had before step 13.
+    chunks = knowledge_chunks_path(processed_dir)
+    if chunks is not None:
+        snapshot_id += f"-k{corpus_id(chunks, load_knowledge_config())}"
+    return snapshot_id
+
+
+def knowledge_chunks_path(processed_dir: Path = DEFAULT_PROCESSED_DIR) -> Path | None:
+    """The filing-text chunks of the latest EDGAR snapshot, if they were built.
+
+    None for the fixture, which has no filing text.
+    """
+    if _selected_source() == "fixture":
+        return None
+    path = latest_snapshot(processed_dir) / CHUNKS_FILENAME
+    return path if path.exists() else None
 
 
 def open_tool_data(
