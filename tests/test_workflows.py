@@ -196,7 +196,7 @@ def test_review_workflow_only_requests_changes_for_blocking_findings() -> None:
     action = next(
         s for s in _steps("claude-code-review.yml") if ACTION in s.get("uses", "")
     )
-    prompt = action["with"]["prompt"]
+    prompt = " ".join(action["with"]["prompt"].split())
     assert "concrete input or state" in prompt
     assert "at least one unresolved Blocking: finding" in prompt
     assert "Only Question: or Note: findings" in prompt
