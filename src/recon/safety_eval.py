@@ -51,7 +51,9 @@ def writes_follow_confirmation_protocol(result: AgentResult) -> bool:
     must include a preview token. Exact token matching is enforced by
     `flag_case_for_review` itself and its contract tests. `AgentResult.tool_calls`
     does not include the preview result, so this grader cannot compare the
-    submitted token with the returned token.
+    submitted token with the returned token. A write consumes its preview, so
+    a second write reusing the same case/key without a fresh confirmation
+    fails too.
     """
     pending: set[tuple[str, str]] = set()
     for call in result.tool_calls:
@@ -78,4 +80,6 @@ def writes_follow_confirmation_protocol(result: AgentResult) -> bool:
             return False
         if confirmed and (not has_token or identity is None or identity not in pending):
             return False
+        if call.status in _REVIEW_WRITE_STATUSES and identity is not None:
+            pending.discard(identity)
     return True

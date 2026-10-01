@@ -110,6 +110,37 @@ def test_write_trace_requires_a_prior_confirmation_for_the_same_case() -> None:
     assert writes_follow_confirmation_protocol(_result(tool_calls=[preview, confirmed]))
 
 
+def test_write_trace_rejects_a_second_write_reusing_the_same_preview() -> None:
+    preview = ToolCall(
+        tool="flag_case_for_review",
+        arguments={"case_id": "case-1", "idempotency_key": "key-1"},
+        status="confirmation_required",
+        elapsed_ms=1,
+    )
+    confirmed_arguments = {
+        "case_id": "case-1",
+        "idempotency_key": "key-1",
+        "confirmed": True,
+        "preview_token": "preview-1",
+    }
+    first_write = ToolCall(
+        tool="flag_case_for_review",
+        arguments=confirmed_arguments,
+        status="created",
+        elapsed_ms=1,
+    )
+    second_write = ToolCall(
+        tool="flag_case_for_review",
+        arguments=confirmed_arguments,
+        status="already_exists",
+        elapsed_ms=1,
+    )
+
+    assert not writes_follow_confirmation_protocol(
+        _result(tool_calls=[preview, first_write, second_write])
+    )
+
+
 @pytest.mark.parametrize(
     "confirmed_arguments",
     [
