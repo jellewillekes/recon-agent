@@ -223,6 +223,35 @@ async def test_metrics_returns_prometheus_text() -> None:
     assert "recon_api_requests_total" in resp.text
 
 
+async def test_root_serves_local_research_ui() -> None:
+    async with await _client() as client:
+        resp = await client.get("/")
+
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Financial research." in resp.text
+    assert "Evidence you can inspect." in resp.text
+    assert "The bundled Docker demo uses synthetic data." in resp.text
+
+
+async def test_ui_assets_are_served_and_submit_to_investigate() -> None:
+    async with await _client() as client:
+        css = await client.get("/styles.css")
+        javascript = await client.get("/app.js")
+
+    assert css.status_code == 200
+    assert "text/css" in css.headers["content-type"]
+    assert javascript.status_code == 200
+    assert "javascript" in javascript.headers["content-type"]
+    assert 'form.addEventListener("submit"' in javascript.text
+    assert 'fetch("/investigate"' in javascript.text
+    assert "JSON.stringify({ question: value, context: {} })" in javascript.text
+    assert "await response.json()" in javascript.text
+    assert "renderResult(payload)" in javascript.text
+    assert "Enter a research question before starting." in javascript.text
+    assert "CLAUDE_CODE_OAUTH_TOKEN" not in javascript.text
+
+
 async def test_docs_renders() -> None:
     async with await _client() as client:
         resp = await client.get("/docs")
