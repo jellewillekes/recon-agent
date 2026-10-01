@@ -12,7 +12,7 @@ Everything on this page is repo tooling, not product code.
 | --- | --- | --- |
 | `.github/workflows/claude.yml` | `@claude` mention on an issue/PR comment; issue assigned to `claude`; issue labeled `claude-implement` | **Implementer.** Reads the issue, writes the fix, pushes a branch, opens a PR. |
 | `.github/workflows/claude-scan.yml` | Weekly cron (Mondays 06:00 UTC) + manual `workflow_dispatch` | **Scanner.** Looks for concrete bugs/TODOs/tech debt, dedupes against open issues, files up to 5 new ones per run. Labels safely-fixable ones `claude-implement`. |
-| `.github/workflows/claude-code-review.yml` | PR opened / synchronized / reopened / marked ready for review | **Reviewer.** Reads the diff, submits a formal GitHub review (`APPROVE` / `REQUEST_CHANGES` / `COMMENT`) covering correctness and design tradeoffs. |
+| `.github/workflows/claude-code-review.yml` | PR opened / synchronized / reopened / marked ready for review | **Reviewer.** Reads the diff and submits a formal GitHub review (`APPROVE` / `REQUEST_CHANGES` / `COMMENT`). Only concrete blocking defects can trigger `REQUEST_CHANGES`; design discussion stays non-blocking. |
 | `.github/workflows/claude-respond-to-review.yml` | The reviewer bot submits a review with `REQUEST_CHANGES` | **Implementer, again.** Reads the review, fixes what it agrees with, argues back on what it doesn't, pushes a new commit. |
 
 ## The loop
@@ -37,6 +37,12 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   submits a `COMMENT`-type review summarizing what's unresolved and says
   explicitly that a human is needed. This bounds the implement/review exchange;
   it does not run forever.
+- **Blocking findings only.** A `Blocking:` finding names a concrete input or
+  state that produces incorrect behavior or violates a requirement. Only
+  unresolved `Blocking:` findings can trigger `REQUEST_CHANGES`. `Question:`
+  and `Note:` findings, including design discussion, are shared with a `COMMENT`
+  review and do not start another round. If a question reveals a concrete defect,
+  the reviewer states the repro and marks it `Blocking:`.
 - **Human-decision escalation, independent of the round cap.** A concern that
   falls under AGENTS.md's "Forbidden without explicit permission" list (golden-
   set/expected-answer content, evaluation thresholds, new dependencies,
