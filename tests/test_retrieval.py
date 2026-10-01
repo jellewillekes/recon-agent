@@ -137,6 +137,14 @@ def test_chunks_respect_the_size_and_overlap() -> None:
     assert "line 000" in pieces[0] and "line 039" in pieces[-1]
 
 
+def test_the_carry_over_never_pushes_a_chunk_over_its_size() -> None:
+    """Review of #91: a long line right after a boundary plus the carried-over
+    overlap made a 1,251-character chunk at size 1,200."""
+    pieces = corpus.chunk_text("a" * 1100 + "\n" + "b" * 1050, size=1200, overlap=200)
+    assert max(len(p) for p in pieces) <= 1200
+    assert pieces == ["a" * 1100, "b" * 1050]
+
+
 def test_a_line_longer_than_a_chunk_is_cut() -> None:
     pieces = corpus.chunk_text("a" * 700, size=300, overlap=50)
     assert [len(p) for p in pieces] == [300, 300, 200]

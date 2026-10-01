@@ -80,6 +80,9 @@ def chunk_text(text: str, size: int, overlap: int) -> list[str]:
         if current and len(current) + 1 + len(line) > size:
             pieces.append(current)
             current = current[-overlap:] if overlap else ""
+            # Drop the carry-over when it and the next line don't fit together.
+            if len(current) + 1 + len(line) > size:
+                current = ""
         current = f"{current}\n{line}" if current else line
     if current:
         pieces.append(current)

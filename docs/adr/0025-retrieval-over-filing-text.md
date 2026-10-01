@@ -23,6 +23,11 @@ The user decided:
 - **Roles:** the single-mode investigator, `worker_facts` and the critic get
   `search_knowledge`. The supervisor only routes, and `worker_lookup` resolves ids.
   It's set in `config/roles.yaml` and the single-mode tool list, not in prompts.
+  The grants land in part 2, not part 1. Today's prompts tell those roles there is
+  no document text, so granting the tool needs prompt changes. A prompt change needs
+  a new baseline (the prompt-baseline check), which part 2 makes anyway because the
+  corpus changes `tool_data_snapshot`. Part 1 ships the tool with no role allowed to
+  call it.
 - **Models:** `sentence-transformers` for embeddings (`BAAI/bge-small-en-v1.5`) and the
   cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`), on CPU.
 - **Keyword search:** Postgres full-text search rather than `rank_bm25`. It runs in the
@@ -49,8 +54,11 @@ Built to fit the rest of the harness:
 
 - The corpus changes `tool_data_snapshot`, so runs with it can't be compared with the
   current baseline. Measuring the tool's effect needs a decision about the baseline.
-- The LangGraph critic node calls no tools, so the critic's `search_knowledge` applies
-  to the Agent SDK runtime only.
+- The LangGraph critic node calls no tools, so the critic's grant will apply to the
+  Agent SDK runtime only.
+- Until part 2, the MCP server still lists the tool once a corpus is built. The Agent
+  SDK roles can't call it, but LangGraph's single mode binds every listed tool, so
+  build the corpus only together with part 2.
 - #18's faithfulness metric isn't built. It needs the agent's answer checked against
   the passages it retrieved, which takes either a judge assertion (a rubric change) or
   storing tool outputs on `ToolCall` (a contract change).
