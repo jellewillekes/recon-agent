@@ -89,5 +89,6 @@ after pulling this change, since earlier installs only had `pre-commit`.
 Pushing a `v*` tag runs `release.yaml`. It builds the image and applies the same Trivy
 gate as CI, and pushes to `ghcr.io/<owner>/recon-agent:<tag>` only if the scan passes.
 The job summary shows the image digest. Deploy by that digest rather than the tag, since
-a tag can be moved and a digest can't. A CycloneDX SBOM of the pushed image is attached
-to the run as the `sbom-<tag>` artifact.
+a tag can be moved and a digest can't. Before the push, Trivy writes a CycloneDX SBOM of
+the scanned image, attached to the run as the `sbom-<tag>` artifact. If that step fails,
+nothing is pushed.
