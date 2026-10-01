@@ -148,6 +148,14 @@ def search_knowledge(
             "The embedding model isn't installed here (`uv sync --extra knowledge`). "
             "Answer from the XBRL tools.",
         )
+    except OSError as exc:
+        # E.g. the model isn't cached yet and can't be downloaded.
+        return failure(
+            start,
+            "unavailable",
+            f"The embedding model failed to load ({type(exc).__name__}). Answer "
+            "from the XBRL tools.",
+        )
     if not rows:
         return failure(
             start,

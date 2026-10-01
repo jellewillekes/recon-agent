@@ -565,3 +565,20 @@ def test_metrics_stop_when_a_search_is_unavailable(
         retrieval.retrieval_metrics(
             {"q1": ["a"]}, [_case("q1", "first?")], backend.chunk_ids
         )
+
+
+def test_an_embedding_model_that_cannot_load_is_unavailable() -> None:
+    def offline(texts: Any) -> list[list[float]]:
+        raise OSError("model not cached and no network")
+
+    result = knowledge_search.search_knowledge(
+        _FakeConn(),  # type: ignore[arg-type]
+        "corpus",
+        CONFIG,
+        offline,
+        _rerank,
+        "fictional guidance",
+        2,
+    )
+    assert result.status == "unavailable"
+    assert "failed to load" in result.message
