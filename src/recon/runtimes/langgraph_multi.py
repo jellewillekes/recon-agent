@@ -372,29 +372,35 @@ async def _confirm_flag_node(state: AgentState) -> dict[str, Any]:
         )
     idempotency_key = f"review-{case_id}"
     database_url = os.environ.get("DATABASE_URL")
-    arguments = {"case_id": case_id, "reason": reason}
+    arguments = {
+        "case_id": case_id,
+        "reason": reason,
+        "idempotency_key": idempotency_key,
+    }
 
     start = time.monotonic()
+    preview_arguments = {**arguments, "dry_run": True}
     preview = await flag_case_for_review(
         database_url, case_id, reason, idempotency_key, _CREATED_BY, dry_run=True
     )
     tool_calls = [
         ToolCall(
             tool="flag_case_for_review",
-            arguments=arguments,
+            arguments=preview_arguments,
             status=preview.status,
             elapsed_ms=int((time.monotonic() - start) * 1000),
         )
     ]
 
     start = time.monotonic()
+    unconfirmed_arguments = {**arguments, "confirmed": False}
     unconfirmed = await flag_case_for_review(
         database_url, case_id, reason, idempotency_key, _CREATED_BY
     )
     tool_calls.append(
         ToolCall(
             tool="flag_case_for_review",
-            arguments=arguments,
+            arguments=unconfirmed_arguments,
             status=unconfirmed.status,
             elapsed_ms=int((time.monotonic() - start) * 1000),
         )
@@ -409,6 +415,11 @@ async def _confirm_flag_node(state: AgentState) -> dict[str, Any]:
     )
 
     if approved:
+        confirmed_arguments = {
+            **arguments,
+            "confirmed": True,
+            "preview_token": unconfirmed.preview_token,
+        }
         start = time.monotonic()
         confirmed = await flag_case_for_review(
             database_url,
@@ -422,7 +433,7 @@ async def _confirm_flag_node(state: AgentState) -> dict[str, Any]:
         tool_calls.append(
             ToolCall(
                 tool="flag_case_for_review",
-                arguments=arguments,
+                arguments=confirmed_arguments,
                 status=confirmed.status,
                 elapsed_ms=int((time.monotonic() - start) * 1000),
             )

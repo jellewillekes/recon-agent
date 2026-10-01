@@ -25,9 +25,10 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import BaseModel, Field
 
-from recon.contracts import Case
+from recon.contracts import AgentResult, Case
 from recon.runtimes import langgraph as lg
 from recon.runtimes import langgraph_multi as lgm
+from recon.safety_eval import writes_follow_confirmation_protocol
 from recon.tools import review_flag
 
 pytestmark = pytest.mark.unit
@@ -577,6 +578,22 @@ async def test_resume_approved_writes_the_flag(
         "confirmation_required",
         "created",
     ]
+    assert writes_follow_confirmation_protocol(
+        AgentResult(
+            case_id=CASE.case_id,
+            answer=outcome.answer,
+            evidence=outcome.evidence,
+            confidence=outcome.confidence,
+            tool_calls=outcome.tool_calls,
+            runtime="langgraph",
+            mode="multi",
+            tokens_in=outcome.tokens_in,
+            tokens_out=outcome.tokens_out,
+            cost_eur=outcome.cost_eur,
+            elapsed_ms=0,
+            error=None,
+        )
+    )
 
 
 @pytest.mark.anyio
