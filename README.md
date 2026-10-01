@@ -25,9 +25,8 @@ Since then, the tools answer from real SEC EDGAR data instead of a synthetic fix
 compare runs that don't measure the same thing (`docs/adr/0018-run-comparability-in-the-gate.md`).
 CI also builds the image, scans it with Trivy and lints the chart, and a version tag
 publishes the image to GHCR ([`docs/ci.md`](docs/ci.md)).
-No baseline score is recorded yet. That full run is the next step, and it needs an
-explicit go-ahead because it spends credit (see
-[`docs/implementation-plan.md`](docs/implementation-plan.md)).
+The first baseline is recorded on a 7-case smoke set (`evals/baseline.json`; see the table
+below). Eval runs are capped at €1 by default (`docs/adr/0021-eval-cost-controls.md`).
 
 ## Runtimes
 
@@ -37,10 +36,14 @@ offers and where they differ.
 
 | Runtime | Mode | Task completion | Answer score | Tool-call accuracy | Total cost (€) | Cases |
 |---|---|---|---|---|---|---|
-| sdk | single | — (pending) | — (pending) | — (pending) | — (pending) | — |
+| sdk | single | 1.000 | 0.566 | 1.000 | 0.68 | 7 (smoke set) |
 | sdk | multi | — (pending) | — (pending) | — (pending) | — (pending) | — |
 | langgraph | single | — (pending) | — (pending) | — (pending) | — (pending) | — |
 | langgraph | multi | — (pending) | — (pending) | — (pending) | — (pending) | — |
+
+The sdk single row is the committed baseline, `evals/baseline.json` (run
+`eval-20261001T085035Z`, judge on Haiku 4.5). Seven cases is a small sample: one case
+moves a mean by 0.14.
 
 Populated from real `recon.cli eval` runs, not placeholders — held pending explicit
 go-ahead per `AGENTS.md`'s Cost section. Verify command:

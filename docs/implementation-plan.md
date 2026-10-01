@@ -245,7 +245,7 @@ Found while running the harness against the real benchmark, not planned up front
 
 ---
 
-## Baseline run — before step 11 → **next**
+## Baseline run — done (#86)
 
 Step 11 checks a committed baseline, and none exists. The one committed result predates #82's fields, so the gate refuses it.
 
