@@ -704,3 +704,22 @@ def test_cmd_cases_prints_ids_spread_across_companies(
     )
     args.func(args)
     assert capsys.readouterr().out.split() == ["1", "3"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "content",
+    ["gate: [unclosed\n", "gate: {answer_score_max_relative_drop: 0.02}\n"],
+    ids=["bad-yaml", "missing-limit"],
+)
+def test_cmd_eval_refuses_a_broken_thresholds_file_before_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str
+) -> None:
+    seen = _capture_cases(monkeypatch)
+    broken = tmp_path / "thresholds.yaml"
+    broken.write_text(content)
+    monkeypatch.setattr(cli, "load_thresholds", lambda: load_thresholds(broken))
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    with pytest.raises(SystemExit, match="thresholds.yaml can't be read"):
+        args.func(args)
+    assert "ids" not in seen

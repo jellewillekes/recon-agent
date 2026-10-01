@@ -152,7 +152,10 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     try:
         thresholds = load_thresholds()
     except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
-        raise SystemExit(str(exc)) from exc
+        raise SystemExit(
+            f"config/thresholds.yaml can't be read: {exc}. Fix the file; its "
+            "values are the user's (docs/contracts.md §9)."
+        ) from exc
     # Fails now, not mid-run, when the EDGAR cache is missing.
     try:
         tool_data_snapshot = tool_data_snapshot_id()

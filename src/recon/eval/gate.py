@@ -77,8 +77,8 @@ def check_gate(
 ) -> list[str]:
     """The rules `candidate` fails against `baseline`. Empty means promotable.
 
-    `limits` is normally the `gate` section of config/thresholds.yaml
-    (`recon.eval.thresholds.load_thresholds`).
+    `limits` is the `gate` section of config/thresholds.yaml. Callers pass it,
+    so the gate itself reads no file.
     """
     failures = comparability_failures(
         rubric_version=candidate.rubric_version,

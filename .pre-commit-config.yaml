@@ -40,3 +40,10 @@ repos:
         language: system
         files: ^(prompts/.*\.md|evals/baseline\.json)$
         pass_filenames: false
+
+      - id: baseline-check
+        name: evals/baseline.json is usable and clears its minimums
+        entry: uv run python scripts/check_baseline.py
+        language: system
+        files: ^(evals/baseline\.json|config/thresholds\.yaml)$
+        pass_filenames: false
