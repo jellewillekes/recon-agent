@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f5f2">
+    <title>Recon — Financial research agent</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Recon home">
+          <span class="brand-mark" aria-hidden="true">R</span>
+          <span>recon<span class="brand-dot">.</span></span>
+        </a>
+        <div class="topbar-meta">
+          <span class="local-badge"><span class="pulse-dot"></span> Local demo</span>
+          <span class="topbar-label">Financial research agent</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="intro" aria-labelledby="page-title">
+          <div class="eyebrow"><span class="eyebrow-line"></span> Evidence-led company research</div>
+          <h1 id="page-title">Financial research.<br><span>Evidence you can inspect.</span></h1>
+          <p class="intro-copy">Recon retrieves company financial facts and filing summaries, then shows the evidence and tool calls behind each answer.</p>
+        </section>
+
+        <section class="workspace" aria-label="Research workspace">
+          <div class="question-card">
+            <div class="card-heading">
+              <div>
+                <span class="section-index">01 / QUESTION</span>
+                <h2>Ask the research agent</h2>
+              </div>
+              <span class="input-hint">Powered by your local agent</span>
+            </div>
+
+            <form id="question-form">
+              <label class="visually-hidden" for="question">Research question</label>
+              <textarea id="question" name="question" rows="4" maxlength="2000" placeholder="For example, how has Aurora Robotics' revenue changed over the last three years?" required></textarea>
+              <div class="form-footer">
+                <span id="character-count">0 / 2000</span>
+                <button id="submit-button" type="submit">
+                  <span class="button-label">Run research</span>
+                  <span class="button-arrow" aria-hidden="true">↗</span>
+                </button>
+              </div>
+            </form>
+
+            <div class="examples">
+              <span class="examples-label">TRY AN EXAMPLE</span>
+              <button class="example-chip" type="button" data-question="How has Aurora Robotics Corp's revenue changed from 2022 to 2024?">Revenue trend <span aria-hidden="true">↗</span></button>
+              <button class="example-chip" type="button" data-question="What risks appear in Aurora Robotics Corp's recent filings?">Filing risks <span aria-hidden="true">↗</span></button>
+            </div>
+
+            <aside class="data-note" aria-label="Demo data notice">
+              <span class="note-icon" aria-hidden="true">i</span>
+              <p><strong>The bundled Docker demo uses synthetic data.</strong> Company and filing details are fictional and illustrate the research workflow. Other local configurations may use a different data source.</p>
+            </aside>
+          </div>
+
+          <section class="answer-card" aria-labelledby="answer-heading" aria-live="polite" aria-busy="false">
+            <div class="answer-card-heading">
+              <div>
+                <span class="section-index">02 / FINDINGS</span>
+                <h2 id="answer-heading">Research output</h2>
+              </div>
+              <span id="run-state" class="run-state"><span class="state-dot"></span> Ready</span>
+            </div>
+
+            <div id="answer-content" class="answer-content">
+              <div class="empty-state">
+                <div class="empty-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+                <h3>Your research will appear here</h3>
+                <p>Submit a question to see the answer, supporting evidence, and tools the agent used.</p>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <footer class="page-footer">
+          <span>RECON RESEARCH AGENT</span>
+          <span>Local workspace <span class="footer-separator">·</span> Answers are generated, not investment advice</span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
