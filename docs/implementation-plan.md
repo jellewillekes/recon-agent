@@ -271,7 +271,7 @@ Covers *CI/CD pipelines, production deployment*.
 
 **Verify:** push a branch → all jobs green. A deliberately degraded prompt without a new baseline makes the pre-commit hook fail.
 
-**Part 1 done (#84):** the image build, Trivy scan and `helm lint` jobs, `release.yaml`, the pre-commit hooks (gitleaks, and the prompt-baseline check, also run in CI), and `docs/ci.md`. The same PR added the company-name check (#76) and trimmed the image's dependencies (#54). See `docs/ci.md`.
+**Part 1 done (#84):** the image build, Trivy scan and `helm lint` jobs, `release.yaml`, the pre-commit hooks (gitleaks, and the prompt-baseline check, also run in CI), and `docs/ci.md`. The same PR trimmed the image's dependencies (#54). See `docs/ci.md`.
 
 **Part 2, after the baseline run:** `config/thresholds.yaml` and the job checking `evals/baseline.json` against it. The minimum score is the user's decision.
 

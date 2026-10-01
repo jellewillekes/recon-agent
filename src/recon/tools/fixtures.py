@@ -1,7 +1,7 @@
 """Synthetic fixture data for the Step 3 MCP tool server.
 
-Companies, facts, and filings here are fictional — CLAUDE.md forbids naming
-real companies, and this data isn't drawn from any real filing anyway. It
+Companies, facts, and filings here are fictional and not drawn from any real
+filing, so tests don't depend on real data (`.claude/rules/tests.md`). It
 exists to exercise the tool contract (`docs/contracts.md` section 3) end to
 end, not to answer finance-agent-bench questions correctly; see
 `docs/data-sources.md` for the real-data gap this leaves.

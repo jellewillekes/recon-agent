@@ -12,4 +12,3 @@ paths:
 - After changing a prompt, a role's tool subset or a model, run `uv run python -m recon.cli eval --limit 3` only with the user's go-ahead (it spends credit), and report each metric before and after.
 - Tool restrictions per role are enforced in `config/roles.yaml` when the MCP server is attached, not by prompt wording.
 - Never paste dataset questions, or close paraphrases, into a prompt as examples. That measures recall of the eval set, not behaviour.
-- No company names in prompt text. Describe market participants by category and role.

@@ -91,7 +91,6 @@ A step is done only when **all** of these hold:
 - Changing the repository layout or module boundaries
 - Putting prompts inline in Python; they belong in `prompts/`
 - Network calls in tests. Mock them
-- Naming individual companies in code, commits, docs, or prompt text. Describe market participants by category and role. Datasets, tools, and APIs we integrate with may be named where technically necessary
 - Secrets or API keys in code or config. Environment variables only
 
 ## Style
