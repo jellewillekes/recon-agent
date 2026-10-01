@@ -5,7 +5,17 @@ from datetime import UTC, datetime
 import pytest
 
 from recon.contracts import CaseScore, EvalRun
-from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate
+from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate as _check_gate
+from recon.eval.thresholds import GateThresholds
+
+# Fixed so this suite doesn't depend on config/thresholds.yaml's live content.
+LIMITS = GateThresholds(
+    answer_score_max_relative_drop=0.02, cost_max_relative_rise=0.20
+)
+
+
+def check_gate(candidate: EvalRun, baseline: EvalRun) -> list[str]:
+    return _check_gate(candidate, baseline, LIMITS)
 
 
 def _run(**overrides: object) -> EvalRun:

@@ -4,6 +4,8 @@ import argparse
 from collections import Counter
 from pathlib import Path
 
+import yaml
+
 from recon import cli_edgar
 from recon.adapters import sec_edgar, sec_edgar_tickers
 from recon.adapters.finance_agent_bench import (
@@ -147,7 +149,10 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     cases = _select_cases(args)
     _refuse_over_cap(len(cases), args.max_cost_eur)
     # Read now, so a broken thresholds file fails before credit is spent.
-    thresholds = load_thresholds()
+    try:
+        thresholds = load_thresholds()
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        raise SystemExit(str(exc)) from exc
     # Fails now, not mid-run, when the EDGAR cache is missing.
     try:
         tool_data_snapshot = tool_data_snapshot_id()

@@ -9,7 +9,7 @@ metric is compared; see docs/adr/0018-run-comparability-in-the-gate.md.
 from collections.abc import Collection
 
 from recon.contracts import EvalRun
-from recon.eval.thresholds import GateThresholds, load_thresholds
+from recon.eval.thresholds import GateThresholds
 
 # Set in `EvalRun.aggregate` when the cost cap stopped a run before its last
 # case. Such a run didn't measure its whole case set, so the gate refuses it
@@ -73,13 +73,13 @@ def comparability_failures(
 
 
 def check_gate(
-    candidate: EvalRun, baseline: EvalRun, limits: GateThresholds | None = None
+    candidate: EvalRun, baseline: EvalRun, limits: GateThresholds
 ) -> list[str]:
     """The rules `candidate` fails against `baseline`. Empty means promotable.
 
-    `limits` defaults to the `gate` section of config/thresholds.yaml.
+    `limits` is normally the `gate` section of config/thresholds.yaml
+    (`recon.eval.thresholds.load_thresholds`).
     """
-    limits = limits or load_thresholds().gate
     failures = comparability_failures(
         rubric_version=candidate.rubric_version,
         dataset=candidate.dataset,
