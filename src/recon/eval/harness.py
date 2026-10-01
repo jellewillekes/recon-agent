@@ -8,6 +8,7 @@ from pathlib import Path
 from recon.adapters.finance_agent_bench import ATTRIBUTION, DATASET_ID, LICENSE
 from recon.contracts import AgentResult, Case, CaseScore, EvalRun
 from recon.eval import hashing, metrics
+from recon.eval.gate import SKIPPED_AT_COST_CAP
 from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH, judge_case
 from recon.eval.rubrics import DEFAULT_RUBRICS_DIR, Rubric, load_rubrics
 from recon.runtimes.base import Runtime
@@ -15,7 +16,9 @@ from recon.runtimes.base import Runtime
 # Bump when config/rubrics/*.yaml assertions change (docs/contracts.md §8:
 # "Rubric changes are breaking: earlier runs are no longer comparable.").
 # "2": answer_score became the weighted mean across dimensions (docs/adr/0014).
-RUBRIC_VERSION = "2"
+# "3": the judge runs on Haiku 4.5 instead of Sonnet 5 (docs/adr/0021). A
+# different grader scores the same answer differently.
+RUBRIC_VERSION = "3"
 
 JUDGED_DESPITE_ERROR_NOTE = "answer judged despite runtime error"
 
@@ -77,10 +80,13 @@ def score_case(
     return score, agent_result
 
 
-def _aggregate(cases: list[Case], case_scores: list[CaseScore]) -> dict[str, float]:
+def _aggregate(
+    cases: list[Case], case_scores: list[CaseScore], agent_cost_eur: float
+) -> dict[str, float]:
     n = len(case_scores)
     if n == 0:
         return {}
+    total_cost_eur = sum(s.cost_eur for s in case_scores)
 
     applicable = [
         score
@@ -95,6 +101,10 @@ def _aggregate(cases: list[Case], case_scores: list[CaseScore]) -> dict[str, flo
         "tool_call_accuracy_mean": sum(s.tool_call_accuracy for s in case_scores) / n,
         "elapsed_ms_mean": sum(s.elapsed_ms for s in case_scores) / n,
         "tool_path_applicable_count": float(len(applicable)),
+        # Which side of a case the credit went to, so cost decisions rest on
+        # measurements (the judge model, say) rather than estimates.
+        "agent_cost_eur": agent_cost_eur,
+        "judge_cost_eur": total_cost_eur - agent_cost_eur,
     }
     if applicable:
         aggregate["tool_path_exact_rate"] = sum(
@@ -114,6 +124,19 @@ def _aggregate(cases: list[Case], case_scores: list[CaseScore]) -> dict[str, flo
         aggregate[f"{dimension}_mean"] = sum(values) / len(values)
 
     return aggregate
+
+
+def _over_budget(case_scores: list[CaseScore], max_cost_eur: float | None) -> bool:
+    """Whether the next case could take the run past `max_cost_eur`.
+
+    The next case is assumed to cost as much as the dearest one so far. The
+    first case always runs, since nothing is known yet; a single case is
+    bounded by `run_budget` in config/models.yaml.
+    """
+    if max_cost_eur is None or not case_scores:
+        return False
+    spent = sum(s.cost_eur for s in case_scores)
+    return spent + max(s.cost_eur for s in case_scores) > max_cost_eur
 
 
 def run_evaluation(
@@ -136,6 +159,9 @@ def run_evaluation(
     # looked up here, so the harness depends on no tool module. None records
     # "unknown", which the promotion gate refuses to compare.
     tool_data_snapshot: str | None = None,
+    # Stop before a case that could take the run past this many euros. None
+    # means no cap. See _over_budget for how "could" is judged.
+    max_cost_eur: float | None = None,
 ) -> EvalRun:
     if limit is not None:
         cases = cases[:limit]
@@ -143,14 +169,22 @@ def run_evaluation(
     rubrics = load_rubrics(rubrics_dir)
 
     case_scores: list[CaseScore] = []
+    agent_cost_eur = 0.0
     runtime_name = "unknown"
     mode = "single"
     for case in cases:
+        if _over_budget(case_scores, max_cost_eur):
+            break
         score, agent_result = score_case(
             case, runtime, rubrics, models_config_path=models_config_path
         )
         case_scores.append(score)
+        agent_cost_eur += agent_result.cost_eur
         runtime_name, mode = agent_result.runtime, agent_result.mode
+    run_cases = cases[: len(case_scores)]
+    aggregate = _aggregate(run_cases, case_scores, agent_cost_eur)
+    if len(case_scores) < len(cases):
+        aggregate[SKIPPED_AT_COST_CAP] = float(len(cases) - len(case_scores))
 
     model_config_hash = (
         hashing.compute_model_config_hash(models_config_path, roles_config_path)
@@ -170,7 +204,7 @@ def run_evaluation(
         prompt_hashes=hashing.compute_prompt_hashes(prompts_dir),
         rubric_version=RUBRIC_VERSION,
         case_scores=case_scores,
-        aggregate=_aggregate(cases, case_scores),
+        aggregate=aggregate,
         total_cost_eur=sum(s.cost_eur for s in case_scores),
         tool_data_snapshot=tool_data_snapshot,
     )

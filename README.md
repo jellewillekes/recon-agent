@@ -44,7 +44,8 @@ offers and where they differ.
 
 Populated from real `recon.cli eval` runs, not placeholders — held pending explicit
 go-ahead per `AGENTS.md`'s Cost section. Verify command:
-`uv run python -m recon.cli eval --runtime <sdk|langgraph> --mode <single|multi> --limit N`.
+`uv run python -m recon.cli eval --runtime <sdk|langgraph> --mode <single|multi> --cases evals/smoke-cases.txt`.
+Each run is capped at €1 by default (`--max-cost-eur`); see `docs/adr/0021-eval-cost-controls.md`.
 
 ## Setup
 

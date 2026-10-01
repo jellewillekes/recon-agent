@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from recon.contracts import CaseScore, EvalRun
-from recon.eval.gate import check_gate
+from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate
 
 
 def _run(**overrides: object) -> EvalRun:
@@ -171,3 +171,19 @@ def test_same_cases_in_a_different_order_are_comparable() -> None:
     candidate = _run(run_id="eval-2", case_scores=[_score("b"), _score("a")])
 
     assert check_gate(candidate, baseline) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("capped", ["candidate", "baseline"])
+def test_refuses_a_run_stopped_at_its_cost_cap(capped: str) -> None:
+    """A capped run didn't measure its whole case set, whichever side it's on."""
+    aggregate = {
+        "task_completion_rate": 1.0,
+        "answer_score_mean": 1.0,
+        SKIPPED_AT_COST_CAP: 2.0,
+    }
+    runs = {"candidate": _run(run_id="eval-2"), "baseline": _run()}
+    runs[capped] = _run(run_id=f"eval-{capped}", aggregate=aggregate)
+    failures = check_gate(runs["candidate"], runs["baseline"])
+    assert len(failures) == 1
+    assert f"the {capped} run stopped at its cost cap with 2 case(s)" in failures[0]

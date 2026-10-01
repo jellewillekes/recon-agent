@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from recon.adapters.finance_agent_bench import DATASET_ID
-from recon.contracts import AgentResult, Case
+from recon.contracts import AgentResult, Case, EvalRun
 from recon.eval import harness
 from recon.eval.judge import JudgeResult
 from recon.eval.rubrics import Rubric
@@ -365,3 +365,60 @@ def test_run_evaluation_single_mode_ignores_roles_config(
     )
 
     assert run_v1.model_config_hash == run_v2.model_config_hash
+
+
+def _run_three(monkeypatch: pytest.MonkeyPatch, max_cost_eur: float | None) -> EvalRun:
+    """Three cases at €0.012 each: €0.01 agent, €0.002 judge."""
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    ids = ["c1", "c2", "c3"]
+    runtime = _FakeRuntime({cid: _agent_result(case_id=cid) for cid in ids})
+    return harness.run_evaluation(
+        [_case(cid) for cid in ids],
+        runtime,
+        rubrics_dir=REPO_RUBRICS_DIR,
+        prompts_dir=REPO_PROMPTS_DIR,
+        models_config_path=REPO_MODELS_CONFIG,
+        max_cost_eur=max_cost_eur,
+    )
+
+
+@pytest.mark.unit
+def test_run_evaluation_splits_agent_and_judge_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _run_three(monkeypatch, None)
+    assert run.aggregate["agent_cost_eur"] == pytest.approx(0.03)
+    assert run.aggregate["judge_cost_eur"] == pytest.approx(0.006)
+    assert harness.SKIPPED_AT_COST_CAP not in run.aggregate
+
+
+@pytest.mark.unit
+def test_run_evaluation_stops_before_a_case_that_could_pass_the_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # After two cases €0.024 is spent; a third like the dearest so far would
+    # make €0.036, past €0.03.
+    run = _run_three(monkeypatch, 0.03)
+    assert [s.case_id for s in run.case_scores] == ["c1", "c2"]
+    assert run.total_cost_eur == pytest.approx(0.024)
+    assert run.aggregate["case_count"] == 2.0
+    assert run.aggregate[harness.SKIPPED_AT_COST_CAP] == 1.0
+
+
+@pytest.mark.unit
+def test_run_evaluation_always_runs_the_first_case(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing is known about cost before the first case; run_budget bounds it."""
+    run = _run_three(monkeypatch, 0.001)
+    assert len(run.case_scores) == 1
+    assert run.aggregate[harness.SKIPPED_AT_COST_CAP] == 2.0
+
+
+@pytest.mark.unit
+def test_run_evaluation_within_the_cap_runs_everything(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _run_three(monkeypatch, 0.05)
+    assert len(run.case_scores) == 3
+    assert harness.SKIPPED_AT_COST_CAP not in run.aggregate

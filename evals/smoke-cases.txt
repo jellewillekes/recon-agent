@@ -1,0 +1,10 @@
+# 7 cases, each about a different company: recon.cli cases --spread 7.
+# Picked by case-id order, blind to scores. A baseline over this file is
+# compared only with runs over this file (ADR 0018, ADR 0021).
+finance-agent-bench:04845a4891e3
+finance-agent-bench:0ab769e9365b
+finance-agent-bench:0b26fac6d4af
+finance-agent-bench:135cf3369c99
+finance-agent-bench:13c5dd1da565
+finance-agent-bench:17931c2e2766
+finance-agent-bench:1c60f0523743

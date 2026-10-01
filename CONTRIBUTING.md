@@ -43,7 +43,7 @@ conventions.
 - Open Claude Code in the repo interactively once and accept the trust prompt. Until you
   do, the shared `allow` list (e.g. `make check` without a prompt) is ignored. The hooks
   and the `ask`/`deny` rules apply either way.
-- A guard hook blocks `recon.cli eval` without `--limit`, pushes to `main`, force-push,
+- A guard hook blocks `recon.cli eval` without `--limit`, `--cases` or `--company`, pushes to `main`, force-push,
   `--no-verify`, `DROP`/`TRUNCATE` sent to a SQL client, and shell reads of `.env`. To run
   one on purpose, run it yourself, or start Claude Code with `RECON_ALLOW_GUARDED=1`.
 - A Stop hook runs `make test` before a turn ends when Python files changed, which adds

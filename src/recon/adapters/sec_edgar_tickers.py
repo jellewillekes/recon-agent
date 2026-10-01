@@ -153,8 +153,8 @@ def unmatched_case_ids(cases: list[Case], matches: dict[int, TickerMatch]) -> li
 _HEADER = (
     "# Companies to fetch from SEC EDGAR, derived from the dataset's questions.\n"
     "# Review before fetching: delete wrong rows, add missing ones as TICKER<TAB>CIK.\n"
-    "# Columns: ticker, cik, matched_by, registered name, case_ids. Only the\n"
-    "# first two are read back.\n"
+    "# Columns: ticker, cik, matched_by, registered name, case_ids. Fetching\n"
+    "# reads the first two; `eval --company` and `recon.cli cases` read case_ids.\n"
 )
 
 
@@ -220,3 +220,23 @@ def read_tickers_files(paths: list[Path]) -> dict[str, int]:
     for ticker, cik in merged.items():
         first_ticker.setdefault(cik, ticker)
     return {ticker: cik for cik, ticker in first_ticker.items()}
+
+
+def read_case_ids(paths: list[Path]) -> dict[str, list[str]]:
+    """Ticker -> the case ids recorded for it in the tickers files' last column.
+
+    Only files derived with `--from-dataset` carry case ids; rows added by hand
+    have none and map to an empty list. Missing files are skipped.
+    """
+    result: dict[str, list[str]] = {}
+    for path in paths:
+        if not path.exists():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip() or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            case_ids = parts[4].strip().split(",") if len(parts) > 4 else []
+            known = result.setdefault(parts[0].strip(), [])
+            known.extend(c for c in case_ids if c and c not in known)
+    return result

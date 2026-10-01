@@ -10,7 +10,10 @@ investigator:
   max_turns: 20
 
 judge:
-  model: claude-sonnet-5
+  # Haiku rather than Sonnet to halve the judge's share of each case's cost
+  # (docs/adr/0021-eval-cost-controls.md). Scores from a Sonnet judge aren't
+  # comparable with these; no baseline was recorded with one.
+  model: claude-haiku-4-5-20251001
   # A judge call checks a fixed list of true/false assertions against an
   # already-produced answer and tool-call trace — no tool use, no multi-step
   # reasoning, so a small turn budget is enough.

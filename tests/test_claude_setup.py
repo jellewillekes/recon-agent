@@ -71,6 +71,7 @@ def guard(command: str, cwd: Path, env: dict[str, str] | None = None) -> int:
     [
         "uv run python -m recon.cli eval",
         "uv run python -m recon.cli eval --mode multi --runtime langgraph",
+        "uv run python -m recon.cli eval --max-cost-eur 3",
         "make check && uv run python -m recon.cli eval",
         "git push origin main",
         "git push origin HEAD:main",
@@ -99,6 +100,8 @@ def test_guard_blocks(command: str, repo: Path) -> None:
     [
         "uv run python -m recon.cli eval --limit 3",
         "uv run python -m recon.cli eval --limit=3 --mode multi",
+        "uv run python -m recon.cli eval --cases evals/smoke-cases.txt",
+        "uv run python -m recon.cli eval --company=ABC --max-cost-eur 0.5",
         "uv run python -m recon.cli run --case-id abc",
         "git push -u origin feat/main-menu",
         "git push origin main-menu",
