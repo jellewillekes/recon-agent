@@ -17,7 +17,7 @@ Report only findings that affect correctness, data integrity, security or the st
 - Missing or weak tests for the changed behaviour (a test that passes without the change doesn't count)
 - Tests edited, skipped or loosened to make them pass
 - Changes outside the task's scope
-- Breaks of AGENTS.md's forbidden list: golden set or expected answers, thresholds, new dependencies, layout or module boundaries, inline prompts, network in tests, company names, secrets
+- Breaks of AGENTS.md's forbidden list: golden set or expected answers, thresholds, new dependencies, layout or module boundaries, inline prompts, network in tests, secrets
 - A contract change in `src/recon/contracts.py` without the matching `docs/contracts.md` change
 
 Do not report style preferences, naming taste, or "could be more extensible". A finding needs a concrete input or state that goes wrong. If the change is sound, say so in one line; an empty review is a valid result.

@@ -7,11 +7,10 @@
 # docs/adr/0011-container-base-image-and-size.md). No build tools land in the
 # runtime stage - the venv built here is copied in as-is.
 #
-# Measures ~262MB (docs/deployment.md), under the 300MB target named in
-# issue #15 - despite claude-agent-sdk bundling a native `claude` CLI binary
-# inside its own wheel and pyproject.toml's full dependency set (including
-# langgraph/langchain-anthropic, needed by `recon.cli` but not by this API
-# image) shipping unchanged. See the ADR above for how that was measured.
+# Measures ~195MB (docs/deployment.md), under the 300MB target named in
+# issue #15, despite claude-agent-sdk bundling a native `claude` CLI binary
+# inside its own wheel. langgraph/langchain-anthropic ship too: `recon.cli`
+# needs them, this API image doesn't. See the ADR above for how that was measured.
 
 FROM python:3.12-slim-bookworm AS builder
 

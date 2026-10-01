@@ -20,6 +20,11 @@ repos:
       - id: check-added-large-files
         args: ["--maxkb=1024"]
 
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0 # same version as .github/workflows/gitleaks.yml
+    hooks:
+      - id: gitleaks
+
   - repo: local
     hooks:
       - id: block-forbidden-tracked-paths
@@ -28,3 +33,10 @@ repos:
         language: script
         pass_filenames: false
         stages: [pre-commit, pre-push]
+
+      - id: prompt-baseline
+        name: Prompts match evals/baseline.json
+        entry: uv run python scripts/check_prompt_baseline.py
+        language: system
+        files: ^(prompts/.*\.md|evals/baseline\.json)$
+        pass_filenames: false

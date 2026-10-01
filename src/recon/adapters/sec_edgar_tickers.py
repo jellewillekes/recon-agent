@@ -1,7 +1,7 @@
 """Derive which companies the dataset's questions reference, at fetch time.
 
-CLAUDE.md forbids naming companies in committed files, so the list is never
-checked in. `derive_tickers` matches each question against SEC's
+The list is derived, not maintained by hand, and lives under the gitignored
+`data/`. `derive_tickers` matches each question against SEC's
 `company_tickers.json` two ways:
 
 - explicit tickers, e.g. `(EXCHANGE: TICK)` or a bare uppercase token that is
@@ -154,8 +154,7 @@ _HEADER = (
     "# Companies to fetch from SEC EDGAR, derived from the dataset's questions.\n"
     "# Review before fetching: delete wrong rows, add missing ones as TICKER<TAB>CIK.\n"
     "# Columns: ticker, cik, matched_by, registered name, case_ids. Only the\n"
-    "# first two are read back. This file is gitignored (CLAUDE.md: never\n"
-    "# commit company names).\n"
+    "# first two are read back.\n"
 )
 
 

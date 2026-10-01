@@ -92,13 +92,11 @@ Honeycomb, or similar) instead of self-hosting Tempo, once that instrumentation 
 
 ## Image size
 
-`docker build -t recon-agent:dev -f docker/Dockerfile .` produces a **262MB** image
-(measured via `docker inspect recon-agent:dev --format '{{.Size}}'`, arm64, this
-machine) — under the 300MB target issue #15 names. That's despite `claude-agent-sdk`
-bundling a native `claude` CLI binary inside its own wheel and `polars` (unused anywhere
-in `src/recon`) both being present: the unpacked `.venv` is ~660MB, but that data
-compresses well, so the distributable image lands well under it. See
+`docker build -t recon-agent:dev -f docker/Dockerfile .` produces a **195MB** image
+(204,420,718 bytes via `docker inspect recon-agent:dev --format '{{.Size}}'`, arm64,
+this machine), under the 300MB target issue #15 names. It was 262MB until #54 dropped
+the unused `polars` and moved `pytest` and `ruff` to the dev group, which the image
+doesn't install. `claude-agent-sdk` still bundles a native `claude` CLI binary inside
+its own wheel, but that data compresses well. See
 `docs/adr/0011-container-base-image-and-size.md` for how this was measured, not just
-assumed. `polars`/`pytest`/`ruff`-as-main-deps are still worth trimming via a
-`pyproject.toml` optional-dependencies split as a follow-up — real cleanup, but not
-required to hit the size target.
+assumed. CI builds the image on every PR and scans it with Trivy (`docs/ci.md`).
