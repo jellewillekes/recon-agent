@@ -71,6 +71,8 @@ jobs:
             future misuse are Question: or Note:. Of the bot's past change
             requests, a third carried no Blocking finding and still cost a full
             review round (docs/adr/0024-blocking-only-change-requests.md).
+            If a Question or Note identifies concrete wrong behavior, rewrite
+            it as a Blocking: finding and name the input or state that fails.
 
             Steps:
             1. Use mcp__github__get_pull_request_reviews to list existing reviews

@@ -22,6 +22,32 @@ change-requesting reviews since then:
 
 Reviews before #40 had no inline tags, so they weren't classified.
 
+### Substance classification on the latest 20 merged PRs
+
+I also classified the substance of every inline finding attached to a
+`CHANGES_REQUESTED` review in the 20 most recently merged PRs as of 2026-10-01.
+This is a newer sample than the tag-based count above. The sample, in merge
+order, was #88, #86, #85, #84, #83, #82, #81, #80, #69, #68, #50, #65, #63,
+#67, #57, #56, #55, #49, #48, and #47. It contained 9 change-request reviews
+across #86, #85, #80, #63, #57, and #47, with 20 inline findings.
+
+A real defect describes behavior that is wrong for a concrete input or state.
+A design preference recommends another approach without identifying wrong
+behavior. A hypothetical describes an unobserved future state. Findings are
+classified by their substance, not their severity tag. Repeated comments count
+again when they recur in another round.
+
+| Classification | Findings | Examples |
+| --- | ---: | --- |
+| Real defects | 10 | Empty eval selection reported success; push guard missed `git push origin HEAD` on `main`; worker limits were not enforced. |
+| Design preferences | 5 | Graceful handling for malformed config; missing direct CLI tests; an unused constant; a metric's intended normalization behavior. |
+| Hypotheticals | 5 | Future test coupling to editable thresholds; unsupported fiscal-calendar periods; a later resume across event loops. |
+
+Six of the nine rounds contained at least one real defect. Five of the 10
+defect findings had been tagged `Question:` or `Note:`. The prompt should tell
+the reviewer to restate such a finding as `Blocking:` when it can name the
+concrete failing case.
+
 ## Decision
 
 - The bot tags a finding `Blocking:` only when it can name a concrete input or state

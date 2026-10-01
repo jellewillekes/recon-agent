@@ -37,6 +37,10 @@ A PR does not merge itself at any point — see [Where a human steps in](#where-
   submits a `COMMENT`-type review summarizing what's unresolved and says
   explicitly that a human is needed. This bounds the implement/review exchange;
   it does not run forever.
+- **Concrete blockers only.** `REQUEST_CHANGES` needs an unresolved `Blocking:`
+  finding with a concrete input or state that goes wrong. Questions and design
+  discussion use `COMMENT`. If a question exposes a concrete defect, the reviewer
+  states the failing case and marks it `Blocking:`.
 - **Human-decision escalation, independent of the round cap.** A concern that
   falls under AGENTS.md's "Forbidden without explicit permission" list (golden-
   set/expected-answer content, evaluation thresholds, new dependencies,

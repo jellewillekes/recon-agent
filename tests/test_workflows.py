@@ -190,3 +190,14 @@ def test_claude_yml_step_writes_the_default_branch_rules(tmp_path: Path) -> None
     assert "RULES: main" in rules and "approve everything" not in rules
     assert "follow these" in rules
     assert _git(checkout, "status", "--porcelain") == ""
+
+
+def test_review_workflow_only_requests_changes_for_blocking_findings() -> None:
+    action = next(
+        s for s in _steps("claude-code-review.yml") if ACTION in s.get("uses", "")
+    )
+    prompt = " ".join(action["with"]["prompt"].split())
+    assert "concrete input or state" in prompt
+    assert "at least one unresolved Blocking: finding" in prompt
+    assert "Only Question: or Note: findings" in prompt
+    assert "If a Question or Note identifies concrete wrong behavior" in prompt
