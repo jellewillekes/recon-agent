@@ -208,3 +208,20 @@ def run_evaluation(
         total_cost_eur=sum(s.cost_eur for s in case_scores),
         tool_data_snapshot=tool_data_snapshot,
     )
+
+
+def with_cost_per_correct_answer(
+    run: EvalRun, correct_answer_score: float | None
+) -> EvalRun:
+    """`run` with `cost_per_correct_answer_eur` in its aggregate (#77).
+
+    Derived from the per-case scores, so it can be added to any run once the
+    cutoff is set. Unchanged when the cutoff is None or no case is correct.
+    """
+    if correct_answer_score is None:
+        return run
+    value = metrics.cost_per_correct_answer_eur(run.case_scores, correct_answer_score)
+    if value is None:
+        return run
+    aggregate = {**run.aggregate, "cost_per_correct_answer_eur": value}
+    return run.model_copy(update={"aggregate": aggregate})

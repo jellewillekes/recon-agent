@@ -6,6 +6,13 @@ import pytest
 
 from recon.contracts import CaseScore, EvalRun
 from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate
+from recon.eval.thresholds import GateThresholds
+
+# Fixed here, not read from config/thresholds.yaml, so these tests don't
+# change meaning when the user changes the file.
+LIMITS = GateThresholds(
+    answer_score_max_relative_drop=0.02, cost_max_relative_rise=0.20
+)
 
 
 def _run(**overrides: object) -> EvalRun:
@@ -33,7 +40,7 @@ def _run(**overrides: object) -> EvalRun:
 def test_no_failures_when_candidate_matches_baseline() -> None:
     baseline = _run()
     candidate = _run(run_id="eval-2")
-    assert check_gate(candidate, baseline) == []
+    assert check_gate(candidate, baseline, LIMITS) == []
 
 
 @pytest.mark.unit
@@ -41,7 +48,7 @@ def test_fails_when_task_completion_rate_drops() -> None:
     baseline = _run(aggregate={"task_completion_rate": 0.9, "answer_score_mean": 0.8})
     candidate = _run(aggregate={"task_completion_rate": 0.8, "answer_score_mean": 0.8})
 
-    failures = check_gate(candidate, baseline)
+    failures = check_gate(candidate, baseline, LIMITS)
 
     assert any("task_completion_rate" in f for f in failures)
 
@@ -51,7 +58,7 @@ def test_fails_when_answer_score_drops_more_than_two_percent() -> None:
     baseline = _run(aggregate={"task_completion_rate": 0.9, "answer_score_mean": 0.80})
     candidate = _run(aggregate={"task_completion_rate": 0.9, "answer_score_mean": 0.77})
 
-    failures = check_gate(candidate, baseline)
+    failures = check_gate(candidate, baseline, LIMITS)
 
     assert any("answer_score_mean" in f for f in failures)
 
@@ -63,7 +70,7 @@ def test_passes_when_answer_score_drops_within_two_percent() -> None:
         aggregate={"task_completion_rate": 0.9, "answer_score_mean": 0.789}
     )
 
-    assert check_gate(candidate, baseline) == []
+    assert check_gate(candidate, baseline, LIMITS) == []
 
 
 @pytest.mark.unit
@@ -79,7 +86,7 @@ def test_fails_when_cost_rises_more_than_twenty_percent_without_completion_rise(
         total_cost_eur=1.30,
     )
 
-    failures = check_gate(candidate, baseline)
+    failures = check_gate(candidate, baseline, LIMITS)
 
     assert any("total_cost_eur" in f for f in failures)
 
@@ -95,7 +102,7 @@ def test_cost_rise_allowed_when_completion_also_rises() -> None:
         total_cost_eur=1.30,
     )
 
-    assert check_gate(candidate, baseline) == []
+    assert check_gate(candidate, baseline, LIMITS) == []
 
 
 # --- comparability: refused before any metric (docs/contracts.md §9) --------
@@ -137,7 +144,7 @@ def test_refuses_incomparable_runs(
         case_scores=[_score("a")] if "case_scores" in baseline_overrides else [],
     )
 
-    failures = check_gate(candidate, baseline)
+    failures = check_gate(candidate, baseline, LIMITS)
 
     assert len(failures) == 1
     assert expected in failures[0]
@@ -149,7 +156,7 @@ def test_incomparable_runs_skip_the_metric_rules() -> None:
     baseline = _run(rubric_version="2")
     candidate = _run(aggregate={"task_completion_rate": 0.1, "answer_score_mean": 0.1})
 
-    failures = check_gate(candidate, baseline)
+    failures = check_gate(candidate, baseline, LIMITS)
 
     assert failures and all("rubric_version" in f for f in failures)
 
@@ -159,7 +166,7 @@ def test_case_set_message_counts_missing_and_extra_cases() -> None:
     baseline = _run(case_scores=[_score("a"), _score("b"), _score("c")])
     candidate = _run(case_scores=[_score("a"), _score("z")])
 
-    (failure,) = check_gate(candidate, baseline)
+    (failure,) = check_gate(candidate, baseline, LIMITS)
 
     assert "2 baseline case(s) not run" in failure
     assert "1 case(s) not in the baseline" in failure
@@ -170,7 +177,7 @@ def test_same_cases_in_a_different_order_are_comparable() -> None:
     baseline = _run(case_scores=[_score("a"), _score("b")])
     candidate = _run(run_id="eval-2", case_scores=[_score("b"), _score("a")])
 
-    assert check_gate(candidate, baseline) == []
+    assert check_gate(candidate, baseline, LIMITS) == []
 
 
 @pytest.mark.unit
@@ -184,6 +191,6 @@ def test_refuses_a_run_stopped_at_its_cost_cap(capped: str) -> None:
     }
     runs = {"candidate": _run(run_id="eval-2"), "baseline": _run()}
     runs[capped] = _run(run_id=f"eval-{capped}", aggregate=aggregate)
-    failures = check_gate(runs["candidate"], runs["baseline"])
+    failures = check_gate(runs["candidate"], runs["baseline"], LIMITS)
     assert len(failures) == 1
     assert f"the {capped} run stopped at its cost cap with 2 case(s)" in failures[0]

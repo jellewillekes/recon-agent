@@ -245,13 +245,13 @@ Found while running the harness against the real benchmark, not planned up front
 
 ---
 
-## Baseline run — before step 11 → **next**
+## Baseline run — done (#86)
 
 Step 11 checks a committed baseline, and none exists. The one committed result predates #82's fields, so the gate refuses it.
 
 > Run `uv run python -m recon.cli eval` in full once, on the current EDGAR snapshot, for the runtime and mode chosen as the reference. Commit the result as `evals/baseline.json` in its own PR, and fill in the README table.
 
-**Revised (ADR 0021):** the user asked to keep cost as low as possible. The first baseline runs the 7-case smoke set (`--cases evals/smoke-cases.txt`, about €0.35) with the judge on Haiku 4.5, not all 50 cases. The cost controls (subsets, a €1 cap per run, the agent/judge cost split) landed first, without any model run.
+**Revised (ADR 0021):** the user asked to keep cost as low as possible. The first baseline runs the 7-case smoke set (`--cases evals/smoke-cases.txt`, about €0.70) with the judge on Haiku 4.5, not all 50 cases. The cost controls (subsets, a €1 cap per run, the agent/judge cost split) landed first, without any model run.
 
 This spends credit, so it needs the user's explicit go-ahead on runtime and mode.
 
@@ -275,7 +275,7 @@ Covers *CI/CD pipelines, production deployment*.
 
 **Part 1 done (#84):** the image build, Trivy scan and `helm lint` jobs, `release.yaml`, the pre-commit hooks (gitleaks, and the prompt-baseline check, also run in CI), and `docs/ci.md`. The same PR trimmed the image's dependencies (#54). See `docs/ci.md`.
 
-**Part 2, after the baseline run:** `config/thresholds.yaml` and the job checking `evals/baseline.json` against it. The minimum score is the user's decision.
+**Part 2:** `config/thresholds.yaml` (the gate's limits, moved unchanged) and `scripts/check_baseline.py`, run in CI, are in. The minimums and the correct-answer cutoff are the user's, set after the first smoke baseline.
 
 ---
 

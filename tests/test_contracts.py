@@ -8,7 +8,7 @@ the models themselves.
 
 import ast
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -281,7 +281,14 @@ def test_docs_contracts_fields_match_models() -> None:
 
 @pytest.mark.unit
 def test_results_recorded_before_tool_data_snapshot_still_load() -> None:
-    """Adding EvalRun.tool_data_snapshot must not break committed results."""
+    """Adding EvalRun.tool_data_snapshot must not break committed results.
+
+    Every committed result loads. Those recorded before the field existed
+    (#82, 2026-09-30) load with it unset; later ones record it.
+    """
     for path in sorted(Path("evals/results").glob("*.json")):
         run = EvalRun.model_validate_json(path.read_text(encoding="utf-8"))
-        assert run.tool_data_snapshot is None
+        if run.timestamp_utc.date() < date(2026, 9, 30):
+            assert run.tool_data_snapshot is None, path.name
+        else:
+            assert run.tool_data_snapshot is not None, path.name

@@ -4,6 +4,8 @@ import argparse
 from collections import Counter
 from pathlib import Path
 
+import yaml
+
 from recon import cli_edgar
 from recon.adapters import sec_edgar, sec_edgar_tickers
 from recon.adapters.finance_agent_bench import (
@@ -15,8 +17,13 @@ from recon.adapters.finance_agent_bench import (
 from recon.contracts import Case, EvalRun
 from recon.eval import case_selection
 from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate, comparability_failures
-from recon.eval.harness import RUBRIC_VERSION, run_evaluation
+from recon.eval.harness import (
+    RUBRIC_VERSION,
+    run_evaluation,
+    with_cost_per_correct_answer,
+)
 from recon.eval.report import render_markdown
+from recon.eval.thresholds import load_thresholds
 from recon.runtimes.agent_sdk import AgentSdkRuntime
 from recon.runtimes.base import Runtime
 from recon.runtimes.langgraph import LangGraphRuntime
@@ -28,10 +35,10 @@ from recon.tools.data_source import tool_data_snapshot_id
 DEFAULT_DATASET_PATH = Path("data/raw/finance_agent_bench") / DEFAULT_CACHE_FILENAME
 
 DEFAULT_MAX_COST_EUR = 1.0
-# Per case, agent plus judge, for the pre-run estimate only. From #67's
-# isolated measurement (3 cases, €0.128). Replace it with the agent_cost_eur
-# and judge_cost_eur of a real run once one exists.
-ESTIMATED_COST_EUR_PER_CASE = 0.05
+# Per case, agent plus judge, for the pre-run estimate only. Measured on the
+# smoke set (eval-20261001T085035Z: €0.68 for 7 cases, €0.51 agent and
+# €0.18 judge). Single cases ranged from €0.03 to €0.24.
+ESTIMATED_COST_EUR_PER_CASE = 0.10
 
 
 def compute_dataset_stats(cases: list[Case]) -> dict[str, object]:
@@ -141,6 +148,14 @@ def _refuse_over_cap(case_count: int, max_cost_eur: float) -> None:
 def _cmd_eval(args: argparse.Namespace) -> None:
     cases = _select_cases(args)
     _refuse_over_cap(len(cases), args.max_cost_eur)
+    # Read now, so a broken thresholds file fails before credit is spent.
+    try:
+        thresholds = load_thresholds()
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        raise SystemExit(
+            f"config/thresholds.yaml can't be read: {exc}. Fix the file; its "
+            "values are the user's (docs/contracts.md §9)."
+        ) from exc
     # Fails now, not mid-run, when the EDGAR cache is missing.
     try:
         tool_data_snapshot = tool_data_snapshot_id()
@@ -159,12 +174,14 @@ def _cmd_eval(args: argparse.Namespace) -> None:
         tool_data_snapshot=tool_data_snapshot,
         max_cost_eur=args.max_cost_eur,
     )
+    run = with_cost_per_correct_answer(run, thresholds.correct_answer_score)
 
     results_dir = Path("evals/results")
     results_dir.mkdir(parents=True, exist_ok=True)
     json_path = results_dir / f"{run.run_id}.json"
     md_path = results_dir / f"{run.run_id}.md"
-    json_path.write_text(run.model_dump_json(indent=2), encoding="utf-8")
+    # Trailing newline, so pre-commit's end-of-file fixer leaves results alone.
+    json_path.write_text(run.model_dump_json(indent=2) + "\n", encoding="utf-8")
     md_path.write_text(render_markdown(run), encoding="utf-8")
 
     print(f"Wrote {json_path} and {md_path}")
@@ -182,7 +199,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
         )
 
     if baseline is not None:
-        failures = check_gate(run, baseline)
+        failures = check_gate(run, baseline, thresholds.gate)
         if failures:
             for failure in failures:
                 print(f"GATE FAILED: {failure}")

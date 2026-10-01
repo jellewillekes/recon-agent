@@ -20,6 +20,7 @@ from recon.cli import build_parser, compute_dataset_stats
 from recon.contracts import Case, CaseScore, EvalRun
 from recon.eval.gate import SKIPPED_AT_COST_CAP
 from recon.eval.harness import RUBRIC_VERSION
+from recon.eval.thresholds import load_thresholds
 from recon.tools import data_source
 
 
@@ -110,6 +111,13 @@ def _eval_run(**overrides: object) -> EvalRun:
     return EvalRun(**defaults)  # type: ignore[arg-type]
 
 
+@pytest.fixture(autouse=True)
+def _repo_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests here chdir to tmp_path; read the repo's thresholds anyway."""
+    path = Path(__file__).resolve().parent.parent / "config" / "thresholds.yaml"
+    monkeypatch.setattr(cli, "load_thresholds", lambda: load_thresholds(path))
+
+
 def _patch_dataset_loading(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "fetch_csv", lambda path: path)
     monkeypatch.setattr(cli, "load_cases", lambda path: [_case("1", ["Trends"])])
@@ -130,7 +138,8 @@ def test_cmd_eval_writes_json_and_markdown(
     args = build_parser().parse_args(["eval", "--limit", "2"])
     args.func(args)
 
-    assert (tmp_path / "evals" / "results" / "eval-fixed.json").exists()
+    json_text = (tmp_path / "evals" / "results" / "eval-fixed.json").read_text()
+    assert json_text.endswith("}\n")
     assert (tmp_path / "evals" / "results" / "eval-fixed.md").exists()
 
 
@@ -695,3 +704,22 @@ def test_cmd_cases_prints_ids_spread_across_companies(
     )
     args.func(args)
     assert capsys.readouterr().out.split() == ["1", "3"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "content",
+    ["gate: [unclosed\n", "gate: {answer_score_max_relative_drop: 0.02}\n"],
+    ids=["bad-yaml", "missing-limit"],
+)
+def test_cmd_eval_refuses_a_broken_thresholds_file_before_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str
+) -> None:
+    seen = _capture_cases(monkeypatch)
+    broken = tmp_path / "thresholds.yaml"
+    broken.write_text(content)
+    monkeypatch.setattr(cli, "load_thresholds", lambda: load_thresholds(broken))
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    with pytest.raises(SystemExit, match="thresholds.yaml can't be read"):
+        args.func(args)
+    assert "ids" not in seen

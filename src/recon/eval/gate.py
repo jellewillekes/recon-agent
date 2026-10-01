@@ -9,9 +9,7 @@ metric is compared; see docs/adr/0018-run-comparability-in-the-gate.md.
 from collections.abc import Collection
 
 from recon.contracts import EvalRun
-
-ANSWER_SCORE_DROP_THRESHOLD = 0.02  # 2%
-COST_RISE_THRESHOLD = 0.20  # 20%
+from recon.eval.thresholds import GateThresholds
 
 # Set in `EvalRun.aggregate` when the cost cap stopped a run before its last
 # case. Such a run didn't measure its whole case set, so the gate refuses it
@@ -74,7 +72,14 @@ def comparability_failures(
     return failures
 
 
-def check_gate(candidate: EvalRun, baseline: EvalRun) -> list[str]:
+def check_gate(
+    candidate: EvalRun, baseline: EvalRun, limits: GateThresholds
+) -> list[str]:
+    """The rules `candidate` fails against `baseline`. Empty means promotable.
+
+    `limits` is the `gate` section of config/thresholds.yaml. Callers pass it,
+    so the gate itself reads no file.
+    """
     failures = comparability_failures(
         rubric_version=candidate.rubric_version,
         dataset=candidate.dataset,
@@ -108,9 +113,10 @@ def check_gate(candidate: EvalRun, baseline: EvalRun) -> list[str]:
     # (metrics.weighted_answer_score), so this is the plain mean of that.
     if baseline_answer > 0:
         relative_drop = (baseline_answer - candidate_answer) / baseline_answer
-        if relative_drop > ANSWER_SCORE_DROP_THRESHOLD:
+        if relative_drop > limits.answer_score_max_relative_drop:
             failures.append(
-                f"answer_score_mean dropped more than {ANSWER_SCORE_DROP_THRESHOLD:.0%}: "
+                "answer_score_mean dropped more than "
+                f"{limits.answer_score_max_relative_drop:.0%}: "
                 f"{baseline_answer:.3f} -> {candidate_answer:.3f}"
             )
 
@@ -119,11 +125,12 @@ def check_gate(candidate: EvalRun, baseline: EvalRun) -> list[str]:
             candidate.total_cost_eur - baseline.total_cost_eur
         ) / baseline.total_cost_eur
         if (
-            cost_rise > COST_RISE_THRESHOLD
+            cost_rise > limits.cost_max_relative_rise
             and candidate_completion <= baseline_completion
         ):
             failures.append(
-                f"total_cost_eur rose more than {COST_RISE_THRESHOLD:.0%} without a rise "
+                f"total_cost_eur rose more than {limits.cost_max_relative_rise:.0%} "
+                "without a rise "
                 f"in task completion: €{baseline.total_cost_eur:.4f} -> "
                 f"€{candidate.total_cost_eur:.4f}"
             )

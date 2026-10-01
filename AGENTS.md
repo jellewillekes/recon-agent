@@ -104,7 +104,7 @@ A step is done only when **all** of these hold:
 
 ## Evaluations and CI
 
-LLM evaluations run **locally**, not in CI — GitHub Actions has no model credentials. Run `recon.cli eval` locally and commit the result under `evals/results/`. CI checks that `prompts/` still matches `evals/baseline.json`. A job checking the baseline against `config/thresholds.yaml` comes with the first baseline (#16). Neither file exists yet. Do not try to make CI call a model. See `docs/ci.md`.
+LLM evaluations run **locally**, not in CI — GitHub Actions has no model credentials. Run `recon.cli eval` locally and commit the result under `evals/results/`. CI checks that `prompts/` still matches `evals/baseline.json`. CI also checks that the baseline is usable and clears the minimums in `config/thresholds.yaml`. Until `evals/baseline.json` exists, both checks only print a notice. Do not try to make CI call a model. See `docs/ci.md`.
 
 ## Git
 
@@ -160,7 +160,7 @@ before/after examples are in `docs/voice-examples.md`.
 The runtime uses the Agent SDK credit on a personal subscription, not an API key. Every evaluation run consumes credit.
 
 - Never run a full evaluation unless the user asks for it
-- Use `--cases evals/smoke-cases.txt` (7 cases, about €0.35) or `--limit 3` when testing harness changes
+- Use `--cases evals/smoke-cases.txt` (7 cases, about €0.70) or `--limit 3` when testing harness changes
 - `eval` refuses to start above `--max-cost-eur` (€1 by default) and stops before a case that could pass it. Don't raise the cap without the user's go-ahead
 - Report tokens and cost in every evaluation result
 
