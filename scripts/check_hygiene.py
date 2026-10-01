@@ -100,15 +100,11 @@ def scan_commits(rev_range: str, pattern: re.Pattern[str]) -> list[str]:
 
 
 def committed_message(raw: str) -> str:
-    """The part of a commit message file git keeps: no `#` comment lines, and
-    nothing from the `git commit -v` scissors line down. Comment lines are
-    blanked, not dropped, so line numbers still match the editor's."""
-    kept = []
-    for line in raw.splitlines():
-        if line.startswith("# ------------------------ >8 ------------------------"):
-            break
-        kept.append("" if line.startswith("#") else line)
-    return "\n".join(kept)
+    """A commit message file without the `git commit -v` diff, which git drops
+    from the scissors line down. `#` lines stay: `git commit -m` and `-F`
+    keep them in the commit, and the file doesn't say which was used."""
+    scissors = "# ------------------------ >8 ------------------------"
+    return raw.split(f"\n{scissors}", 1)[0] if not raw.startswith(scissors) else ""
 
 
 def scan_pull_request(pattern: re.Pattern[str]) -> list[str]:

@@ -87,18 +87,27 @@ def test_a_commit_message_being_written_fails(repo: Path) -> None:
     assert result.stdout.splitlines()[0] == "commit message line 3"
 
 
-def test_git_comments_and_the_verbose_diff_are_not_scanned(repo: Path) -> None:
-    """Git strips these before committing, e.g. a branch name in the status
-    comment, or a removed name in the `commit -v` diff."""
+def test_the_verbose_diff_is_not_scanned(repo: Path) -> None:
+    """Git drops everything below the `commit -v` scissors line, such as a
+    diff that removes a name."""
     message = repo / "COMMIT_EDITMSG"
     message.write_text(
         "docs: describe by role\n\n"
-        "# On branch zorblax-widgets\n"
+        "# Please enter the commit message for your changes.\n"
         "# ------------------------ >8 ------------------------\n"
         "-see Zorblax Widgets' filing\n"
     )
     result = _run(repo, "check", "--message-file", str(message), HYGIENE_DENYLIST=NAME)
     assert result.returncode == 0, result.stdout
+
+
+def test_hash_lines_are_scanned(repo: Path) -> None:
+    """`git commit -m` and `-F` keep `#` lines, so they may be committed."""
+    message = repo / "COMMIT_EDITMSG"
+    message.write_text("docs: tidy\n\n# Zorblax Widgets\n")
+    result = _run(repo, "check", "--message-file", str(message), HYGIENE_DENYLIST=NAME)
+    assert result.returncode == 1
+    assert result.stdout.splitlines()[0] == "commit message line 3"
 
 
 def test_a_name_in_a_file_path_fails(repo: Path) -> None:
