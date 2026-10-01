@@ -42,6 +42,11 @@ an empty data directory. After changing `POSTGRES_PASSWORD`, drop the old volume
 Every image is pinned to a version tag. A floating `:latest` Tempo image once broke
 `docker/tempo.yaml` by rejecting a config block the previous schema accepted.
 
+Open http://localhost:8000 for the local research UI. The page uses the
+synthetic fixture data configured for Compose. To submit questions, set
+CLAUDE_CODE_OAUTH_TOKEN in the untracked docker/.env file. The token stays in
+the API container and is never sent to the browser.
+
 ## Tool data in containers
 
 The image carries no SEC EDGAR cache, so the chart (`env.toolData`) and
