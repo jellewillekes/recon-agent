@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
@@ -440,3 +441,25 @@ def test_supervisor_gets_only_the_flag_tool() -> None:
         "search_filings_tool",
     ):
         assert f"mcp__recon-tools__{read_tool}" not in supervisor_options.allowed_tools
+
+
+@pytest.mark.unit
+def test_repo_roles_give_search_knowledge_to_worker_facts_and_critic_only() -> None:
+    """ADR 0025: lookups and the critic's checks search filing text; the
+    supervisor routes and the lookup worker resolves ids, so neither does."""
+    roles = yaml.safe_load(Path("config/roles.yaml").read_text())
+    with_tool = {
+        role
+        for role, config in roles.items()
+        if "search_knowledge" in config.get("tools", [])
+    }
+    assert with_tool == {"worker_facts", "critic"}
+    critic = multi_agent._build_role_options(
+        "critic", roles["critic"], Path("prompts"), multi_agent._CRITIC_SCHEMA
+    )
+    assert critic.allowed_tools == ["mcp__recon-tools__search_knowledge_tool", "Read"]
+
+
+@pytest.mark.unit
+def test_single_mode_investigator_may_search_knowledge() -> None:
+    assert "mcp__recon-tools__search_knowledge_tool" in agent_sdk.ALLOWED_TOOLS

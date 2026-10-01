@@ -97,8 +97,8 @@ Honeycomb, or similar) instead of self-hosting Tempo (docs/observability.md).
 
 ## Image size
 
-`docker build -t recon-agent:dev -f docker/Dockerfile .` produces a **195MB** image
-(204,420,718 bytes via `docker inspect recon-agent:dev --format '{{.Size}}'`, arm64,
+`docker build -t recon-agent:dev -f docker/Dockerfile .` produces a **206MB** image
+(206,192,971 bytes after step 13 added the pgvector client; 204,420,718 before, via `docker inspect recon-agent:dev --format '{{.Size}}'`, arm64,
 this machine), under the 300MB target issue #15 names. It was 262MB until #54 dropped
 the unused `polars` and moved `pytest` and `ruff` to the dev group, which the image
 doesn't install. `claude-agent-sdk` still bundles a native `claude` CLI binary inside

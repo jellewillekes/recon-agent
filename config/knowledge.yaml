@@ -1,0 +1,20 @@
+# Retrieval over SEC filing text (step 13, #18; docs/adr/0025-retrieval-over-filing-text.md).
+# Changing a model or the chunking changes the corpus id, and so the
+# tool_data_snapshot every eval run records.
+
+# Local sentence-transformers models, downloaded once from Hugging Face.
+embedding_model: BAAI/bge-small-en-v1.5
+embedding_dimensions: 384
+reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+
+# Characters per chunk, and how many carry over into the next one so a
+# sentence cut at a boundary still appears whole in one chunk.
+chunk_chars: 1200
+chunk_overlap_chars: 200
+
+# Candidates each of dense and full-text search contribute before fusion,
+# and how many fused candidates the cross-encoder reranks.
+candidates_per_search: 40
+rerank_pool: 30
+# Reciprocal rank fusion constant (Cormack et al., 2009).
+rrf_k: 60

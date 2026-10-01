@@ -28,11 +28,15 @@ worker_facts:
   model: claude-sonnet-5
   max_turns: 8
   # Retrieval: the actual facts/filings once the lookup worker (or the
-  # supervisor's routing) has named a company/concept to fetch.
-  tools: [get_financial_fact, search_filings]
+  # supervisor's routing) has named a company/concept to fetch, and filing
+  # text for what XBRL doesn't carry (docs/adr/0025).
+  tools: [get_financial_fact, search_filings, search_knowledge]
 
 critic:
   model: claude-sonnet-5
-  # Checks a proposed answer against the evidence it's handed - no tool use,
-  # no multi-step reasoning.
-  max_turns: 3
+  # Checks a proposed answer against its evidence, and may search filing text
+  # to verify a claim (docs/adr/0025). More turns than before for that search.
+  # The LangGraph critic node calls no tools, so this list applies to the
+  # Agent SDK runtime only.
+  max_turns: 6
+  tools: [search_knowledge]

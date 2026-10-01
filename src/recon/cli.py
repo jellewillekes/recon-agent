@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from recon import cli_edgar
+from recon import cli_edgar, cli_retrieval
 from recon.adapters import sec_edgar, sec_edgar_tickers
 from recon.adapters.finance_agent_bench import (
     DATASET_ID,
@@ -16,7 +16,7 @@ from recon.adapters.finance_agent_bench import (
     load_cases,
 )
 from recon.contracts import Case, EvalRun
-from recon.eval import case_selection
+from recon.eval import case_selection, retrieval
 from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate, comparability_failures
 from recon.eval.harness import (
     RUBRIC_VERSION,
@@ -147,6 +147,20 @@ def _refuse_over_cap(case_count: int, max_cost_eur: float) -> None:
         )
 
 
+def _with_retrieval_metrics(run: EvalRun, cases: list[Case]) -> EvalRun:
+    """Score the retriever on the run's labelled cases. Offline: no model call."""
+    labels = retrieval.load_labels()
+    if not any(case.case_id in labels for case in cases):
+        return run
+    backend = cli_retrieval.open_backend()
+    if backend is None:
+        print("Retrieval metrics skipped.")
+        return run
+    ran = cases[: len(run.case_scores)]
+    metrics = retrieval.retrieval_metrics(labels, ran, backend.chunk_ids)
+    return retrieval.with_retrieval_metrics(run, metrics)
+
+
 def _cmd_eval(args: argparse.Namespace) -> None:
     cases = _select_cases(args)
     _refuse_over_cap(len(cases), args.max_cost_eur)
@@ -182,6 +196,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     finally:
         shutdown_tracing()
     run = with_cost_per_correct_answer(run, thresholds.correct_answer_score)
+    run = _with_retrieval_metrics(run, cases)
 
     results_dir = Path("evals/results")
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -329,6 +344,7 @@ def build_parser() -> argparse.ArgumentParser:
     cases_parser.set_defaults(func=_cmd_cases)
 
     cli_edgar.add_edgar_parser(subparsers, DEFAULT_DATASET_PATH)
+    cli_retrieval.add_retrieval_parser(subparsers, DEFAULT_DATASET_PATH)
     return parser
 
 

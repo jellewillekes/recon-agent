@@ -12,12 +12,14 @@ decorator shape either way; see `docs/adr/0010-langgraph-runtime.md`.
 """
 
 import os
+from pathlib import Path
 from typing import Any, Literal
 
 import duckdb
 from mcp.server.fastmcp import FastMCP
 
-from recon.tools.data_source import open_tool_data
+from recon.tools.data_source import knowledge_chunks_path, open_tool_data
+from recon.tools.knowledge_search import KnowledgeBackend, search_knowledge
 from recon.tools.review_flag import flag_case_for_review
 from recon.tools.server import (
     FormType,
@@ -124,17 +126,31 @@ def _register_write_tool(server: FastMCP) -> None:
         )
 
 
-def build_server(conn: duckdb.DuckDBPyConnection) -> FastMCP:
-    """Wire the tool functions in `server.py` to an `MCPServer` bound to `conn`."""
+def _register_knowledge_tool(server: FastMCP, chunks_path: Path) -> None:
+    """`search_knowledge`, when a filing-text corpus was built for this snapshot."""
+    backend = KnowledgeBackend(chunks_path)
+
+    @server.tool(description=search_knowledge.__doc__)
+    def search_knowledge_tool(query: str, top_k: int = 5) -> dict[str, Any]:
+        return backend.search(query, top_k).model_dump()
+
+
+def build_server(
+    conn: duckdb.DuckDBPyConnection, chunks_path: Path | None = None
+) -> FastMCP:
+    """Wire the tool functions to an `MCPServer` bound to `conn`, plus
+    `search_knowledge` when `chunks_path` names a built filing-text corpus."""
     server = FastMCP(name="recon-tools")
     _register_read_tools(server, conn)
     _register_write_tool(server)
+    if chunks_path is not None:
+        _register_knowledge_tool(server, chunks_path)
     return server
 
 
 def main() -> None:
     conn = open_tool_data()
-    server = build_server(conn)
+    server = build_server(conn, knowledge_chunks_path())
     server.run()
 
 

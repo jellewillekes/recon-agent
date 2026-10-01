@@ -72,6 +72,7 @@ uv run uvicorn recon.api.main:app --reload
 cp docker/.env.example docker/.env  # once, then fill in the passwords
 docker compose -f docker/compose.yaml up -d
 helm lint charts/recon-agent
+uv run python -m recon.cli edgar fetch-text   # filing text for search_knowledge (docs/data-sources.md)
 ```
 
 ## Definition of done

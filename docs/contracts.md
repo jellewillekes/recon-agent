@@ -38,7 +38,7 @@ A case with neither `expected_answer` nor `expected_tool_path` is invalid and is
 | DuckDB | Read-only analytical queries over Parquet and CSV, from tools | Any write path, any concurrent access |
 | Postgres | Checkpoints, the review-flag table, pgvector embeddings | Columnar analytics over the dataset |
 
-Tools query DuckDB. State goes to Postgres. A tool that needs to write is not a tool — it is a state operation and goes through the write path in section 6.
+Tools query DuckDB, except `search_knowledge`, which reads the filing-text embeddings in pgvector (ADR 0025). Neither writes. State goes to Postgres. A tool that needs to write is not a tool — it is a state operation and goes through the write path in section 6.
 
 ---
 
@@ -65,7 +65,7 @@ class ToolResult(BaseModel):
 | `invalid_input` | Schema or range error | `[]` | which field, and what is valid |
 | `unavailable` | Source down, timeout, circuit open | `[]` | whether a retry is worthwhile |
 
-`MAX_ROWS = 500` per call. `TIMEOUT_S = 30`.
+`MAX_ROWS = 500` per call. `TIMEOUT_S = 30`. `search_knowledge` returns at most `top_k` (up to 20) passages, so it never reports `truncated`.
 
 `empty` is explicitly not an error. The agent must be able to conclude that nothing is there — for some cases that is the correct answer.
 
