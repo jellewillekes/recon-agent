@@ -88,7 +88,7 @@ step 11's job (`.github/workflows/release.yaml`), not this one.
 `docker/compose.yaml`'s Grafana/Tempo/Prometheus/Ollama are dev-stack only — nothing in
 `src/recon` exports OpenTelemetry traces yet (that instrumentation is step 12). A managed
 cluster would point OTLP export at a managed observability backend (Grafana Cloud,
-Honeycomb, or similar) instead of self-hosting Tempo, once that instrumentation exists.
+Honeycomb, or similar) instead of self-hosting Tempo (docs/observability.md).
 
 ## Image size
 

@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: recon
+    folder: recon-agent
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,6 +1,7 @@
-# Minimal Tempo config: OTLP receivers + local storage. Nothing exports
-# traces to this yet - that's step 12 (docs/implementation-plan.md). Stood
-# up now so the dev stack matches the plan's spec ahead of that step.
+# Minimal Tempo config: OTLP receivers and local storage. `recon.cli eval`
+# and the API export here when OTEL_EXPORTER_OTLP_ENDPOINT is set
+# (docs/observability.md). TraceQL metrics, which the Grafana dashboard
+# queries, are on by default in Tempo 3 and need no metrics generator.
 server:
   http_listen_port: 3200
 
