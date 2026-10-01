@@ -44,6 +44,8 @@ def _cmd_propose(args: argparse.Namespace) -> None:
     drafts = {}
     for case in cases[: args.count]:
         result = backend.search(case.question, args.per_case)
+        if result.status != "ok":
+            print(f"{case.case_id}: {result.message}")
         drafts[case.case_id] = {
             "question": case.question,
             "candidates": [

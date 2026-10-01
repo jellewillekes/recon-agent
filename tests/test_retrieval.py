@@ -334,6 +334,23 @@ def test_search_without_the_model_installed_is_unavailable() -> None:
     assert "--extra knowledge" in result.message
 
 
+def test_search_reports_reranker_failure_as_unavailable() -> None:
+    def broken(query: str, passages: Any) -> list[float]:
+        raise OSError("no network: couldn't download the cross-encoder model")
+
+    result = knowledge_search.search_knowledge(
+        _FakeConn(),  # type: ignore[arg-type]
+        "corpus",
+        CONFIG,
+        _embed,
+        broken,
+        "fictional guidance",
+        2,
+    )
+    assert result.status == "unavailable"
+    assert result.data == [] and result.message
+
+
 def test_search_with_no_match_is_empty() -> None:
     class _Nothing(_FakeConn):
         def execute(self, sql: str, params: tuple[Any, ...]) -> Any:

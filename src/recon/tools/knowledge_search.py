@@ -156,7 +156,15 @@ def search_knowledge(
             "or use the XBRL tools.",
         )
     candidates = [rows[i] for i in ranked if i in rows]
-    scores = rerank(args.query, [row["text"] for row in candidates])
+    try:
+        scores = rerank(args.query, [row["text"] for row in candidates])
+    except (ImportError, OSError) as exc:
+        return failure(
+            start,
+            "unavailable",
+            f"The reranker failed ({type(exc).__name__}). Retry once; if it fails "
+            "again, answer from the XBRL tools.",
+        )
     order = sorted(range(len(candidates)), key=lambda i: -scores[i])[: args.top_k]
     data = [
         {
