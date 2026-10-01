@@ -13,7 +13,7 @@ jobs:
       issues: read
       id-token: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
@@ -59,12 +59,18 @@ jobs:
             PR: #${{ github.event.pull_request.number }}
 
             Review this pull request as a senior engineer. Look for correctness
-            bugs, missing edge cases, and security issues, but also weigh in on
-            design and best-practice tradeoffs: is this the right approach, is
-            there a simpler or more idiomatic way, does it fit the rest of the
-            codebase. Where you're not certain something is wrong, say so and
-            ask rather than asserting it as a defect - the goal is a genuine
-            back-and-forth on the best solution, not a lint pass.
+            bugs, missing edge cases, and security issues. Design and
+            best-practice tradeoffs are welcome too, as non-blocking
+            Question: or Note: findings: is this the right approach, is there
+            a simpler way, does it fit the rest of the codebase. Where you're
+            not certain something is wrong, ask rather than asserting a defect.
+
+            Tag a finding Blocking: only when you can name a concrete input or
+            state that goes wrong: a bug, a security hole, data loss, or a
+            stated requirement the PR misses. Preferences and hypothetical
+            future misuse are Question: or Note:. Of the bot's past change
+            requests, a third carried no Blocking finding and still cost a full
+            review round (docs/adr/0024-blocking-only-change-requests.md).
 
             Steps:
             1. Use mcp__github__get_pull_request_reviews to list existing reviews
@@ -95,14 +101,14 @@ jobs:
                if any, plus (round N+1 > 1) a compact status list: one line each for
                Open / Resolved / New, before any other prose. Then submit with
                mcp__github__submit_pending_pull_request_review:
-               - Round N+1 <= 3 and you have unresolved correctness or design
-                 concerns beyond step 3's human-decision items: submit with event
-                 REQUEST_CHANGES.
-               - No unresolved concerns, or the only ones left are step 3's
-                 human-decision items: submit with event COMMENT if there's a
-                 human-decision item to flag, otherwise APPROVE. Either way, do
-                 not use REQUEST_CHANGES for something only a human can decide.
-               - Round N+1 > 3 and ordinary concerns remain: do NOT use
+               - Round N+1 <= 3 and at least one unresolved Blocking: finding:
+                 submit with event REQUEST_CHANGES.
+               - Only Question: or Note: findings, or step 3's human-decision
+                 items: submit with event COMMENT. They don't start another
+                 round; the author answers them on the PR.
+               - Nothing open: APPROVE. Never use REQUEST_CHANGES for something
+                 only a human can decide.
+               - Round N+1 > 3 and Blocking: findings remain: do NOT use
                  REQUEST_CHANGES. Submit with event COMMENT, summarize what's
                  still unresolved, and say plainly: "Reached the automatic
                  review cap (3 rounds) - this needs a human to weigh in."

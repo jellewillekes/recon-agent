@@ -12,7 +12,7 @@ Everything on this page is repo tooling, not product code.
 | --- | --- | --- |
 | `.github/workflows/claude.yml` | `@claude` mention on an issue/PR comment; issue assigned to `claude`; issue labeled `claude-implement` | **Implementer.** Reads the issue, writes the fix, pushes a branch, opens a PR. |
 | `.github/workflows/claude-scan.yml` | Weekly cron (Mondays 06:00 UTC) + manual `workflow_dispatch` | **Scanner.** Looks for concrete bugs/TODOs/tech debt, dedupes against open issues, files up to 5 new ones per run. Labels safely-fixable ones `claude-implement`. |
-| `.github/workflows/claude-code-review.yml` | PR opened / synchronized / reopened / marked ready for review | **Reviewer.** Reads the diff, submits a formal GitHub review (`APPROVE` / `REQUEST_CHANGES` / `COMMENT`) covering correctness and design tradeoffs. |
+| `.github/workflows/claude-code-review.yml` | PR opened / synchronized / reopened / marked ready for review | **Reviewer.** Reads the diff, submits a formal GitHub review covering correctness and design tradeoffs. `REQUEST_CHANGES` only for a `Blocking:` finding, `COMMENT` for questions and notes, `APPROVE` when nothing is open (ADR 0024). |
 | `.github/workflows/claude-respond-to-review.yml` | The reviewer bot submits a review with `REQUEST_CHANGES` | **Implementer, again.** Reads the review, fixes what it agrees with, argues back on what it doesn't, pushes a new commit. |
 
 ## The loop

@@ -26,6 +26,11 @@ services:
     image: grafana/grafana:13.2.2
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set it in docker/.env - see docker/.env.example}
+    volumes:
+      # Tempo and Prometheus datasources and the eval-runs dashboard
+      # (docs/observability.md).
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3000:3000"
 

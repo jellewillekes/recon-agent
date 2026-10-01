@@ -78,6 +78,21 @@ class _Item:
 class JudgeResult:
     rubric_scores: dict[str, float]
     cost_eur: float
+    # Usage of the judge call, for its trace span (recon.tracing). Zero when
+    # there was nothing to judge and no call was made.
+    model: str = ""
+    tokens_in: int = 0
+    tokens_out: int = 0
+    num_turns: int = 0
+
+
+@dataclass(frozen=True)
+class _JudgeCall:
+    holds: dict[str, bool]
+    cost_usd: float
+    tokens_in: int
+    tokens_out: int
+    num_turns: int
 
 
 def _static_items(rubric: Rubric) -> list[_Item]:
@@ -166,9 +181,7 @@ def _build_options(judge_config: dict[str, Any]) -> ClaudeAgentOptions:
     )
 
 
-async def _run_async(
-    prompt: str, options: ClaudeAgentOptions
-) -> tuple[dict[str, bool], float]:
+async def _run_async(prompt: str, options: ClaudeAgentOptions) -> _JudgeCall:
     result_message: ResultMessage | None = None
     async for message in query(prompt=prompt, options=options):
         if isinstance(message, ResultMessage):
@@ -188,7 +201,22 @@ async def _run_async(
             f"judge run produced no structured output (subtype={result_message.subtype!r})."
         )
     holds = {entry["id"]: bool(entry["holds"]) for entry in structured["results"]}
-    return holds, result_message.total_cost_usd or 0.0
+    usage = result_message.usage or {}
+    return _JudgeCall(
+        holds=holds,
+        cost_usd=result_message.total_cost_usd or 0.0,
+        # Cached input counts as input, as in runtimes/agent_sdk.py.
+        tokens_in=sum(
+            int(usage.get(key, 0))
+            for key in (
+                "input_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+            )
+        ),
+        tokens_out=int(usage.get("output_tokens", 0)),
+        num_turns=result_message.num_turns,
+    )
 
 
 def _score_dimensions(items: list[_Item], holds: dict[str, bool]) -> dict[str, float]:
@@ -231,14 +259,17 @@ def judge_case(
         judge_config, usd_to_eur_rate = _load_judge_config(models_config_path)
         options = _build_options(judge_config)
         prompt = _build_prompt(case, agent_result, items)
-        holds, cost_usd = asyncio.run(_run_async(prompt, options))
-        scores = _score_dimensions(items, holds)
-        cost_eur = cost_usd * usd_to_eur_rate
-    else:
-        scores = {}
-        cost_eur = 0.0
+        call = asyncio.run(_run_async(prompt, options))
+        scores = _score_dimensions(items, call.holds)
+        for dimension in rubrics:
+            scores.setdefault(dimension, 1.0)
+        return JudgeResult(
+            rubric_scores=scores,
+            cost_eur=call.cost_usd * usd_to_eur_rate,
+            model=judge_config["model"],
+            tokens_in=call.tokens_in,
+            tokens_out=call.tokens_out,
+            num_turns=call.num_turns,
+        )
 
-    for dimension in rubrics:
-        scores.setdefault(dimension, 1.0)
-
-    return JudgeResult(rubric_scores=scores, cost_eur=cost_eur)
+    return JudgeResult(rubric_scores=dict.fromkeys(rubrics, 1.0), cost_eur=0.0)
