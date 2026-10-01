@@ -222,3 +222,18 @@ def test_an_api_request_is_traced_with_its_request_id(
     assert agent.parent is not None
     assert agent.parent.span_id == request.context.span_id
     assert any(s.name == "execute_tool get_financial_facts" for s in finished)
+
+
+def test_the_api_starts_and_flushes_tracing_with_its_lifespan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from recon.api import main as api_main
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        api_main, "configure_tracing", lambda name: calls.append(f"start {name}")
+    )
+    monkeypatch.setattr(api_main, "shutdown_tracing", lambda: calls.append("flush"))
+    with TestClient(api_main.app):
+        assert calls == ["start recon-api"]
+    assert calls == ["start recon-api", "flush"]
