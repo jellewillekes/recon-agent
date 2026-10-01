@@ -1,8 +1,8 @@
 # Role configuration for multi-agent mode (`runtimes/multi_agent.py`).
 # Mirrors models.yaml's per-role-key shape. `tools:` is the structural tool
 # subset for that role - it drives ClaudeAgentOptions.allowed_tools directly,
-# not a prompt instruction. critic omits it entirely: it gets no MCP server
-# attached at all, not just an empty allowlist.
+# not a prompt instruction. A role with an empty or absent tools list gets no
+# MCP server attached at all, not just an empty allowlist.
 
 supervisor:
   model: claude-sonnet-5

@@ -68,8 +68,9 @@ class Chunk:
 
 def chunk_text(text: str, size: int, overlap: int) -> list[str]:
     """Split on line breaks into pieces of at most `size` characters, each
-    starting `overlap` characters before the previous one ended. A single
-    line longer than `size` is cut at the size."""
+    starting up to `overlap` characters before the previous one ended. A
+    single line longer than `size` is cut at the size; the overlap shrinks
+    when a line would otherwise push a joined piece past `size`."""
     pieces: list[str] = []
     current = ""
     for line in text.splitlines():
@@ -79,7 +80,8 @@ def chunk_text(text: str, size: int, overlap: int) -> list[str]:
             current, line = "", line[size - overlap :]
         if current and len(current) + 1 + len(line) > size:
             pieces.append(current)
-            current = current[-overlap:] if overlap else ""
+            carry = min(overlap, max(size - len(line) - 1, 0))
+            current = current[-carry:] if carry else ""
         current = f"{current}\n{line}" if current else line
     if current:
         pieces.append(current)

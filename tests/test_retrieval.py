@@ -142,6 +142,13 @@ def test_a_line_longer_than_a_chunk_is_cut() -> None:
     assert [len(p) for p in pieces] == [300, 300, 200]
 
 
+def test_a_line_that_would_overflow_with_the_full_carry_shrinks_it() -> None:
+    first = "x" * 290
+    second = "y" * 280
+    pieces = corpus.chunk_text(f"{first}\n{second}", size=300, overlap=60)
+    assert all(len(p) <= 300 for p in pieces)
+
+
 def _raw_snapshot(tmp_path: Path) -> Path:
     raw = tmp_path / "raw"
     subs = _submissions()

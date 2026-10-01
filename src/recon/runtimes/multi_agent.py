@@ -118,11 +118,11 @@ def _build_role_options(
     prompts_dir: Path,
     output_format: dict[str, Any],
 ) -> ClaudeAgentOptions:
-    """Build one role's options for one call. `role_config["tools"]` (absent
-    for the supervisor) is the structural restriction: a role with no
-    entry gets no `mcp_servers` attached at all, not just an empty
-    `allowed_tools` - the tool is structurally absent from that role's
-    client, not refused after being offered.
+    """Build one role's options for one call. `role_config["tools"]` is the
+    structural restriction: a role with no entry gets no `mcp_servers`
+    attached at all, not just an empty `allowed_tools` - the tool is
+    structurally absent from that role's client, not refused after being
+    offered.
     """
     tool_names: list[str] = role_config.get("tools", [])
     mcp_servers: dict[str, Any] = {}
