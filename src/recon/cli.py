@@ -172,7 +172,8 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     results_dir.mkdir(parents=True, exist_ok=True)
     json_path = results_dir / f"{run.run_id}.json"
     md_path = results_dir / f"{run.run_id}.md"
-    json_path.write_text(run.model_dump_json(indent=2), encoding="utf-8")
+    # Trailing newline, so pre-commit's end-of-file fixer leaves results alone.
+    json_path.write_text(run.model_dump_json(indent=2) + "\n", encoding="utf-8")
     md_path.write_text(render_markdown(run), encoding="utf-8")
 
     print(f"Wrote {json_path} and {md_path}")

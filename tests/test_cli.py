@@ -138,7 +138,8 @@ def test_cmd_eval_writes_json_and_markdown(
     args = build_parser().parse_args(["eval", "--limit", "2"])
     args.func(args)
 
-    assert (tmp_path / "evals" / "results" / "eval-fixed.json").exists()
+    json_text = (tmp_path / "evals" / "results" / "eval-fixed.json").read_text()
+    assert json_text.endswith("}\n")
     assert (tmp_path / "evals" / "results" / "eval-fixed.md").exists()
 
 
