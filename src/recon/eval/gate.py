@@ -56,6 +56,12 @@ def comparability_failures(
             f"candidate {tool_data_snapshot!r}. Use the baseline's snapshot, or "
             "regenerate the baseline through an explicit PR."
         )
+    skipped = baseline.aggregate.get(SKIPPED_AT_COST_CAP)
+    if skipped:
+        failures.append(
+            f"the baseline run stopped at its cost cap with {skipped:.0f} case(s) "
+            f"not run, so it didn't measure its whole case set. {regenerate}"
+        )
     baseline_ids = {s.case_id for s in baseline.case_scores}
     if set(case_ids) != baseline_ids:
         missing, extra = baseline_ids - set(case_ids), set(case_ids) - baseline_ids
@@ -76,13 +82,14 @@ def check_gate(candidate: EvalRun, baseline: EvalRun) -> list[str]:
         case_ids=[s.case_id for s in candidate.case_scores],
         baseline=baseline,
     )
-    for role, run in (("candidate", candidate), ("baseline", baseline)):
-        skipped = run.aggregate.get(SKIPPED_AT_COST_CAP)
-        if skipped:
-            failures.append(
-                f"the {role} run stopped at its cost cap with {skipped:.0f} case(s) "
-                "not run. Rerun it with a higher --max-cost-eur or fewer cases."
-            )
+    # The baseline side is in comparability_failures, so the CLI refuses a
+    # capped baseline before running. A candidate is only known afterwards.
+    skipped = candidate.aggregate.get(SKIPPED_AT_COST_CAP)
+    if skipped:
+        failures.append(
+            f"the candidate run stopped at its cost cap with {skipped:.0f} case(s) "
+            "not run. Rerun it with a higher --max-cost-eur or fewer cases."
+        )
     if failures:
         return failures
 

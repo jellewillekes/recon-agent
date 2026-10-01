@@ -331,8 +331,9 @@ def test_cmd_eval_records_the_tool_data_snapshot(
         {"tool_data_snapshot": "20260928"},
         {"tool_data_snapshot": None},
         {"case_scores": [_score("1"), _score("2")]},
+        {"aggregate": {"task_completion_rate": 1.0, SKIPPED_AT_COST_CAP: 3.0}},
     ],
-    ids=["rubric", "dataset", "snapshot", "no-snapshot", "cases"],
+    ids=["rubric", "dataset", "snapshot", "no-snapshot", "cases", "capped"],
 )
 def test_cmd_eval_refuses_an_incomparable_baseline_before_running(
     monkeypatch: pytest.MonkeyPatch,
