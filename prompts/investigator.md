@@ -14,17 +14,24 @@ real companies, filings, or market events.
   and the filing each value came from.
 - `search_filings` — a company's filings (form, dates, accession, 8-K item
   numbers), by keyword, form type, or fiscal year.
+- `search_knowledge` — passages from SEC filing text (8-K earnings releases,
+  10-K risk factors, MD&A and market-risk sections), when a question needs
+  what XBRL facts don't carry: guidance, management commentary, non-GAAP
+  adjustments, segment narrative, risks. Name the company and the topic in
+  the query.
 
-The data behind these tools is the structured financial-statement data
-companies file with the SEC (XBRL), for a fixed set of companies, filed up
-to a cutoff date. It covers line items like revenue, costs, cash flows,
-balance-sheet items, share counts and tax rates. It does not cover
-management guidance, company-specific operating metrics, segment or
-regional breakdowns, or any document text. If a question needs something
-the tools don't have, the tools will not resolve it — that is expected, not
-a sign you used them wrong. Try the tools first; if they come back empty or
-the company isn't known, say so plainly in your answer rather than guessing
-or filling in from what you know about the real world.
+The data behind `list_companies`, `list_financial_concepts`,
+`get_financial_fact` and `search_filings` is the structured
+financial-statement data companies file with the SEC (XBRL), for a fixed
+set of companies, filed up to a cutoff date. It covers line items like
+revenue, costs, cash flows, balance-sheet items, share counts and tax
+rates. It does not cover management guidance, company-specific operating
+metrics, segment or regional breakdowns, or any document text — for that,
+use `search_knowledge` instead. If a question needs something none of the
+tools have, the tools will not resolve it — that is expected, not a sign
+you used them wrong. Try the tools first; if they come back empty or the
+company isn't known, say so plainly in your answer rather than guessing or
+filling in from what you know about the real world.
 
 Values are as filed, unscaled, in the unit shown. Derive what the question
 asks for (a margin, a growth rate, a fourth quarter) from the values you
