@@ -13,6 +13,11 @@ from recon.contracts import EvalRun
 ANSWER_SCORE_DROP_THRESHOLD = 0.02  # 2%
 COST_RISE_THRESHOLD = 0.20  # 20%
 
+# Set in `EvalRun.aggregate` when the cost cap stopped a run before its last
+# case. Such a run didn't measure its whole case set, so the gate refuses it
+# as a candidate and as a baseline.
+SKIPPED_AT_COST_CAP = "cases_skipped_at_cost_cap"
+
 
 def comparability_failures(
     *,
@@ -71,6 +76,13 @@ def check_gate(candidate: EvalRun, baseline: EvalRun) -> list[str]:
         case_ids=[s.case_id for s in candidate.case_scores],
         baseline=baseline,
     )
+    for role, run in (("candidate", candidate), ("baseline", baseline)):
+        skipped = run.aggregate.get(SKIPPED_AT_COST_CAP)
+        if skipped:
+            failures.append(
+                f"the {role} run stopped at its cost cap with {skipped:.0f} case(s) "
+                "not run. Rerun it with a higher --max-cost-eur or fewer cases."
+            )
     if failures:
         return failures
 

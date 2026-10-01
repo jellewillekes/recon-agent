@@ -1,16 +1,11 @@
 """Command-line entry point: `python -m recon.cli <command>`."""
 
 import argparse
-import json
 from collections import Counter
 from pathlib import Path
 
-from recon.adapters import (
-    sec_edgar,
-    sec_edgar_normalize,
-    sec_edgar_store,
-    sec_edgar_tickers,
-)
+from recon import cli_edgar
+from recon.adapters import sec_edgar, sec_edgar_tickers
 from recon.adapters.finance_agent_bench import (
     DATASET_ID,
     DEFAULT_CACHE_FILENAME,
@@ -18,7 +13,8 @@ from recon.adapters.finance_agent_bench import (
     load_cases,
 )
 from recon.contracts import Case, EvalRun
-from recon.eval.gate import check_gate, comparability_failures
+from recon.eval import case_selection
+from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate, comparability_failures
 from recon.eval.harness import RUBRIC_VERSION, run_evaluation
 from recon.eval.report import render_markdown
 from recon.runtimes.agent_sdk import AgentSdkRuntime
@@ -30,6 +26,12 @@ from recon.tools.data_source import tool_data_snapshot_id
 # changes the default fetch destination here — an old pin's cached file is
 # never mistaken for the current one.
 DEFAULT_DATASET_PATH = Path("data/raw/finance_agent_bench") / DEFAULT_CACHE_FILENAME
+
+DEFAULT_MAX_COST_EUR = 1.0
+# Per case, agent plus judge, for the pre-run estimate only. From #67's
+# isolated measurement (3 cases, €0.128). Replace it with the agent_cost_eur
+# and judge_cost_eur of a real run once one exists.
+ESTIMATED_COST_EUR_PER_CASE = 0.05
 
 
 def compute_dataset_stats(cases: list[Case]) -> dict[str, object]:
@@ -100,10 +102,45 @@ def _refuse_incomparable_baseline(
         raise SystemExit(1)
 
 
-def _cmd_eval(args: argparse.Namespace) -> None:
+def _select_cases(args: argparse.Namespace) -> list[Case]:
     cases = load_cases(fetch_csv(args.path))
-    if args.limit is not None:
-        cases = cases[: args.limit]
+    try:
+        if args.cases is not None:
+            ids = case_selection.read_case_file(args.cases)
+            cases = case_selection.select_cases(cases, ids)
+        elif args.company is not None:
+            by_ticker = sec_edgar_tickers.read_case_ids(_case_tickers_paths(args))
+            ids = by_ticker.get(args.company.upper(), [])
+            if not ids:
+                raise ValueError(
+                    f"No case ids recorded for {args.company} in the tickers files. "
+                    "Only files written by `edgar fetch --from-dataset` carry them."
+                )
+            cases = case_selection.select_cases(cases, ids)
+    except (FileNotFoundError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
+    return cases if args.limit is None else cases[: args.limit]
+
+
+def _case_tickers_paths(args: argparse.Namespace) -> list[Path]:
+    paths: list[Path] | None = args.tickers_file
+    return paths or sorted(sec_edgar.DEFAULT_RAW_DIR.glob("tickers*.txt"))
+
+
+def _refuse_over_cap(case_count: int, max_cost_eur: float) -> None:
+    """Stop before any credit is spent if the estimate already exceeds the cap."""
+    estimate = case_count * ESTIMATED_COST_EUR_PER_CASE
+    print(f"{case_count} case(s), estimated €{estimate:.2f}, cap €{max_cost_eur:.2f}")
+    if estimate > max_cost_eur:
+        raise SystemExit(
+            "The estimate exceeds the cap. Run fewer cases (--cases, --company, "
+            "--limit) or raise --max-cost-eur."
+        )
+
+
+def _cmd_eval(args: argparse.Namespace) -> None:
+    cases = _select_cases(args)
+    _refuse_over_cap(len(cases), args.max_cost_eur)
     # Fails now, not mid-run, when the EDGAR cache is missing.
     try:
         tool_data_snapshot = tool_data_snapshot_id()
@@ -120,6 +157,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
         cases,
         _build_runtime(args.runtime, args.mode),
         tool_data_snapshot=tool_data_snapshot,
+        max_cost_eur=args.max_cost_eur,
     )
 
     results_dir = Path("evals/results")
@@ -136,6 +174,12 @@ def _cmd_eval(args: argparse.Namespace) -> None:
         f"answer_score_mean={run.aggregate.get('answer_score_mean', 0.0):.3f} "
         f"total_cost_eur={run.total_cost_eur:.4f}"
     )
+    if run.aggregate.get(SKIPPED_AT_COST_CAP):
+        raise SystemExit(
+            f"Stopped at the €{args.max_cost_eur:.2f} cap before "
+            f"{run.aggregate[SKIPPED_AT_COST_CAP]:.0f} case(s). The gate refuses "
+            "this run; rerun with fewer cases or a higher --max-cost-eur."
+        )
 
     if baseline is not None:
         failures = check_gate(run, baseline)
@@ -146,120 +190,14 @@ def _cmd_eval(args: argparse.Namespace) -> None:
         print("Gate passed.")
 
 
-def _derive_tickers_file(
-    edgar: sec_edgar.EdgarClient, dataset_path: Path, tickers_path: Path
-) -> None:
-    company_tickers = sec_edgar.fetch_company_tickers(edgar, sec_edgar.DEFAULT_RAW_DIR)
-    cases = load_cases(fetch_csv(dataset_path))
-    matches = sec_edgar_tickers.derive_tickers(
-        cases, sec_edgar_tickers.load_company_tickers(company_tickers)
-    )
-    unmatched = sec_edgar_tickers.unmatched_case_ids(cases, matches)
-    sec_edgar_tickers.write_tickers_file(tickers_path, matches, unmatched)
-    print(
-        f"Matched {len(matches)} companies; {len(unmatched)} of {len(cases)} cases "
-        f"had no match. Review {tickers_path}, then run `recon.cli edgar fetch`."
-    )
-
-
-def _tickers_paths(args: argparse.Namespace) -> list[Path]:
-    paths: list[Path] | None = args.tickers_file
-    return paths or [sec_edgar.DEFAULT_RAW_DIR / sec_edgar.TICKERS_FILENAME]
-
-
-def _cmd_edgar_fetch(args: argparse.Namespace) -> None:
-    config = sec_edgar.load_config(args.config)
-    raw_dir = sec_edgar.DEFAULT_RAW_DIR
-    tickers_paths = _tickers_paths(args)
-    with sec_edgar.build_client(sec_edgar.user_agent_from_env()) as http:
-        edgar = sec_edgar.EdgarClient(http, config.max_requests_per_second)
-        if args.from_dataset:
-            if len(tickers_paths) != 1:
-                raise SystemExit("--from-dataset writes exactly one --tickers-file.")
-            _derive_tickers_file(edgar, args.path, tickers_paths[0])
-            return
-        tickers = sec_edgar_tickers.read_tickers_files(tickers_paths)
-        snapshot = sec_edgar.snapshot_id()
-        snapshot_dir = raw_dir / snapshot
-        fetched: dict[str, dict[str, object]] = {}
-        for i, (ticker, cik) in enumerate(sorted(tickers.items()), 1):
-            print(f"[{i}/{len(tickers)}] {ticker} (CIK {cik})")
-            fetched[ticker] = {
-                "cik": cik,
-                **sec_edgar.fetch_company(edgar, cik, snapshot_dir),
-            }
-    sec_edgar.write_manifest(snapshot_dir, snapshot, config, fetched)
-    out_dir = sec_edgar.DEFAULT_PROCESSED_DIR / snapshot
-    counts = sec_edgar_normalize.normalize_snapshot(
-        snapshot_dir, tickers, config, out_dir
-    )
-    print(f"Snapshot {snapshot} (cutoff {config.filed_cutoff}) -> {out_dir}: {counts}")
-
-
-def _cmd_edgar_stats(args: argparse.Namespace) -> None:
-    snapshot_dir = sec_edgar_store.latest_snapshot(sec_edgar.DEFAULT_PROCESSED_DIR)
-    manifest = json.loads((snapshot_dir / sec_edgar.MANIFEST_FILENAME).read_text())
-    print(f"snapshot: {snapshot_dir.name}  cutoff: {manifest['filed_cutoff']}")
-    print(f"rows: {manifest['row_counts']}")
-    print(f"{'company':<8} {'facts':>8} {'filings':>8}")
-    for company_id, facts, filings in sec_edgar_store.company_stats(snapshot_dir):
-        flag = "  <- no XBRL facts" if facts == 0 else ""
-        print(f"{company_id:<8} {facts:>8} {filings:>8}{flag}")
-    for tickers_path in _tickers_paths(args):
-        if not tickers_path.exists():
-            continue
-        unmatched = [
-            line.removeprefix("# unmatched: ")
-            for line in tickers_path.read_text(encoding="utf-8").splitlines()
-            if line.startswith("# unmatched: ")
-        ]
-        print(f"{tickers_path}: {len(unmatched)} cases with no matched company")
-        for case_id in unmatched:
-            print(f"  {case_id}")
-
-
-def _add_edgar_parser(
-    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
-) -> None:
-    edgar_parser = subparsers.add_parser(
-        "edgar", help="Fetch and inspect SEC EDGAR tool data (issue #58)."
-    )
-    edgar_sub = edgar_parser.add_subparsers(dest="edgar_command", required=True)
-
-    fetch_parser = edgar_sub.add_parser(
-        "fetch",
-        help="Fetch the companies in the reviewed tickers file and build the "
-        "Parquet tables. Needs SEC_EDGAR_USER_AGENT.",
-    )
-    fetch_parser.add_argument(
-        "--from-dataset",
-        action="store_true",
-        help="Derive the tickers file from the dataset's questions for review, "
-        "then stop. Nothing else is fetched.",
-    )
-    fetch_parser.add_argument(
-        "--path",
-        type=Path,
-        default=DEFAULT_DATASET_PATH,
-        help="Local cache path for the dataset CSV (used with --from-dataset).",
-    )
-    fetch_parser.add_argument(
-        "--config", type=Path, default=sec_edgar.DEFAULT_CONFIG_PATH
-    )
-    stats_parser = edgar_sub.add_parser(
-        "stats", help="Row counts per company in the latest snapshot."
-    )
-    for sub in (fetch_parser, stats_parser):
-        sub.add_argument(
-            "--tickers-file",
-            type=Path,
-            action="append",
-            help="Tickers file to read (repeatable; companies are merged) or, "
-            "with --from-dataset, to write. Default: "
-            f"{sec_edgar.DEFAULT_RAW_DIR / sec_edgar.TICKERS_FILENAME}.",
-        )
-    fetch_parser.set_defaults(func=_cmd_edgar_fetch)
-    stats_parser.set_defaults(func=_cmd_edgar_stats)
+def _cmd_cases(args: argparse.Namespace) -> None:
+    by_ticker = sec_edgar_tickers.read_case_ids(_case_tickers_paths(args))
+    cases = load_cases(fetch_csv(args.path))
+    try:
+        picked = case_selection.spread_across_companies(cases, by_ticker, args.spread)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    print("\n".join(picked))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -335,9 +273,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Baseline EvalRun JSON to gate against (docs/contracts.md §9). "
         "Exits non-zero on regression.",
     )
+    subset = eval_parser.add_mutually_exclusive_group()
+    subset.add_argument(
+        "--cases",
+        type=Path,
+        help="File of case ids to run, e.g. evals/smoke-cases.txt.",
+    )
+    subset.add_argument("--company", help="Run only the cases about this ticker.")
+    eval_parser.add_argument(
+        "--tickers-file",
+        type=Path,
+        action="append",
+        help="Tickers files holding case ids, for --company (repeatable). Default: "
+        f"every tickers*.txt in {sec_edgar.DEFAULT_RAW_DIR}.",
+    )
+    eval_parser.add_argument(
+        "--max-cost-eur",
+        type=float,
+        default=DEFAULT_MAX_COST_EUR,
+        help="Refuse to start above this estimate, and stop before a case that "
+        f"could pass it (default €{DEFAULT_MAX_COST_EUR:.2f}).",
+    )
     eval_parser.set_defaults(func=_cmd_eval)
 
-    _add_edgar_parser(subparsers)
+    cases_parser = subparsers.add_parser(
+        "cases", help="Print case ids spread across companies, for --cases."
+    )
+    cases_parser.add_argument("--spread", type=int, required=True)
+    cases_parser.add_argument("--path", type=Path, default=DEFAULT_DATASET_PATH)
+    cases_parser.add_argument("--tickers-file", type=Path, action="append")
+    cases_parser.set_defaults(func=_cmd_cases)
+
+    cli_edgar.add_edgar_parser(subparsers, DEFAULT_DATASET_PATH)
     return parser
 
 

@@ -67,7 +67,7 @@ DuckDB has a single writer per file and breaks under concurrent runs. Postgres i
 make check                          # format, lint, types, tests without LLM calls (what CI runs)
 make fix                            # format + safe autofix
 uv run pytest                       # all tests, including llm-marked ones that spend credit
-uv run python -m recon.cli eval --limit 3   # evaluation — consumes credit
+uv run python -m recon.cli eval --cases evals/smoke-cases.txt   # evaluation — consumes credit, capped at €1
 uv run uvicorn recon.api.main:app --reload
 cp docker/.env.example docker/.env  # once, then fill in the passwords
 docker compose -f docker/compose.yaml up -d
@@ -160,7 +160,8 @@ before/after examples are in `docs/voice-examples.md`.
 The runtime uses the Agent SDK credit on a personal subscription, not an API key. Every evaluation run consumes credit.
 
 - Never run a full evaluation unless the user asks for it
-- Use `--limit 3` when testing harness changes
+- Use `--cases evals/smoke-cases.txt` (7 cases, about €0.35) or `--limit 3` when testing harness changes
+- `eval` refuses to start above `--max-cost-eur` (€1 by default) and stops before a case that could pass it. Don't raise the cap without the user's go-ahead
 - Report tokens and cost in every evaluation result
 
 ## When unsure

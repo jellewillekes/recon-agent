@@ -14,10 +14,11 @@ from typing import Self
 
 import pytest
 
-from recon import cli
+from recon import cli, cli_edgar
 from recon.adapters.finance_agent_bench import DATASET_ID
 from recon.cli import build_parser, compute_dataset_stats
 from recon.contracts import Case, CaseScore, EvalRun
+from recon.eval.gate import SKIPPED_AT_COST_CAP
 from recon.eval.harness import RUBRIC_VERSION
 from recon.tools import data_source
 
@@ -120,7 +121,9 @@ def test_cmd_eval_writes_json_and_markdown(
 ) -> None:
     _patch_dataset_loading(monkeypatch)
     monkeypatch.setattr(
-        cli, "run_evaluation", lambda cases, runtime, tool_data_snapshot: _eval_run()
+        cli,
+        "run_evaluation",
+        lambda cases, runtime, tool_data_snapshot, max_cost_eur: _eval_run(),
     )
     monkeypatch.chdir(tmp_path)
 
@@ -139,7 +142,10 @@ def test_cmd_eval_mode_flag_reaches_runtime(
     captured: dict[str, object] = {}
 
     def fake_run_evaluation(
-        cases: object, runtime: object, tool_data_snapshot: object
+        cases: object,
+        runtime: object,
+        tool_data_snapshot: object,
+        max_cost_eur: object,
     ) -> EvalRun:
         captured["mode"] = runtime._mode  # type: ignore[attr-defined]
         return _eval_run()
@@ -161,9 +167,13 @@ def test_cmd_eval_defaults_to_single_mode(
     captured: dict[str, object] = {}
 
     def fake_run_evaluation(
-        cases: object, runtime: object, tool_data_snapshot: object
+        cases: object,
+        runtime: object,
+        tool_data_snapshot: object,
+        max_cost_eur: object,
     ) -> EvalRun:
         captured["mode"] = runtime._mode  # type: ignore[attr-defined]
+        captured["max_cost_eur"] = max_cost_eur
         return _eval_run()
 
     monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
@@ -173,6 +183,7 @@ def test_cmd_eval_defaults_to_single_mode(
     args.func(args)
 
     assert captured["mode"] == "single"
+    assert captured["max_cost_eur"] == cli.DEFAULT_MAX_COST_EUR
 
 
 @pytest.mark.unit
@@ -183,7 +194,10 @@ def test_cmd_eval_runtime_flag_reaches_langgraph_runtime(
     captured: dict[str, object] = {}
 
     def fake_run_evaluation(
-        cases: object, runtime: object, tool_data_snapshot: object
+        cases: object,
+        runtime: object,
+        tool_data_snapshot: object,
+        max_cost_eur: object,
     ) -> EvalRun:
         captured["runtime_type"] = type(runtime).__name__
         return _eval_run()
@@ -205,7 +219,10 @@ def test_cmd_eval_defaults_to_sdk_runtime(
     captured: dict[str, object] = {}
 
     def fake_run_evaluation(
-        cases: object, runtime: object, tool_data_snapshot: object
+        cases: object,
+        runtime: object,
+        tool_data_snapshot: object,
+        max_cost_eur: object,
     ) -> EvalRun:
         captured["runtime_type"] = type(runtime).__name__
         return _eval_run()
@@ -239,7 +256,9 @@ def test_cmd_eval_gate_passes_prints_message(
 ) -> None:
     _patch_dataset_loading(monkeypatch)
     monkeypatch.setattr(
-        cli, "run_evaluation", lambda cases, runtime, tool_data_snapshot: _eval_run()
+        cli,
+        "run_evaluation",
+        lambda cases, runtime, tool_data_snapshot, max_cost_eur: _eval_run(),
     )
     monkeypatch.chdir(tmp_path)
     baseline_path = tmp_path / "baseline.json"
@@ -257,7 +276,7 @@ def test_cmd_eval_gate_failure_exits_nonzero(
     monkeypatch.setattr(
         cli,
         "run_evaluation",
-        lambda cases, runtime, tool_data_snapshot: _eval_run(
+        lambda cases, runtime, tool_data_snapshot, max_cost_eur: _eval_run(
             aggregate={"task_completion_rate": 0.5, "answer_score_mean": 0.5}
         ),
     )
@@ -285,7 +304,10 @@ def test_cmd_eval_records_the_tool_data_snapshot(
     seen: dict[str, object] = {}
 
     def fake_run_evaluation(
-        cases: object, runtime: object, tool_data_snapshot: object
+        cases: object,
+        runtime: object,
+        tool_data_snapshot: object,
+        max_cost_eur: object,
     ) -> EvalRun:
         seen["snapshot"] = tool_data_snapshot
         return _eval_run()
@@ -389,13 +411,13 @@ def test_edgar_fetch_parser_defaults() -> None:
     assert args.from_dataset is False
     assert args.path == cli.DEFAULT_DATASET_PATH
     assert args.config == cli.sec_edgar.DEFAULT_CONFIG_PATH
-    assert args.func is cli._cmd_edgar_fetch
+    assert args.func is cli_edgar._cmd_edgar_fetch
 
 
 @pytest.mark.unit
 def test_edgar_stats_parser_wires_the_stats_command() -> None:
     args = build_parser().parse_args(["edgar", "stats"])
-    assert args.func is cli._cmd_edgar_stats
+    assert args.func is cli_edgar._cmd_edgar_stats
 
 
 @pytest.mark.unit
@@ -411,7 +433,7 @@ def test_cmd_edgar_fetch_from_dataset_stops_before_fetching_companies(
         captured["dataset_path"] = dataset_path
         captured["tickers_path"] = tickers_path
 
-    monkeypatch.setattr(cli, "_derive_tickers_file", fake_derive)
+    monkeypatch.setattr(cli_edgar, "_derive_tickers_file", fake_derive)
     monkeypatch.setattr(
         cli.sec_edgar_tickers,
         "read_tickers_file",
@@ -466,7 +488,7 @@ def test_cmd_edgar_fetch_runs_full_pipeline(monkeypatch: pytest.MonkeyPatch) -> 
         return {"companies": 1, "financial_facts": 5}
 
     monkeypatch.setattr(
-        cli.sec_edgar_normalize, "normalize_snapshot", fake_normalize_snapshot
+        cli_edgar.sec_edgar_normalize, "normalize_snapshot", fake_normalize_snapshot
     )
 
     args = build_parser().parse_args(["edgar", "fetch"])
@@ -497,10 +519,10 @@ def test_cmd_edgar_stats_prints_snapshot_summary(
         encoding="utf-8",
     )
     monkeypatch.setattr(
-        cli.sec_edgar_store, "latest_snapshot", lambda base: snapshot_dir
+        cli_edgar.sec_edgar_store, "latest_snapshot", lambda base: snapshot_dir
     )
     monkeypatch.setattr(
-        cli.sec_edgar_store,
+        cli_edgar.sec_edgar_store,
         "company_stats",
         lambda directory: [("ABC", 10, 2), ("XYZ", 0, 1)],
     )
@@ -529,7 +551,7 @@ def test_cmd_edgar_fetch_merges_repeated_tickers_files(
     monkeypatch.setattr(cli.sec_edgar, "write_manifest", lambda *a: tmp_path)
     fetched: dict[str, object] = {}
     monkeypatch.setattr(
-        cli.sec_edgar_normalize,
+        cli_edgar.sec_edgar_normalize,
         "normalize_snapshot",
         lambda snapshot_dir, tickers, config, out_dir: fetched.update(tickers) or {},
     )
@@ -563,3 +585,112 @@ def test_cmd_edgar_fetch_from_dataset_needs_exactly_one_tickers_file(
     )
     with pytest.raises(SystemExit, match="exactly one"):
         args.func(args)
+
+
+def _capture_cases(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
+    """Three cases in the dataset; records which ones reach the harness."""
+    monkeypatch.setattr(cli, "fetch_csv", lambda path: path)
+    monkeypatch.setattr(
+        cli, "load_cases", lambda path: [_case(i, ["Trends"]) for i in "123"]
+    )
+    seen: dict[str, list[str]] = {}
+
+    def fake_run_evaluation(
+        cases: list[Case],
+        runtime: object,
+        tool_data_snapshot: object,
+        max_cost_eur: object,
+    ) -> EvalRun:
+        seen["ids"] = [case.case_id for case in cases]
+        return _eval_run()
+
+    monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
+    return seen
+
+
+@pytest.mark.unit
+def test_cmd_eval_runs_only_the_cases_in_the_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen = _capture_cases(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "cases.txt").write_text("# smoke\n3\n1\n")
+    args = build_parser().parse_args(["eval", "--cases", "cases.txt"])
+    args.func(args)
+    assert seen["ids"] == ["1", "3"]
+
+
+@pytest.mark.unit
+def test_cmd_eval_runs_only_one_companys_cases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen = _capture_cases(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    tickers = tmp_path / "tickers-dataset.txt"
+    tickers.write_text("AAA\t1\tname\tAlpha Corp\t2,3\nBBB\t2\tname\tBeta\t1\n")
+    args = build_parser().parse_args(
+        ["eval", "--company", "aaa", "--tickers-file", str(tickers)]
+    )
+    args.func(args)
+    assert seen["ids"] == ["2", "3"]
+
+
+@pytest.mark.unit
+def test_cmd_eval_refuses_an_unknown_company_before_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen = _capture_cases(monkeypatch)
+    tickers = tmp_path / "tickers.txt"
+    tickers.write_text("AAA\t1\tmanual\tAlpha Corp\n")
+    args = build_parser().parse_args(
+        ["eval", "--company", "AAA", "--tickers-file", str(tickers)]
+    )
+    with pytest.raises(SystemExit, match="No case ids recorded for AAA"):
+        args.func(args)
+    assert "ids" not in seen
+
+
+@pytest.mark.unit
+def test_cmd_eval_refuses_an_estimate_over_the_cap_before_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen = _capture_cases(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    cap = 2.5 * cli.ESTIMATED_COST_EUR_PER_CASE  # three cases need 3x
+    args = build_parser().parse_args(["eval", "--max-cost-eur", str(cap)])
+    with pytest.raises(SystemExit, match="estimate exceeds the cap"):
+        args.func(args)
+    assert "ids" not in seen
+    assert not (tmp_path / "evals").exists()
+
+
+@pytest.mark.unit
+def test_cmd_eval_exits_nonzero_when_the_cap_stopped_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    capped = _eval_run(
+        aggregate={"task_completion_rate": 1.0, SKIPPED_AT_COST_CAP: 2.0}
+    )
+    monkeypatch.setattr(cli, "run_evaluation", lambda *a, **k: capped)
+    monkeypatch.chdir(tmp_path)
+    args = build_parser().parse_args(["eval"])
+    with pytest.raises(SystemExit, match="before 2 case"):
+        args.func(args)
+    assert (tmp_path / "evals" / "results" / "eval-fixed.json").exists()
+
+
+@pytest.mark.unit
+def test_cmd_cases_prints_ids_spread_across_companies(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _capture_cases(monkeypatch)
+    tickers = tmp_path / "tickers-dataset.txt"
+    tickers.write_text("AAA\t1\tname\tAlpha\t1,2\nBBB\t2\tname\tBeta\t3\n")
+    args = build_parser().parse_args(
+        ["cases", "--spread", "2", "--tickers-file", str(tickers)]
+    )
+    args.func(args)
+    assert capsys.readouterr().out.split() == ["1", "3"]

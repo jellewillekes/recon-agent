@@ -119,15 +119,18 @@ def _check_push(args: list[str], cwd: str) -> str | None:
     return None
 
 
+_SUBSET_FLAGS = ("--limit", "--cases", "--company")
+
+
 def _is_full_eval(words: list[str]) -> bool:
-    """`recon.cli eval` invoked as a command, with no `--limit N`."""
+    """`recon.cli eval` invoked as a command, with no subset flag."""
     runs_eval = any(
         word == "recon.cli" and words[i + 1 : i + 2] == ["eval"]
         for i, word in enumerate(words)
     )
     limited = any(
-        (word == "--limit" and words[i + 1 : i + 2] != [])
-        or word.startswith("--limit=")
+        (word in _SUBSET_FLAGS and words[i + 1 : i + 2] != [])
+        or word.startswith(tuple(f"{flag}=" for flag in _SUBSET_FLAGS))
         for i, word in enumerate(words)
     )
     return runs_eval and not limited
@@ -137,9 +140,9 @@ def _check_segment(segment: str, cwd: str) -> str | None:
     words = _tokens(segment)
     if _is_full_eval(words):
         return (
-            "recon.cli eval without --limit runs every case and spends Agent SDK "
-            "credit (AGENTS.md, Cost). Use --limit 3, or ask the user to run "
-            "the full evaluation"
+            "recon.cli eval without --limit, --cases or --company runs every case "
+            "and spends Agent SDK credit (AGENTS.md, Cost). Use --cases "
+            "evals/smoke-cases.txt, or ask the user to run the full evaluation"
         )
     git = _git_subcommand(words, cwd)
     if git and git[0] == "push":
