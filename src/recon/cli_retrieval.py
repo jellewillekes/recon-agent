@@ -29,8 +29,8 @@ def open_backend() -> KnowledgeBackend | None:
     backend = KnowledgeBackend(path)
     if backend.connection() is None:
         print(
-            "The filing-text index isn't reachable or built. Set DATABASE_URL and "
-            "run `recon.cli edgar index-text`."
+            "The filing-text index isn't reachable, or isn't fully built. Set "
+            "DATABASE_URL and run `recon.cli edgar index-text`."
         )
         return None
     return backend

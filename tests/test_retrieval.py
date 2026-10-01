@@ -471,3 +471,65 @@ def test_pgvector_round_trip(tmp_path: Path) -> None:
         conn.execute(
             "DELETE FROM knowledge_chunks WHERE corpus_id = %s", (corpus_name,)
         )
+
+
+def test_a_long_line_starting_with_item_is_not_a_heading() -> None:
+    body = "x" * 300
+    cross_reference = (
+        "Item 7 of this report describes how rates affect the fictional company's "
+        "funding costs across every period presented in the statements."
+    )
+    doc = "\n".join(
+        [
+            f"Item 7. Management's Discussion and Analysis\nDiscussion {body}",
+            cross_reference,
+            f"More discussion {body}",
+            "Item 8. Financial Statements\nTables.",
+        ]
+    )
+    section = text.tenk_sections(doc)["md&a"]
+    assert section.startswith("Item 7. Management's Discussion")
+    assert cross_reference in section
+
+
+def test_a_partly_built_index_is_not_served(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(ROOT)
+    chunks_path = tmp_path / corpus.CHUNKS_FILENAME
+    chunks = corpus.build_chunks(
+        _raw_snapshot(tmp_path), {1234: "FICT"}, CUTOFF, CONFIG
+    )
+    corpus.write_chunks(chunks, chunks_path)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://fake/db")
+
+    class _Conn:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    rows = {"n": len(chunks) - 1}
+    monkeypatch.setattr(knowledge_search, "connect", lambda url: _Conn())
+    monkeypatch.setattr(knowledge_search, "indexed_count", lambda conn, c: rows["n"])
+    assert knowledge_search.KnowledgeBackend(chunks_path).connection() is None
+    rows["n"] = len(chunks)
+    assert knowledge_search.KnowledgeBackend(chunks_path).connection() is not None
+
+
+def test_metrics_stop_when_a_search_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An index blip must not be scored as a retriever that found nothing."""
+    monkeypatch.chdir(ROOT)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    chunks_path = tmp_path / corpus.CHUNKS_FILENAME
+    corpus.write_chunks(
+        corpus.build_chunks(_raw_snapshot(tmp_path), {1234: "FICT"}, CUTOFF, CONFIG),
+        chunks_path,
+    )
+    backend = knowledge_search.KnowledgeBackend(chunks_path)
+    with pytest.raises(RuntimeError, match="isn't available"):
+        retrieval.retrieval_metrics(
+            {"q1": ["a"]}, [_case("q1", "first?")], backend.chunk_ids
+        )

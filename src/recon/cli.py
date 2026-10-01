@@ -157,7 +157,11 @@ def _with_retrieval_metrics(run: EvalRun, cases: list[Case]) -> EvalRun:
         print("Retrieval metrics skipped.")
         return run
     ran = cases[: len(run.case_scores)]
-    metrics = retrieval.retrieval_metrics(labels, ran, backend.chunk_ids)
+    try:
+        metrics = retrieval.retrieval_metrics(labels, ran, backend.chunk_ids)
+    except RuntimeError as exc:
+        print(f"Retrieval metrics skipped: a search failed ({exc})")
+        return run
     return retrieval.with_retrieval_metrics(run, metrics)
 
 

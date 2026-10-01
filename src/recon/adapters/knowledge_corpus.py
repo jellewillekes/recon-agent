@@ -167,6 +167,17 @@ def read_chunks(path: Path) -> list[Chunk]:
     return [Chunk(*row) for row in rows]
 
 
+def chunk_count(path: Path) -> int:
+    """How many chunks a chunks file holds."""
+    target = str(path).replace("'", "''")
+    row = (
+        duckdb.connect(":memory:")
+        .execute(f"SELECT count(*) FROM read_parquet('{target}')")
+        .fetchone()
+    )
+    return int(row[0]) if row else 0
+
+
 def corpus_id(chunks_path: Path, config: KnowledgeConfig) -> str:
     """Content hash of the chunks and the models that embed and rerank them."""
     digest = hashlib.sha256(chunks_path.read_bytes())

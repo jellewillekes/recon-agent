@@ -170,6 +170,7 @@ def html_to_text(html: str) -> str:
 _ITEM_HEADING = re.compile(
     r"^item\s+(1a|1b|1c|2|7a|7|8)\s*[.:\-—–]?\s*(.*)$", re.IGNORECASE | re.MULTILINE
 )
+_MAX_HEADING_CHARS = 120
 _KEEP = {"1a": "risk factors", "7": "md&a", "7a": "market risk"}
 
 
@@ -182,7 +183,10 @@ def tenk_sections(text: str) -> dict[str, str]:
     """
     starts: dict[str, int] = {}
     for match in _ITEM_HEADING.finditer(text):
-        starts[match.group(1).lower()] = match.start()
+        # A heading is a short line. A body sentence that happens to start
+        # with "Item 7 ..." runs on, and mustn't move the section start.
+        if len(match.group(0)) <= _MAX_HEADING_CHARS:
+            starts[match.group(1).lower()] = match.start()
     ordered = sorted(starts.items(), key=lambda item: item[1])
     sections = {}
     for i, (item, start) in enumerate(ordered):

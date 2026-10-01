@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from recon.adapters.knowledge_corpus import (
     KnowledgeConfig,
+    chunk_count,
     corpus_id,
     load_knowledge_config,
 )
@@ -200,6 +201,7 @@ class KnowledgeBackend:
     def __init__(self, chunks_path: Path) -> None:
         self.config = load_knowledge_config()
         self.corpus = corpus_id(chunks_path, self.config)
+        self.expected_chunks = chunk_count(chunks_path)
         self.embed = sentence_embedder(self.config.embedding_model)
         self.rerank = cross_encoder_reranker(self.config.reranker_model)
         self._conn: psycopg.Connection[Any] | None = None
@@ -212,7 +214,9 @@ class KnowledgeBackend:
                 return None
             try:
                 conn = connect(database_url)
-                if indexed_count(conn, self.corpus) == 0:
+                # A reindex that died partway leaves fewer rows than the
+                # corpus file holds. Searching that would quietly miss text.
+                if indexed_count(conn, self.corpus) != self.expected_chunks:
                     conn.close()
                     return None
             except psycopg.Error:
@@ -234,5 +238,12 @@ class KnowledgeBackend:
         )
 
     def chunk_ids(self, query: str, top_k: int) -> list[str]:
-        """Ids of the best matching chunks, for the retrieval metrics."""
-        return [row["chunk_id"] for row in self.search(query, top_k).data]
+        """Ids of the best matching chunks, for the retrieval metrics.
+
+        Raises when the search is unavailable, so a blip isn't scored as a
+        retriever that found nothing relevant.
+        """
+        result = self.search(query, top_k)
+        if result.status in ("unavailable", "invalid_input"):
+            raise RuntimeError(result.message)
+        return [row["chunk_id"] for row in result.data]
