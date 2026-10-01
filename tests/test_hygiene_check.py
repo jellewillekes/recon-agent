@@ -149,6 +149,13 @@ def test_comments_and_blank_lines_in_the_list_are_ignored(repo: Path) -> None:
     assert "1 names checked" in result.stdout
 
 
+def test_an_entry_without_letters_or_digits_is_an_error(repo: Path) -> None:
+    """An empty alternative would match everywhere, so refuse the list."""
+    result = _run(repo, "check", HYGIENE_DENYLIST=f"{NAME}\n- . -\n")
+    assert result.returncode == 2
+    assert "1 denylist entry has no letters or digits" in result.stdout
+
+
 def test_a_missing_list_is_a_notice_unless_required(repo: Path) -> None:
     assert _run(repo, "check").returncode == 0
     required = _run(repo, "check", "--require-list")

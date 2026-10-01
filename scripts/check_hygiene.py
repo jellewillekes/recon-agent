@@ -48,8 +48,16 @@ def load_denylist() -> list[str]:
 def compile_denylist(names: list[str]) -> re.Pattern[str]:
     """Whole-word, case-insensitive. Words of a name may be joined by up to
     three separator characters, so "A-B", "A.B." and "A B" all match."""
-    words = (re.findall(r"[A-Za-z0-9]+", name) for name in names)
-    alternatives = [r"[^A-Za-z0-9\n]{1,3}".join(map(re.escape, w)) for w in words if w]
+    words = [re.findall(r"[A-Za-z0-9]+", name) for name in names]
+    empty = sum(1 for w in words if not w)
+    if empty:
+        # An empty alternative would match everywhere. The entries aren't
+        # printed, since the list's other lines are names.
+        raise ValueError(
+            f"{empty} denylist entr{'y has' if empty == 1 else 'ies have'} no "
+            "letters or digits. Every line must be a company name or a comment."
+        )
+    alternatives = [r"[^A-Za-z0-9\n]{1,3}".join(map(re.escape, w)) for w in words]
     return re.compile(
         rf"(?<![A-Za-z0-9])(?:{'|'.join(alternatives)})(?![A-Za-z0-9])", re.IGNORECASE
     )
@@ -141,7 +149,11 @@ def _check(args: argparse.Namespace) -> int:
             return 2
         print(f"No denylist found in {where}; company names not checked.")
         return 0
-    pattern = compile_denylist(names)
+    try:
+        pattern = compile_denylist(names)
+    except ValueError as exc:
+        print(exc)
+        return 2
     hits = scan_tracked_files(pattern) + scan_pull_request(pattern)
     if args.commits:
         hits += scan_commits(args.commits, pattern)
