@@ -13,7 +13,9 @@ services:
       POSTGRES_USER: recon
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set it in docker/.env - see docker/.env.example}
     ports:
-      - "5432:5432"
+      # Host side configurable: another service may already hold 5432 on the
+      # host (e.g. an SSH tunnel). Containers still reach postgres:5432.
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
