@@ -153,8 +153,8 @@ def unmatched_case_ids(cases: list[Case], matches: dict[int, TickerMatch]) -> li
 _HEADER = (
     "# Companies to fetch from SEC EDGAR, derived from the dataset's questions.\n"
     "# Review before fetching: delete wrong rows, add missing ones as TICKER<TAB>CIK.\n"
-    "# Columns: ticker, cik, matched_by, registered name, case_ids. Only the\n"
-    "# first two are read back.\n"
+    "# Columns: ticker, cik, matched_by, registered name, case_ids. Fetching\n"
+    "# reads the first two; `eval --company` and `recon.cli cases` read case_ids.\n"
 )
 
 
