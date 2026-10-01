@@ -1,6 +1,7 @@
 """Command-line entry point: `python -m recon.cli <command>`."""
 
 import argparse
+import os
 from collections import Counter
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from recon.runtimes.agent_sdk import AgentSdkRuntime
 from recon.runtimes.base import Runtime
 from recon.runtimes.langgraph import LangGraphRuntime
 from recon.tools.data_source import tool_data_snapshot_id
+from recon.tracing import ENDPOINT_ENV, configure_tracing, shutdown_tracing
 
 # Filename carries the pinned commit, so bumping the pin in the adapter also
 # changes the default fetch destination here — an old pin's cached file is
@@ -168,12 +170,17 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     )
     if baseline is not None:
         _refuse_incomparable_baseline(baseline, cases, tool_data_snapshot)
-    run = run_evaluation(
-        cases,
-        _build_runtime(args.runtime, args.mode),
-        tool_data_snapshot=tool_data_snapshot,
-        max_cost_eur=args.max_cost_eur,
-    )
+    if configure_tracing("recon-eval"):
+        print(f"Tracing to {os.environ[ENDPOINT_ENV]}")
+    try:
+        run = run_evaluation(
+            cases,
+            _build_runtime(args.runtime, args.mode),
+            tool_data_snapshot=tool_data_snapshot,
+            max_cost_eur=args.max_cost_eur,
+        )
+    finally:
+        shutdown_tracing()
     run = with_cost_per_correct_answer(run, thresholds.correct_answer_score)
 
     results_dir = Path("evals/results")

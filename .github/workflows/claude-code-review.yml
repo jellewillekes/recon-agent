@@ -13,7 +13,7 @@ jobs:
       issues: read
       id-token: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
@@ -58,16 +58,21 @@ jobs:
             REPO: ${{ github.repository }}
             PR: #${{ github.event.pull_request.number }}
 
-            Review this pull request as a senior engineer. Focus on correctness,
-            security, data integrity, and the stated requirements. Design and
-            best-practice discussion is welcome as non-blocking feedback.
-            Prefix each inline finding with exactly one of `Blocking:`,
-            `Question:`, or `Note:`. Use `Blocking:` only when you can name a
-            concrete input or state that produces incorrect behavior or violates
-            a requirement, and explain that case. If a Question or Note reveals
-            such a defect, rewrite it as a Blocking finding with the concrete
-            case. Do not turn a preference, cleanup suggestion, or hypothetical
-            future risk into a Blocking finding.
+            Review this pull request as a senior engineer. Look for correctness
+            bugs, missing edge cases, and security issues. Design and
+            best-practice tradeoffs are welcome too, as non-blocking
+            Question: or Note: findings: is this the right approach, is there
+            a simpler way, does it fit the rest of the codebase. Where you're
+            not certain something is wrong, ask rather than asserting a defect.
+
+            Tag a finding Blocking: only when you can name a concrete input or
+            state that goes wrong: a bug, a security hole, data loss, or a
+            stated requirement the PR misses. Preferences and hypothetical
+            future misuse are Question: or Note:. Of the bot's past change
+            requests, a third carried no Blocking finding and still cost a full
+            review round (docs/adr/0024-blocking-only-change-requests.md).
+            If a Question or Note identifies concrete wrong behavior, rewrite
+            it as a Blocking: finding and name the input or state that fails.
 
             Steps:
             1. Use mcp__github__get_pull_request_reviews to list existing reviews
@@ -91,20 +96,21 @@ jobs:
                "Needs a human decision:" line, separate from ordinary
                correctness/design findings.
             4. Create a pending review with mcp__github__create_pending_pull_request_review.
-               Every concern that ties to specific code is an inline comment via
-               mcp__github__add_comment_to_pending_review - the review body is not a
-               place to restate them. Use the body only for a short overall summary,
-               the "Needs a human decision:" line from step 3 if any, plus (round
-               N+1 > 1) a compact status list: one line each for Open / Resolved /
-               New, before any other prose. Then submit with
+               Every correctness or design concern that ties to specific code is an
+               inline comment via mcp__github__add_comment_to_pending_review
+               - the review body is not a place to restate them. Use the body only for
+               a short overall summary, the "Needs a human decision:" line from step 3
+               if any, plus (round N+1 > 1) a compact status list: one line each for
+               Open / Resolved / New, before any other prose. Then submit with
                mcp__github__submit_pending_pull_request_review:
-               - Only unresolved `Blocking:` findings beyond step 3's human-decision
-                 items can trigger REQUEST_CHANGES, and only when round N+1 <= 3.
-               - `Question:` and `Note:` findings never trigger REQUEST_CHANGES.
-                 Submit COMMENT when any non-blocking findings or human-decision
-                 items need to be shared; otherwise APPROVE. Do not use
-                 REQUEST_CHANGES for something only a human can decide.
-               - Round N+1 > 3 and ordinary `Blocking:` findings remain: do NOT use
+               - Round N+1 <= 3 and at least one unresolved Blocking: finding:
+                 submit with event REQUEST_CHANGES.
+               - Only Question: or Note: findings, or step 3's human-decision
+                 items: submit with event COMMENT. They don't start another
+                 round; the author answers them on the PR.
+               - Nothing open: APPROVE. Never use REQUEST_CHANGES for something
+                 only a human can decide.
+               - Round N+1 > 3 and Blocking: findings remain: do NOT use
                  REQUEST_CHANGES. Submit with event COMMENT, summarize what's
                  still unresolved, and say plainly: "Reached the automatic
                  review cap (3 rounds) - this needs a human to weigh in."

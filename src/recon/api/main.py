@@ -11,6 +11,8 @@ import logging
 import os
 import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +32,12 @@ from recon.api.metrics import (
 from recon.api.schemas import InvestigateRequest
 from recon.contracts import Case
 from recon.runtimes.agent_sdk import AgentSdkRuntime
+from recon.tracing import (
+    configure_tracing,
+    record_agent_result,
+    shutdown_tracing,
+    span,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +59,16 @@ REQUEST_ID_HEADER = "X-Request-ID"
 _runtime = AgentSdkRuntime()
 _semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
 
-app = FastAPI(title="recon-agent API")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # Started here, not at import: tests import this module without starting it.
+    configure_tracing("recon-api")
+    yield
+    shutdown_tracing()
+
+
+app = FastAPI(title="recon-agent API", lifespan=_lifespan)
 
 
 class _RequestIDMiddleware(BaseHTTPMiddleware):
@@ -65,7 +82,20 @@ class _RequestIDMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         request_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid.uuid4())
         request.state.request_id = request_id
-        response = await call_next(request)
+        # The request ID is the correlation key between this span, the
+        # agent span under it and the API's logs.
+        with span(
+            f"{request.method} {request.url.path}",
+            **{
+                "http.request.method": request.method,
+                "url.path": request.url.path,
+                "recon.request_id": request_id,
+            },
+        ) as request_span:
+            response = await call_next(request)
+            request_span.set_attribute(
+                "http.response.status_code", response.status_code
+            )
         response.headers[REQUEST_ID_HEADER] = request_id
         return response
 
@@ -136,9 +166,11 @@ async def investigate(request: Request, body: InvestigateRequest) -> Response:
             # still queued behind the semaphore.
             INVESTIGATE_IN_FLIGHT.inc()
             try:
-                result = await asyncio.wait_for(
-                    _runtime.run_async(case), timeout=REQUEST_TIMEOUT_S
-                )
+                with span("invoke_agent") as agent_span:
+                    result = await asyncio.wait_for(
+                        _runtime.run_async(case), timeout=REQUEST_TIMEOUT_S
+                    )
+                    record_agent_result(agent_span, result)
             finally:
                 INVESTIGATE_IN_FLIGHT.dec()
     except TimeoutError:

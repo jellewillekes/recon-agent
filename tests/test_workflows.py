@@ -198,6 +198,6 @@ def test_review_workflow_only_requests_changes_for_blocking_findings() -> None:
     )
     prompt = action["with"]["prompt"]
     assert "concrete input or state" in prompt
-    assert "Only unresolved `Blocking:` findings" in prompt
-    assert "`Question:` and `Note:` findings never trigger REQUEST_CHANGES" in prompt
-    assert "rewrite it as a Blocking finding with the concrete" in prompt
+    assert "at least one unresolved Blocking: finding" in prompt
+    assert "Only Question: or Note: findings" in prompt
+    assert "If a Question or Note identifies concrete wrong behavior" in prompt

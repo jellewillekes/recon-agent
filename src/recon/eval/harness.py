@@ -5,6 +5,8 @@ model config, assemble an `EvalRun`. See `docs/contracts.md` §7.
 from datetime import UTC, datetime
 from pathlib import Path
 
+import yaml
+
 from recon.adapters.finance_agent_bench import ATTRIBUTION, DATASET_ID, LICENSE
 from recon.contracts import AgentResult, Case, CaseScore, EvalRun
 from recon.eval import hashing, metrics
@@ -12,6 +14,7 @@ from recon.eval.gate import SKIPPED_AT_COST_CAP
 from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH, judge_case
 from recon.eval.rubrics import DEFAULT_RUBRICS_DIR, Rubric, load_rubrics
 from recon.runtimes.base import Runtime
+from recon.tracing import record_agent_result, record_judge_call, span
 
 # Bump when config/rubrics/*.yaml assertions change (docs/contracts.md §8:
 # "Rubric changes are breaking: earlier runs are no longer comparable.").
@@ -27,6 +30,12 @@ def _run_id() -> str:
     return f"eval-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
 
 
+def _investigator_model(models_config_path: Path) -> str | None:
+    config = yaml.safe_load(models_config_path.read_text(encoding="utf-8"))
+    model = config.get("investigator", {}).get("model")
+    return str(model) if model else None
+
+
 def score_case(
     case: Case,
     runtime: Runtime,
@@ -34,7 +43,38 @@ def score_case(
     *,
     models_config_path: Path = DEFAULT_MODELS_CONFIG_PATH,
 ) -> tuple[CaseScore, AgentResult]:
-    agent_result = runtime.run(case)
+    """Run, judge and score one case, under an `eval.case` trace span."""
+    with span("eval.case", **{"recon.case_id": case.case_id}) as case_span:
+        score, agent_result = _score_case(
+            case, runtime, rubrics, models_config_path=models_config_path
+        )
+        case_span.set_attributes(
+            {
+                "recon.answer_score": score.answer_score,
+                "recon.task_completion": score.task_completion,
+                "recon.cost_eur": score.cost_eur,
+            }
+        )
+    return score, agent_result
+
+
+def _score_case(
+    case: Case,
+    runtime: Runtime,
+    rubrics: dict[str, Rubric],
+    *,
+    models_config_path: Path,
+) -> tuple[CaseScore, AgentResult]:
+    with span("invoke_agent") as agent_span:
+        agent_result = runtime.run(case)
+        # Multi mode picks a model per role (config/roles.yaml), so only a
+        # single-mode run has one model to name.
+        model = (
+            _investigator_model(models_config_path)
+            if agent_result.mode == "single"
+            else None
+        )
+        record_agent_result(agent_span, agent_result, model)
 
     exact, exact_note = metrics.tool_path_exact(case, agent_result)
     equivalent, _ = metrics.tool_path_equivalent(case, agent_result)
@@ -58,9 +98,18 @@ def score_case(
         answer_score = 0.0
         judge_cost_eur = 0.0
     else:
-        judge_result = judge_case(
-            case, agent_result, rubrics, models_config_path=models_config_path
-        )
+        with span("chat judge") as judge_span:
+            judge_result = judge_case(
+                case, agent_result, rubrics, models_config_path=models_config_path
+            )
+            record_judge_call(
+                judge_span,
+                model=judge_result.model,
+                tokens_in=judge_result.tokens_in,
+                tokens_out=judge_result.tokens_out,
+                num_turns=judge_result.num_turns,
+                cost_eur=judge_result.cost_eur,
+            )
         rubric_scores = judge_result.rubric_scores
         answer_score = metrics.weighted_answer_score(rubric_scores, rubrics)
         judge_cost_eur = judge_result.cost_eur
@@ -167,7 +216,39 @@ def run_evaluation(
         cases = cases[:limit]
 
     rubrics = load_rubrics(rubrics_dir)
+    with span("eval.run", **{"recon.cases_requested": len(cases)}) as run_span:
+        run = _evaluate(
+            cases,
+            runtime,
+            rubrics,
+            prompts_dir=prompts_dir,
+            models_config_path=models_config_path,
+            roles_config_path=roles_config_path,
+            tool_data_snapshot=tool_data_snapshot,
+            max_cost_eur=max_cost_eur,
+        )
+        run_span.set_attributes(
+            {
+                "recon.run_id": run.run_id,
+                "recon.runtime": run.runtime,
+                "recon.mode": run.mode,
+                "recon.total_cost_eur": run.total_cost_eur,
+                **{f"recon.{key}": value for key, value in run.aggregate.items()},
+            }
+        )
+    return run
 
+
+def _run_cases(
+    cases: list[Case],
+    runtime: Runtime,
+    rubrics: dict[str, Rubric],
+    *,
+    models_config_path: Path,
+    max_cost_eur: float | None,
+) -> tuple[list[CaseScore], float, str, str]:
+    """Score cases until done or the cost cap is near. Returns the scores, the
+    agent's share of the cost, and the runtime and mode that ran them."""
     case_scores: list[CaseScore] = []
     agent_cost_eur = 0.0
     runtime_name = "unknown"
@@ -181,6 +262,27 @@ def run_evaluation(
         case_scores.append(score)
         agent_cost_eur += agent_result.cost_eur
         runtime_name, mode = agent_result.runtime, agent_result.mode
+    return case_scores, agent_cost_eur, runtime_name, mode
+
+
+def _evaluate(
+    cases: list[Case],
+    runtime: Runtime,
+    rubrics: dict[str, Rubric],
+    *,
+    prompts_dir: Path,
+    models_config_path: Path,
+    roles_config_path: Path,
+    tool_data_snapshot: str | None,
+    max_cost_eur: float | None,
+) -> EvalRun:
+    case_scores, agent_cost_eur, runtime_name, mode = _run_cases(
+        cases,
+        runtime,
+        rubrics,
+        models_config_path=models_config_path,
+        max_cost_eur=max_cost_eur,
+    )
     run_cases = cases[: len(case_scores)]
     aggregate = _aggregate(run_cases, case_scores, agent_cost_eur)
     if len(case_scores) < len(cases):

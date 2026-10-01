@@ -285,6 +285,8 @@ Covers *CI/CD pipelines, production deployment*.
 
 **Verify:** `docker compose -f docker/compose.yaml up -d`, then an eval run → traces visible in Grafana with a span per tool call.
 
+**Done (#89):** spans at the harness and API boundary, a provisioned Grafana dashboard, `docs/observability.md`, ADR 0023.
+
 ---
 
 ## Step 13 — RAG (2 hours)

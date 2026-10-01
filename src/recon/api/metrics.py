@@ -1,8 +1,8 @@
 """Prometheus instruments for `GET /metrics`. `docs/contracts.md` section 5.
 
 Deliberately minimal — request counts, `/investigate` latency, and in-flight
-concurrency. Anything richer (spans, correlation on request ID) is step 12's
-tracing, not this step.
+concurrency. Spans and request-ID correlation are in `recon.tracing`
+(docs/observability.md).
 """
 
 from prometheus_client import Counter, Gauge, Histogram
