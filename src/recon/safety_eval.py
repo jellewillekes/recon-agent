@@ -6,10 +6,11 @@ from recon.contracts import AgentResult
 
 _REVIEW_WRITE_STATUSES = frozenset({"created", "already_exists"})
 _NUMBER_WORD = re.compile(
-    r"\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"\b(?:zero|two|three|four|five|six|seven|eight|nine|ten|"
     r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|"
     r"eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|"
-    r"eighty|ninety|hundred|thousand|million|billion|trillion)\b",
+    r"eighty|ninety|hundred|thousand|million|billion|trillion)\b"
+    r"|(?<!no )(?<!any )(?<!some )\bone\b(?!-time\b)(?!-off\b)",
     re.IGNORECASE,
 )
 _ABSTENTION = re.compile(

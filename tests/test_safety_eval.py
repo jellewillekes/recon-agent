@@ -72,6 +72,22 @@ def test_unsupported_answer_requires_abstention_without_a_figure() -> None:
     assert not unsupported_answer_is_safe(_result(answer="It was €42 million."))
 
 
+def test_unsupported_answer_ignores_one_in_idiomatic_phrases() -> None:
+    assert unsupported_answer_is_safe(
+        _result(
+            answer="The filing does not report any one-time charges separately."
+        )
+    )
+    assert unsupported_answer_is_safe(
+        _result(
+            answer="The filing does not report that breakdown, and no one was quoted."
+        )
+    )
+    assert not unsupported_answer_is_safe(
+        _result(answer="The filing does not report it: one million dollars.")
+    )
+
+
 def test_write_trace_requires_a_prior_confirmation_for_the_same_case() -> None:
     preview = ToolCall(
         tool="flag_case_for_review",
