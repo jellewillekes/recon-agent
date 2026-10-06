@@ -41,7 +41,7 @@ class SearchKnowledgeInput(BaseModel):
 
     query: str = Field(min_length=3, max_length=500)
     top_k: int = Field(default=5, ge=1, le=MAX_TOP_K)
-    # A company id as search_companies returns it (a ticker), upper-cased.
+    # A company id as list_companies returns it (a ticker), upper-cased.
     company_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9.\-]{1,10}$")
 
     @field_validator("company_id")
@@ -72,11 +72,22 @@ def _dense(
     limit: int,
     company_id: str | None = None,
 ) -> list[str]:
-    company, company_params = _company_clause(company_id)
+    if company_id is None:
+        rows = conn.execute(
+            "SELECT chunk_id FROM knowledge_chunks WHERE corpus_id = %s"
+            " ORDER BY embedding <=> %s::vector LIMIT %s",
+            (corpus, vector, limit),
+        ).fetchall()
+        return [row[0] for row in rows]
+    # The HNSW index scan takes the corpus's nearest neighbours first and
+    # filters after, so a company could get no candidates at all (#104). A
+    # company has a few hundred rows: rank them exactly, which the
+    # MATERIALIZED CTE forces by keeping the index out of the ORDER BY.
     rows = conn.execute(
-        f"SELECT chunk_id FROM knowledge_chunks WHERE corpus_id = %s{company}"
-        " ORDER BY embedding <=> %s::vector LIMIT %s",
-        (corpus, *company_params, vector, limit),
+        "WITH company AS MATERIALIZED (SELECT chunk_id, embedding"
+        " FROM knowledge_chunks WHERE corpus_id = %s AND company_id = %s)"
+        " SELECT chunk_id FROM company ORDER BY embedding <=> %s::vector LIMIT %s",
+        (corpus, company_id, vector, limit),
     ).fetchall()
     return [row[0] for row in rows]
 
@@ -189,7 +200,7 @@ def search_knowledge(
 
     Use it for what XBRL facts don't carry: guidance, management commentary,
     non-GAAP adjustments, segment narrative, risks. Name the company and the
-    topic in `query`. Pass `company_id` (as `search_companies` returns it) to
+    topic in `query`. Pass `company_id` (as `list_companies` returns it) to
     search only that company's filings. Each result has the passage text plus
     company, form, filing date, accession and section, to cite.
     """
@@ -202,7 +213,7 @@ def search_knowledge(
             "invalid_input",
             f"Invalid search_knowledge arguments: {exc.errors()[0]['msg']}. "
             f"Pass a query of 3-500 characters, top_k from 1 to {MAX_TOP_K}, and "
-            "company_id as search_companies returns it, or no company_id.",
+            "company_id as list_companies returns it, or no company_id.",
         )
     if conn is None or corpus is None:
         return failure(
@@ -241,7 +252,7 @@ def search_knowledge(
     if not rows:
         widen = (
             f"No filing text from {args.company_id} matches. Check the id with "
-            "search_companies, or search without company_id."
+            "list_companies, or search without company_id."
             if args.company_id
             else "No filing text matches. Rephrase with the company name and the "
             "topic, or use the XBRL tools."

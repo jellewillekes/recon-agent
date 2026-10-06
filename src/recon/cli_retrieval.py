@@ -124,8 +124,10 @@ def replay_passages(backend: KnowledgeBackend) -> Passages:
     """Re-run a search for the faithfulness score (docs/adr/0026). A search
     that fails returns no passages, so that case goes unscored, with a note."""
 
-    def passages(query: str, top_k: int) -> list[dict[str, Any]]:
-        result = backend.search(query, top_k)
+    def passages(
+        query: str, top_k: int, company_id: str | None
+    ) -> list[dict[str, Any]]:
+        result = backend.search(query, top_k, company_id)
         if result.status in ("unavailable", "invalid_input"):
             print(f"Faithfulness replay failed for {query!r}: {result.message}")
             return []

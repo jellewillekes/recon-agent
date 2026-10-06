@@ -466,6 +466,26 @@ def test_a_company_filter_restricts_both_candidate_searches() -> None:
         assert "FICT" in params
 
 
+def test_a_filtered_dense_search_ranks_the_companys_rows_exactly() -> None:
+    """#104: the HNSW index scan takes the nearest neighbours of the whole
+    corpus first and filters after, which left Micron with no dense
+    candidates. A company's few hundred rows are ranked exactly instead."""
+    conn = _FilterRecordingConn()
+    knowledge_search.search_knowledge(
+        conn,  # type: ignore[arg-type]
+        "corpus",
+        CONFIG,
+        _embed,
+        _rerank,
+        "fictional guidance",
+        2,
+        "FICT",
+    )
+    dense = [sql for sql, _ in conn.candidate_queries if "embedding <=>" in sql]
+    assert len(dense) == 1
+    assert "MATERIALIZED" in dense[0]
+
+
 def test_without_a_company_the_search_is_unfiltered() -> None:
     conn = _FilterRecordingConn()
     _search(conn)
@@ -484,7 +504,7 @@ def test_a_malformed_company_id_is_invalid_input() -> None:
         "no such id!",
     )
     assert result.status == "invalid_input"
-    assert "search_companies" in result.message
+    assert "list_companies" in result.message
 
 
 def test_a_company_without_matching_text_says_how_to_widen_the_search() -> None:

@@ -16,8 +16,8 @@ tool outputs on `ToolCall` would show them, but it's a contract change, which
 The user decided: replay the agent's searches.
 
 - `search_knowledge` is deterministic for a fixed index and fixed models. Each call's
-  `query` and `top_k` are already on `ToolCall.arguments`. The harness runs those
-  queries again and gets back the passages the agent saw.
+  `query`, `top_k` and `company_id` (#104) are already on `ToolCall.arguments`. The
+  harness runs those searches again and gets back the passages the agent saw.
 - A separate judge call, on the judge model, lists the answer's claims from filing text
   and marks each supported or not. The prompt is `prompts/judge_faithfulness.md`. A
   case's score is the share of supported claims.
