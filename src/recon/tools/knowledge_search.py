@@ -6,30 +6,21 @@ reranks the best of the merged list. See docs/adr/0025-retrieval-over-filing-tex
 """
 
 import logging
-import os
-import threading
 import time
 from collections.abc import Callable, Sequence
 from functools import cache
-from pathlib import Path
 from typing import Any
 
 import psycopg
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from recon.adapters.knowledge_corpus import (
     KnowledgeConfig,
-    chunk_count,
-    corpus_id,
-    load_knowledge_config,
 )
 from recon.contracts import ToolResult
 from recon.tools.execution import elapsed_ms, failure
 from recon.tools.knowledge_index import (
     Embedder,
-    connect,
-    indexed_count,
-    sentence_embedder,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +41,18 @@ class SearchKnowledgeInput(BaseModel):
 
     query: str = Field(min_length=3, max_length=500)
     top_k: int = Field(default=5, ge=1, le=MAX_TOP_K)
+    # A company id as search_companies returns it (a ticker), upper-cased.
+    company_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9.\-]{1,10}$")
+
+    @field_validator("company_id")
+    @classmethod
+    def _upper(cls, value: str | None) -> str | None:
+        return value.upper() if value is not None else None
+
+
+def _company_clause(company_id: str | None) -> tuple[str, tuple[str, ...]]:
+    """SQL and parameters restricting candidates to one company (#104)."""
+    return ("", ()) if company_id is None else (" AND company_id = %s", (company_id,))
 
 
 def reciprocal_rank_fusion(rankings: Sequence[Sequence[str]], k: int) -> list[str]:
@@ -63,12 +66,17 @@ def reciprocal_rank_fusion(rankings: Sequence[Sequence[str]], k: int) -> list[st
 
 
 def _dense(
-    conn: psycopg.Connection[Any], corpus: str, vector: list[float], limit: int
+    conn: psycopg.Connection[Any],
+    corpus: str,
+    vector: list[float],
+    limit: int,
+    company_id: str | None = None,
 ) -> list[str]:
+    company, company_params = _company_clause(company_id)
     rows = conn.execute(
-        "SELECT chunk_id FROM knowledge_chunks WHERE corpus_id = %s"
+        f"SELECT chunk_id FROM knowledge_chunks WHERE corpus_id = %s{company}"
         " ORDER BY embedding <=> %s::vector LIMIT %s",
-        (corpus, vector, limit),
+        (corpus, *company_params, vector, limit),
     ).fetchall()
     return [row[0] for row in rows]
 
@@ -82,12 +90,18 @@ _ANY_TERM = (
 
 
 def _full_text(
-    conn: psycopg.Connection[Any], corpus: str, query: str, limit: int
+    conn: psycopg.Connection[Any],
+    corpus: str,
+    query: str,
+    limit: int,
+    company_id: str | None = None,
 ) -> list[str]:
+    company, company_params = _company_clause(company_id)
     rows = conn.execute(
         f"SELECT chunk_id FROM knowledge_chunks, {_ANY_TERM} q"
-        " WHERE corpus_id = %s AND tsv @@ q ORDER BY ts_rank(tsv, q) DESC LIMIT %s",
-        (query, corpus, limit),
+        f" WHERE corpus_id = %s{company} AND tsv @@ q"
+        " ORDER BY ts_rank(tsv, q) DESC LIMIT %s",
+        (query, corpus, *company_params, limit),
     ).fetchall()
     return [row[0] for row in rows]
 
@@ -98,12 +112,14 @@ def _fused(
     config: KnowledgeConfig,
     embed: Embedder,
     query: str,
+    company_id: str | None = None,
 ) -> list[str]:
     """Dense and full-text candidates merged by reciprocal rank fusion."""
+    limit = config.candidates_per_search
     return reciprocal_rank_fusion(
         [
-            _dense(conn, corpus, embed([query])[0], config.candidates_per_search),
-            _full_text(conn, corpus, query, config.candidates_per_search),
+            _dense(conn, corpus, embed([query])[0], limit, company_id),
+            _full_text(conn, corpus, query, limit, company_id),
         ],
         config.rrf_k,
     )
@@ -165,6 +181,7 @@ def search_knowledge(
     rerank: Reranker,
     query: str,
     top_k: int = 5,
+    company_id: str | None = None,
 ) -> ToolResult:
     """Search SEC filing text: 8-K earnings releases (EX-99.1) and 10-K risk
     factors, MD&A and market-risk sections, filed in the two years before the
@@ -172,18 +189,20 @@ def search_knowledge(
 
     Use it for what XBRL facts don't carry: guidance, management commentary,
     non-GAAP adjustments, segment narrative, risks. Name the company and the
-    topic in `query`. Each result has the passage text plus company, form,
-    filing date, accession and section, to cite.
+    topic in `query`. Pass `company_id` (as `search_companies` returns it) to
+    search only that company's filings. Each result has the passage text plus
+    company, form, filing date, accession and section, to cite.
     """
     start = time.perf_counter()
     try:
-        args = SearchKnowledgeInput(query=query, top_k=top_k)
+        args = SearchKnowledgeInput(query=query, top_k=top_k, company_id=company_id)
     except ValidationError as exc:
         return failure(
             start,
             "invalid_input",
             f"Invalid search_knowledge arguments: {exc.errors()[0]['msg']}. "
-            f"Pass a query of 3-500 characters and top_k from 1 to {MAX_TOP_K}.",
+            f"Pass a query of 3-500 characters, top_k from 1 to {MAX_TOP_K}, and "
+            "company_id as search_companies returns it, or no company_id.",
         )
     if conn is None or corpus is None:
         return failure(
@@ -193,7 +212,9 @@ def search_knowledge(
             "from the XBRL tools, and say that filing text couldn't be searched.",
         )
     try:
-        ranked = _fused(conn, corpus, config, embed, args.query)[: config.rerank_pool]
+        ranked = _fused(conn, corpus, config, embed, args.query, args.company_id)[
+            : config.rerank_pool
+        ]
         rows = _fetch(conn, corpus, ranked)
     except psycopg.Error as exc:
         return failure(
@@ -218,12 +239,14 @@ def search_knowledge(
             "from the XBRL tools.",
         )
     if not rows:
-        return failure(
-            start,
-            "empty",
-            "No filing text matches. Rephrase with the company name and the topic, "
-            "or use the XBRL tools.",
+        widen = (
+            f"No filing text from {args.company_id} matches. Check the id with "
+            "search_companies, or search without company_id."
+            if args.company_id
+            else "No filing text matches. Rephrase with the company name and the "
+            "topic, or use the XBRL tools."
         )
+        return failure(start, "empty", widen)
     candidates = [rows[i] for i in ranked if i in rows]
     try:
         scores = rerank(args.query, [row["text"] for row in candidates])
@@ -269,104 +292,3 @@ def cross_encoder_reranker(model_name: str) -> Reranker:
         return [float(s) for s in scores]
 
     return rerank
-
-
-class KnowledgeBackend:
-    """Opens the index connection on the first search. The models load then
-    too, unless `start_warm_up` loaded them in the background already."""
-
-    def __init__(self, chunks_path: Path) -> None:
-        self.config = load_knowledge_config()
-        self.corpus = corpus_id(chunks_path, self.config)
-        self.expected_chunks = chunk_count(chunks_path)
-        self.embed = sentence_embedder(self.config.embedding_model)
-        self.rerank = cross_encoder_reranker(self.config.reranker_model)
-        self._conn: psycopg.Connection[Any] | None = None
-        self._warm_up: threading.Thread | None = None
-
-    def start_warm_up(self) -> None:
-        """Load both models in a background thread (#99).
-
-        The tool server starts per case, and loading took about 10 s of the
-        first search, inside the case's wall-clock budget. Started with the
-        server, it overlaps the agent's first model call instead. A case that
-        never searches loads them anyway, off its critical path.
-        """
-        self._warm_up = threading.Thread(target=self._load_models, daemon=True)
-        self._warm_up.start()
-
-    def _load_models(self) -> None:
-        try:
-            self.embed(["warm up"])
-            self.rerank("warm up", ["warm up"])
-        except (ImportError, OSError) as exc:
-            # The first search hits the same error and reports it as a status.
-            logger.warning("Warming up the search models failed: %s", exc)
-
-    def connection(self) -> psycopg.Connection[Any] | None:
-        """The index connection, or None when the index isn't reachable or built."""
-        if self._conn is None:
-            database_url = os.environ.get("DATABASE_URL")
-            if not database_url:
-                return None
-            try:
-                conn = connect(database_url)
-                # A reindex that died partway leaves fewer rows than the
-                # corpus file holds. Searching that would quietly miss text.
-                if indexed_count(conn, self.corpus) != self.expected_chunks:
-                    conn.close()
-                    return None
-            except psycopg.Error:
-                return None
-            self._conn = conn
-        return self._conn
-
-    def search(self, query: str, top_k: int) -> ToolResult:
-        """`search_knowledge` against this backend's index."""
-        if self._warm_up is not None:
-            # Waits rather than loading the models a second time alongside it.
-            self._warm_up.join()
-        conn = self.connection()
-        return search_knowledge(
-            conn,
-            self.corpus if conn is not None else None,
-            self.config,
-            self.embed,
-            self.rerank,
-            query,
-            top_k,
-        )
-
-    def variant_search(self, variant: str) -> Callable[[str, int], list[str]]:
-        """A search ranked by one of `VARIANTS`, for the retrieval metrics.
-
-        Raises when the index isn't reachable, like `chunk_ids`.
-        """
-
-        def search(query: str, top_k: int) -> list[str]:
-            conn = self.connection()
-            if conn is None:
-                raise RuntimeError("The filing-text index isn't reachable.")
-            return ranked_ids(
-                conn,
-                self.corpus,
-                self.config,
-                self.embed,
-                self.rerank,
-                query,
-                top_k,
-                variant,
-            )
-
-        return search
-
-    def chunk_ids(self, query: str, top_k: int) -> list[str]:
-        """Ids of the best matching chunks, for the retrieval metrics.
-
-        Raises when the search is unavailable, so a blip isn't scored as a
-        retriever that found nothing relevant.
-        """
-        result = self.search(query, top_k)
-        if result.status in ("unavailable", "invalid_input"):
-            raise RuntimeError(result.message)
-        return [row["chunk_id"] for row in result.data]

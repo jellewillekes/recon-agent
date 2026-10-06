@@ -19,7 +19,8 @@ import duckdb
 from mcp.server.fastmcp import FastMCP
 
 from recon.tools.data_source import knowledge_chunks_path, open_tool_data
-from recon.tools.knowledge_search import KnowledgeBackend, search_knowledge
+from recon.tools.knowledge_backend import KnowledgeBackend
+from recon.tools.knowledge_search import search_knowledge
 from recon.tools.review_flag import flag_case_for_review
 from recon.tools.server import (
     FormType,
@@ -133,8 +134,10 @@ def _register_knowledge_tool(server: FastMCP, chunks_path: Path, warm_up: bool) 
         backend.start_warm_up()
 
     @server.tool(description=search_knowledge.__doc__)
-    def search_knowledge_tool(query: str, top_k: int = 5) -> dict[str, Any]:
-        return backend.search(query, top_k).model_dump()
+    def search_knowledge_tool(
+        query: str, top_k: int = 5, company_id: str | None = None
+    ) -> dict[str, Any]:
+        return backend.search(query, top_k, company_id).model_dump()
 
 
 def build_server(

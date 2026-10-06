@@ -38,9 +38,9 @@ DEFAULT_DATASET_PATH = Path("data/raw/finance_agent_bench") / DEFAULT_CACHE_FILE
 
 DEFAULT_MAX_COST_EUR = 1.0
 # Per case, agent plus judge, for the pre-run estimate only. Measured on the
-# smoke set (eval-20261001T085035Z: €0.68 for 7 cases, €0.51 agent and
-# €0.18 judge). Single cases ranged from €0.03 to €0.24.
-ESTIMATED_COST_EUR_PER_CASE = 0.10
+# text cases with filing-text search (eval-20261006T103610Z: €1.07 for 7
+# cases, €0.74 agent and €0.34 judge). Cases that finished cost €0.09 to €0.36.
+ESTIMATED_COST_EUR_PER_CASE = 0.15
 
 
 def compute_dataset_stats(cases: list[Case]) -> dict[str, object]:

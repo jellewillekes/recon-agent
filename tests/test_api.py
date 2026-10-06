@@ -7,8 +7,10 @@ calls a model or a network service.
 """
 
 import re
+from pathlib import Path
 
 import pytest
+import yaml
 from httpx import ASGITransport, AsyncClient
 
 from recon.api import main as api_main
@@ -257,3 +259,23 @@ async def test_docs_renders() -> None:
         resp = await client.get("/docs")
 
     assert resp.status_code == 200
+
+
+@pytest.mark.unit
+def test_the_run_budget_ends_before_every_api_request_timeout() -> None:
+    """A run that hits its wall-clock budget returns a partial AgentResult. If
+    the API's request timeout came first, the caller would get a bare 504."""
+    root = Path(__file__).resolve().parent.parent
+    budget = yaml.safe_load((root / "config" / "models.yaml").read_text())
+    wall_clock = float(budget["run_budget"]["max_wall_clock_s"])
+    chart = yaml.safe_load((root / "charts/recon-agent/values.yaml").read_text())
+    compose = yaml.safe_load((root / "docker/compose.yaml").read_text())
+    timeouts = {
+        "api default": api_main.REQUEST_TIMEOUT_S,
+        "chart": float(chart["env"]["requestTimeoutS"]),
+        "compose": float(
+            compose["services"]["api"]["environment"]["RECON_API_REQUEST_TIMEOUT_S"]
+        ),
+    }
+    for where, timeout in timeouts.items():
+        assert wall_clock < timeout, where

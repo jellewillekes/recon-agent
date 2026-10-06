@@ -814,3 +814,39 @@ def test_cmd_eval_without_a_corpus_runs_without_search(
     args.func(args)
 
     assert captured["passages"] is None
+
+
+@pytest.mark.unit
+def test_case_companies_map_each_case_to_its_one_ticker(tmp_path: Path) -> None:
+    """#104: the company-filtered retrieval variant needs each case's company.
+    A case naming two companies gets no filter."""
+    tickers = tmp_path / "tickers-dataset.txt"
+    tickers.write_text(
+        "FICT\t1\tticker\tFICTIONAL CORP\tq1,q2\nOTHR\t2\tticker\tOTHER CORP\tq2,q3\n"
+    )
+    assert cli_retrieval.case_companies([tickers]) == {"q1": "FICT", "q3": "OTHR"}
+
+
+@pytest.mark.unit
+def test_the_company_variant_searches_with_each_cases_company() -> None:
+    asked: list[tuple[str, str | None]] = []
+
+    class _Backend:
+        def chunk_ids(
+            self, query: str, top_k: int, company_id: str | None = None
+        ) -> list[str]:
+            asked.append((query, company_id))
+            return []
+
+    cases = [
+        _case(case_id, ["Trends"]).model_copy(update={"question": f"{case_id}?"})
+        for case_id in ("q1", "q2")
+    ]
+    search = cli_retrieval.company_search(
+        _Backend(),  # type: ignore[arg-type]
+        cases,
+        {"q1": "FICT"},
+    )
+    search("q1?", 5)
+    search("q2?", 5)
+    assert [company for _, company in asked] == ["FICT", None]
