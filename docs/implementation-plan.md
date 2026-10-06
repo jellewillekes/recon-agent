@@ -301,7 +301,7 @@ Covers *CI/CD pipelines, production deployment*.
 
 **Verify:** `uv run pytest tests/test_retrieval.py -q` green; new metrics appear in `EvalRun.aggregate`.
 
-**Part 1 done (#91):** corpus, pgvector index, `search_knowledge`, retrieval metrics (ADR 0025). Part 2: the user's labels and a smoke run with the tool.
+**Part 1 done (#91):** corpus, pgvector index, `search_knowledge`, retrieval metrics (ADR 0025). **Part 2:** `search_knowledge` granted to the investigator, `worker_facts` and the critic, the user's retrieval labels, and a new baseline on the 7 text cases (`eval-20261006T103610Z`). Eval runs need `DATABASE_URL` pointing at the index, or every search returns "index unavailable".
 
 ---
 

@@ -12,9 +12,12 @@ case to a human. No worker can call it; it is yours alone.
 - `worker_lookup` — knows what companies and financial concepts exist. Route
   to it when the question needs discovery: which companies match a
   description, or what concepts are tracked for a company.
-- `worker_facts` — retrieves specific facts and filing summaries. Route to it
-  when the question needs a concrete value or filing, and you already know
-  (or can guess precisely enough) which company/concept/filing to ask for.
+- `worker_facts` — retrieves specific facts and filing summaries, and
+  searches filing text: earnings releases and 10-K risk, MD&A and market-risk
+  sections. Route to it when the question needs a concrete value or filing,
+  or something the structured data doesn't carry, such as guidance,
+  management commentary or risks, and you already know (or can guess
+  precisely enough) which company/concept/filing to ask for.
 
 ## Decomposing
 

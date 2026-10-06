@@ -45,18 +45,20 @@ New to a term? See the [glossary](docs/glossary.md).
 
 ## Results
 
-The first baseline is recorded on a 7-case [smoke set](docs/glossary.md#smoke-set)
-([`evals/baseline.json`](evals/baseline.json)).
+The baseline ([`evals/baseline.json`](evals/baseline.json)) is recorded on 7 cases that need
+filing text ([`evals/text-cases.txt`](evals/text-cases.txt)), with `search_knowledge` granted.
 
 | Runtime | Mode | Task completion | Answer score | Tool-call accuracy | Total cost (€) | Cases |
 |---|---|---|---|---|---|---|
-| sdk | single | 1.000 | 0.566 | 1.000 | 0.68 | 7 (smoke set) |
+| sdk | single | 0.857 | 0.518 | 1.000 | 1.07 | 7 (text cases) |
 | sdk | multi | — (pending) | — (pending) | — (pending) | — (pending) | — |
 | langgraph | single | — (pending) | — (pending) | — (pending) | — (pending) | — |
 | langgraph | multi | — (pending) | — (pending) | — (pending) | — (pending) | — |
 
-The sdk single row is run `eval-20261001T085035Z`, judged on Haiku 4.5. Seven cases is a
-small sample: one case moves a mean by 0.14. The other rows wait for an explicit go-ahead,
+The sdk single row is run `eval-20261006T103610Z`, judged on Haiku 4.5. One case hit the
+100 s wall-clock budget. Seven cases is a small sample: one case moves a mean by 0.14. The
+earlier baseline, on the 7-case [smoke set](docs/glossary.md#smoke-set) without filing text,
+is run `eval-20261001T085035Z` (answer score 0.566, €0.68). The other rows wait for an explicit go-ahead,
 because each run spends model credit (see `AGENTS.md`'s Cost section).
 
 ## Quickstart
