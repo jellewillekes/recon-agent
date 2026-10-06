@@ -1,38 +1,51 @@
 # recon-agent
 
-An agent evaluation platform for financial research tasks. The agent answers analyst
-questions using tools; the harness measures how well it does that — not just the
-answer, but the path taken to reach it.
+An evaluation platform for AI agents doing financial research. An agent answers analyst
+questions with tools over real SEC EDGAR data. The harness measures how well it does
+that: not just the answer, but the path it took to reach it.
 
-The harness is the product, not the agent. See `AGENTS.md` for project conventions,
-`docs/contracts.md` for the module boundaries, and
-[`docs/implementation-plan.md`](docs/implementation-plan.md) for the step-by-step
-build plan this repo follows.
+**The harness is the product, not the agent.** The agent is the thing being measured.
 
-## Status
+```mermaid
+flowchart LR
+    DS[("finance-agent-bench<br/>questions")] --> RT
+    RT[Agent runtime<br/>sdk or langgraph<br/>single or multi] <-->|MCP| T[Tools over<br/>SEC EDGAR data]
+    RT -->|AgentResult| J[LLM judge<br/>+ rubrics]
+    J --> M[Metrics] --> G{Promotion gate}
+    G -->|compare| B[(committed baseline)]
+```
 
-Steps 1-10 of the implementation plan are done: contracts, the finance-agent-bench
-dataset adapter, the MCP tool server, the FastAPI service (`recon.api.main`), the
-evaluation harness (`recon.cli eval`), guardrails and reliability (prompt-injection
-tests, the review-flag write path, tool-layer retries and budgets), two runtimes (the
-Agent SDK and LangGraph, each with a single and a multi-agent mode), and
-containerization/orchestration (`docker/`, `charts/recon-agent/`, running locally on
-k3d — see [`docs/deployment.md`](docs/deployment.md)). See
-[`docs/runtimes.md`](docs/runtimes.md) for how the two runtimes compare.
+Full diagrams for every subsystem: [`docs/architecture.md`](docs/architecture.md).
 
-Since then, the tools answer from real SEC EDGAR data instead of a synthetic fixture
-([`docs/data-sources.md`](docs/data-sources.md)), and the promotion gate refuses to
-compare runs that don't measure the same thing (`docs/adr/0018-run-comparability-in-the-gate.md`).
-CI also builds the image, scans it with Trivy and lints the chart, and a version tag
-publishes the image to GHCR ([`docs/ci.md`](docs/ci.md)).
-The first baseline is recorded on a 7-case smoke set (`evals/baseline.json`; see the table
-below). Eval runs are capped at €1 by default (`docs/adr/0021-eval-cost-controls.md`).
+## What's in it
 
-## Runtimes
+- **Two runtimes, two modes.** The Claude Agent SDK and LangGraph each run a single
+  investigator or a supervisor with two workers and a critic. All four combinations share
+  the same cases, tools and judge, so their scores compare directly
+  ([`docs/runtimes.md`](docs/runtimes.md)).
+- **Real tool data.** MCP tools query XBRL facts and filings from SEC EDGAR through
+  DuckDB. Hybrid search over earnings releases and 10-K sections (pgvector, full-text
+  search and a reranker) is built but not yet granted to any agent role
+  ([`docs/data-sources.md`](docs/data-sources.md)).
+- **Scores the path.** Each case gets an answer score from an LLM judge, weighted across
+  correctness, grounding and tool-efficiency rubrics. It also gets tool-call accuracy,
+  the share of tool calls that returned a usable result.
+- **A promotion gate.** A candidate run is compared with the committed baseline. The gate
+  refuses runs that measured something different: another rubric, dataset, data snapshot
+  or case set. It fails a run whose task completion, answer score or cost regressed.
+- **Guardrails.** Tools always return one of five statuses, never an exception. Runs
+  have budgets for tool calls, tokens and time. The one write path needs confirmation,
+  and prompt-injection tests check it's never triggered by tool data.
+- **Cost controls.** Eval runs are capped at €1 by default, and the judge runs on
+  Haiku 4.5.
+- **Production shape.** A FastAPI service with health, readiness and Prometheus metrics,
+  OpenTelemetry tracing into Grafana, a Docker image scanned in CI, and a Helm chart
+  tested on k3d.
 
-Four `--runtime {sdk,langgraph} --mode {single,multi}` combinations run against the
-same dataset. See [`docs/runtimes.md`](docs/runtimes.md) for what primitives each one
-offers and where they differ.
+## Results
+
+The first baseline is recorded on a 7-case smoke set
+([`evals/baseline.json`](evals/baseline.json)).
 
 | Runtime | Mode | Task completion | Answer score | Tool-call accuracy | Total cost (€) | Cases |
 |---|---|---|---|---|---|---|
@@ -41,26 +54,58 @@ offers and where they differ.
 | langgraph | single | — (pending) | — (pending) | — (pending) | — (pending) | — |
 | langgraph | multi | — (pending) | — (pending) | — (pending) | — (pending) | — |
 
-The sdk single row is the committed baseline, `evals/baseline.json` (run
-`eval-20261001T085035Z`, judge on Haiku 4.5). Seven cases is a small sample: one case
-moves a mean by 0.14.
+The sdk single row is run `eval-20261001T085035Z`, judged on Haiku 4.5. Seven cases is a
+small sample: one case moves a mean by 0.14. The other rows wait for an explicit go-ahead,
+because each run spends model credit (see `AGENTS.md`'s Cost section).
 
-Populated from real `recon.cli eval` runs, not placeholders — held pending explicit
-go-ahead per `AGENTS.md`'s Cost section. Verify command:
-`uv run python -m recon.cli eval --runtime <sdk|langgraph> --mode <single|multi> --cases evals/smoke-cases.txt`.
-Each run is capped at €1 by default (`--max-cost-eur`); see `docs/adr/0021-eval-cost-controls.md`.
-
-## Setup
+## Quickstart
 
 ```bash
 uv sync
-uv run pytest
+make check    # format, lint, types, and tests without LLM calls
 ```
+
+Fetch tool data once. SEC asks for a contact User-Agent. The first command derives the
+company list from the dataset's questions into a gitignored tickers file. Review it
+before the second command fetches the data:
+
+```bash
+export SEC_EDGAR_USER_AGENT="Your Name you@example.com"
+uv run python -m recon.cli edgar fetch --from-dataset
+uv run python -m recon.cli edgar fetch
+```
+
+Run one evaluation. This spends model credit, capped at €1:
+
+```bash
+uv run python -m recon.cli eval --runtime sdk --mode single --cases evals/smoke-cases.txt
+```
+
+Serve the API, or the whole stack with Postgres and the observability tools:
+
+```bash
+uv run uvicorn recon.api.main:app --reload
+cp docker/.env.example docker/.env  # once, then fill in the passwords
+docker compose -f docker/compose.yaml up -d
+```
+
+## Where to look
+
+| Question | Doc |
+|---|---|
+| How does it fit together? | [`docs/architecture.md`](docs/architecture.md) |
+| What crosses each module boundary? | [`docs/contracts.md`](docs/contracts.md) |
+| How do the runtimes differ? | [`docs/runtimes.md`](docs/runtimes.md) |
+| Where does the data come from? | [`docs/data-sources.md`](docs/data-sources.md) |
+| What runs in CI, and why evals don't? | [`docs/ci.md`](docs/ci.md) |
+| How do I deploy it? | [`docs/deployment.md`](docs/deployment.md) |
+| What do the traces show? | [`docs/observability.md`](docs/observability.md) |
+| Why was it built this way? | [`docs/adr/`](docs/adr/) (index in [`architecture.md`](docs/architecture.md#decision-records)) |
+| How was it built, step by step? | [`docs/implementation-plan.md`](docs/implementation-plan.md) |
+| What are the project conventions? | [`AGENTS.md`](AGENTS.md), [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 
 ## Repo automation
 
-Issues in this repo can be implemented and opened as PRs by Claude, and those PRs
-are then reviewed — and iterated on — by a separate Claude review agent before a
-human merges. This is repo tooling, not the investigator agent under evaluation.
-See [`docs/github-agents.md`](docs/github-agents.md) for how the agents are
-wired together, how they communicate, and where a human is required to step in.
+Issues can be implemented and opened as PRs by a Claude agent. A separate Claude review
+agent reviews and iterates on them before a human merges. This is repo tooling, not the
+agent under evaluation. See [`docs/github-agents.md`](docs/github-agents.md).
