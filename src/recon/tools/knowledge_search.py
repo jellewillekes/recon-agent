@@ -110,16 +110,21 @@ def ranked_ids(
     """The top `top_k` chunk ids for `query` under one of `VARIANTS`.
 
     "hybrid_rerank" goes through `search_knowledge` itself, so it can't drift
-    from what the tool returns. Raises on a search failure.
+    from what the tool returns. Raises RuntimeError on a search failure.
     """
     # Each variant ranks the same candidate pools the tool fuses.
-    if variant == "dense":
-        vector = embed([query])[0]
-        return _dense(conn, corpus, vector, config.candidates_per_search)[:top_k]
-    if variant == "full_text":
-        return _full_text(conn, corpus, query, config.candidates_per_search)[:top_k]
-    if variant == "hybrid":
-        return _fused(conn, corpus, config, embed, query)[:top_k]
+    try:
+        if variant == "dense":
+            vector = embed([query])[0]
+            return _dense(conn, corpus, vector, config.candidates_per_search)[:top_k]
+        if variant == "full_text":
+            return _full_text(conn, corpus, query, config.candidates_per_search)[:top_k]
+        if variant == "hybrid":
+            return _fused(conn, corpus, config, embed, query)[:top_k]
+    except (psycopg.Error, ImportError, OSError) as exc:
+        raise RuntimeError(
+            f"The {variant} search failed ({type(exc).__name__})."
+        ) from exc
     if variant == "hybrid_rerank":
         result = search_knowledge(conn, corpus, config, embed, rerank, query, top_k)
         if result.status in ("unavailable", "invalid_input"):

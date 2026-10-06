@@ -29,7 +29,7 @@ from recon.eval.thresholds import load_thresholds
 from recon.runtimes.agent_sdk import AgentSdkRuntime
 from recon.runtimes.base import Runtime
 from recon.runtimes.langgraph import LangGraphRuntime
-from recon.tools.data_source import knowledge_chunks_path, tool_data_snapshot_id
+from recon.tools.data_source import tool_data_snapshot_id
 from recon.tracing import ENDPOINT_ENV, configure_tracing, shutdown_tracing
 
 # Filename carries the pinned commit, so bumping the pin in the adapter also
@@ -150,8 +150,6 @@ def _refuse_over_cap(case_count: int, max_cost_eur: float) -> None:
 
 def _faithfulness_replay() -> Passages | None:
     """The search replay for faithfulness, or None without a reachable index."""
-    if knowledge_chunks_path() is None:
-        return None
     backend = cli_retrieval.open_backend()
     if backend is None:
         print("Faithfulness skipped.")
