@@ -60,7 +60,9 @@ repeated scored 0.696, and single cases moved by up to 0.47, so treat a change i
 answer score under about 0.1 as noise ([run-to-run noise](docs/eval-noise.md)). The earlier
 baselines are `eval-20261006T103610Z` (text cases, before the company filter, 0.518) and
 `eval-20261001T085035Z` (the 7-case [smoke set](docs/glossary.md#smoke-set) without filing
-text, 0.566). The other rows wait for an explicit go-ahead,
+text, 0.566). Their prompts, model config and tool data differ from this row's, so their
+scores aren't comparable with it. Tool-call accuracy is 1.000 by default: none of these
+cases has an expected tool path to check. The other rows wait for an explicit go-ahead,
 because each run spends model credit (see `AGENTS.md`'s Cost section).
 
 ## Quickstart
