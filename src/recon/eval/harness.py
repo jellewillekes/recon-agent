@@ -145,6 +145,7 @@ def _score_case(
         cost_eur=agent_result.cost_eur + judge_cost_eur,
         elapsed_ms=agent_result.elapsed_ms,
         notes="; ".join(notes_parts),
+        tool_names=[call.tool for call in agent_result.tool_calls],
     )
     return score, agent_result
 

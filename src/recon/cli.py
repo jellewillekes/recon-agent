@@ -16,8 +16,7 @@ from recon.adapters.finance_agent_bench import (
     load_cases,
 )
 from recon.contracts import Case, EvalRun
-from recon.eval import case_selection, retrieval
-from recon.eval.faithfulness import Passages
+from recon.eval import case_selection
 from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate, comparability_failures
 from recon.eval.harness import (
     RUBRIC_VERSION,
@@ -148,41 +147,6 @@ def _refuse_over_cap(case_count: int, max_cost_eur: float) -> None:
         )
 
 
-def _faithfulness_replay() -> Passages | None:
-    """The search replay for faithfulness, or None without a reachable index."""
-    backend = cli_retrieval.open_backend()
-    if backend is None:
-        print("Faithfulness skipped.")
-        return None
-    return cli_retrieval.replay_passages(backend)
-
-
-def _with_retrieval_metrics(run: EvalRun, cases: list[Case]) -> EvalRun:
-    """Score the retriever on the run's labelled cases. Offline: no model call."""
-    labels = retrieval.load_labels()
-    if not any(case.case_id in labels for case in cases):
-        return run
-    backend = cli_retrieval.open_backend()
-    if backend is None:
-        print("Retrieval metrics skipped.")
-        return run
-    ran = cases[: len(run.case_scores)]
-    try:
-        metrics = retrieval.retrieval_metrics(labels, ran, backend.chunk_ids)
-        metrics |= retrieval.variant_metrics(
-            labels,
-            ran,
-            {
-                variant: backend.variant_search(variant)
-                for variant in ("dense", "full_text", "hybrid")
-            },
-        )
-    except RuntimeError as exc:
-        print(f"Retrieval metrics skipped: a search failed ({exc})")
-        return run
-    return retrieval.with_retrieval_metrics(run, metrics)
-
-
 def _cmd_eval(args: argparse.Namespace) -> None:
     cases = _select_cases(args)
     _refuse_over_cap(len(cases), args.max_cost_eur)
@@ -199,6 +163,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
         tool_data_snapshot = tool_data_snapshot_id()
     except (FileNotFoundError, ValueError) as exc:
         raise SystemExit(str(exc)) from exc
+    search_index = cli_retrieval.require_backend()
     baseline = (
         EvalRun.model_validate_json(args.baseline.read_text(encoding="utf-8"))
         if args.baseline is not None
@@ -214,12 +179,17 @@ def _cmd_eval(args: argparse.Namespace) -> None:
             _build_runtime(args.runtime, args.mode),
             tool_data_snapshot=tool_data_snapshot,
             max_cost_eur=args.max_cost_eur,
-            passages=_faithfulness_replay(),
+            passages=(
+                cli_retrieval.replay_passages(search_index)
+                if search_index is not None
+                else None
+            ),
         )
     finally:
         shutdown_tracing()
     run = with_cost_per_correct_answer(run, thresholds.correct_answer_score)
-    run = _with_retrieval_metrics(run, cases)
+    if search_index is not None:
+        run = cli_retrieval.with_retrieval_metrics(run, cases, search_index)
 
     results_dir = Path("evals/results")
     results_dir.mkdir(parents=True, exist_ok=True)

@@ -16,6 +16,7 @@ from recon.adapters.knowledge_corpus import (
     CHUNKS_FILENAME,
     corpus_id,
     load_knowledge_config,
+    search_settings_id,
 )
 from recon.adapters.sec_edgar import DEFAULT_PROCESSED_DIR
 from recon.adapters.sec_edgar_store import latest_snapshot
@@ -81,7 +82,8 @@ def tool_data_snapshot_id(processed_dir: Path = DEFAULT_PROCESSED_DIR) -> str:
     # without one keep the id they had before step 13.
     chunks = knowledge_chunks_path(processed_dir)
     if chunks is not None:
-        snapshot_id += f"-k{corpus_id(chunks, load_knowledge_config())}"
+        config = load_knowledge_config()
+        snapshot_id += f"-k{corpus_id(chunks, config)}-s{search_settings_id(config)}"
     return snapshot_id
 
 

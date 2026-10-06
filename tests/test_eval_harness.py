@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from recon.adapters.finance_agent_bench import DATASET_ID
-from recon.contracts import AgentResult, Case, EvalRun
+from recon.contracts import AgentResult, Case, EvalRun, ToolCall
 from recon.eval import harness
 from recon.eval.judge import JudgeResult
 from recon.eval.rubrics import Rubric
@@ -102,6 +102,27 @@ def test_score_case_success_uses_judge_and_combines_cost(
     assert "N/A" in score.notes
     assert score.cost_eur == pytest.approx(0.01 + 0.002)
     assert agent_result.case_id == "c1"
+
+
+@pytest.mark.unit
+def test_score_case_records_the_tool_names_in_call_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#101: a result file shows which tools each case called."""
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    calls = [
+        ToolCall(tool=name, arguments={}, status="ok", elapsed_ms=1)
+        for name in ("search_companies", "search_knowledge", "search_knowledge")
+    ]
+    runtime = _FakeRuntime({"c1": _agent_result(case_id="c1", tool_calls=calls)})
+
+    score, _ = harness.score_case(_case("c1"), runtime, {})
+
+    assert score.tool_names == [
+        "search_companies",
+        "search_knowledge",
+        "search_knowledge",
+    ]
 
 
 @pytest.mark.unit

@@ -126,9 +126,11 @@ def _register_write_tool(server: FastMCP) -> None:
         )
 
 
-def _register_knowledge_tool(server: FastMCP, chunks_path: Path) -> None:
+def _register_knowledge_tool(server: FastMCP, chunks_path: Path, warm_up: bool) -> None:
     """`search_knowledge`, when a filing-text corpus was built for this snapshot."""
     backend = KnowledgeBackend(chunks_path)
+    if warm_up:
+        backend.start_warm_up()
 
     @server.tool(description=search_knowledge.__doc__)
     def search_knowledge_tool(query: str, top_k: int = 5) -> dict[str, Any]:
@@ -136,21 +138,33 @@ def _register_knowledge_tool(server: FastMCP, chunks_path: Path) -> None:
 
 
 def build_server(
-    conn: duckdb.DuckDBPyConnection, chunks_path: Path | None = None
+    conn: duckdb.DuckDBPyConnection,
+    chunks_path: Path | None = None,
+    warm_up: bool = False,
 ) -> FastMCP:
     """Wire the tool functions to an `MCPServer` bound to `conn`, plus
-    `search_knowledge` when `chunks_path` names a built filing-text corpus."""
+    `search_knowledge` when `chunks_path` names a built filing-text corpus.
+    `warm_up` loads its models in the background as the server starts."""
     server = FastMCP(name="recon-tools")
     _register_read_tools(server, conn)
     _register_write_tool(server)
     if chunks_path is not None:
-        _register_knowledge_tool(server, chunks_path)
+        _register_knowledge_tool(server, chunks_path, warm_up)
     return server
+
+
+def warm_up_requested() -> bool:
+    """Whether to load the search models as the server starts (#99).
+
+    Only a caller whose server lives for a whole run asks. LangGraph and the
+    health probe start a server per call, which would abandon the load.
+    """
+    return os.environ.get("RECON_WARM_SEARCH_MODELS") == "1"
 
 
 def main() -> None:
     conn = open_tool_data()
-    server = build_server(conn, knowledge_chunks_path())
+    server = build_server(conn, knowledge_chunks_path(), warm_up=warm_up_requested())
     server.run()
 
 

@@ -146,6 +146,9 @@ class CaseScore(BaseModel):
     cost_eur: float
     elapsed_ms: int
     notes: str
+    # The agent's tool calls by name, in call order (#101). Empty on results
+    # recorded before this field existed.
+    tool_names: list[str] = []
 
 
 class EvalRun(BaseModel):
@@ -168,6 +171,9 @@ class EvalRun(BaseModel):
     # "fixture-<hash>". None on runs recorded before this field existed; the
     # promotion gate refuses those.
     tool_data_snapshot: str | None = None
+    # Hash of evals/retrieval-labels.yaml when the run has retrieval metrics
+    # (#105). Compare those metrics only between runs with the same hash.
+    retrieval_labels_hash: str | None = None
 
     @model_validator(mode="after")
     def _prompt_hashes_required(self) -> "EvalRun":

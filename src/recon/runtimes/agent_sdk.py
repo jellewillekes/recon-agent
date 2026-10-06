@@ -216,7 +216,13 @@ def _build_options(
             MCP_SERVER_NAME: McpStdioServerConfig(
                 command=sys.executable,
                 args=["-m", "recon.tools.mcp_server"],
-                env={**os.environ, "RECON_CREATED_BY": _CREATED_BY},
+                env={
+                    **os.environ,
+                    "RECON_CREATED_BY": _CREATED_BY,
+                    # This server lives for the whole run, so loading the
+                    # search models as it starts pays off (#99).
+                    "RECON_WARM_SEARCH_MODELS": "1",
+                },
             )
         },
         allowed_tools=ALLOWED_TOOLS,

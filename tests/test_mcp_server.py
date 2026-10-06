@@ -8,6 +8,7 @@ the environment, per PR #43's round-4 review.
 
 import pytest
 
+from recon.tools import mcp_server
 from recon.tools.mcp_server import _call_flag_case_for_review
 
 pytestmark = [pytest.mark.unit, pytest.mark.anyio]
@@ -55,3 +56,18 @@ async def test_confirmed_call_without_database_url_env_var_raises(
         await _call_flag_case_for_review(
             "case-001", "reason", "key-001", False, True, preview["preview_token"]
         )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [("1", True), ("0", False), (None, False)]
+)
+async def test_the_server_warms_up_the_search_models_only_when_asked(
+    monkeypatch: pytest.MonkeyPatch, value: str | None, expected: bool
+) -> None:
+    """#99: the health probe and LangGraph start a server per call. Loading
+    torch there would cost CPU for a process that exits right after."""
+    if value is None:
+        monkeypatch.delenv("RECON_WARM_SEARCH_MODELS", raising=False)
+    else:
+        monkeypatch.setenv("RECON_WARM_SEARCH_MODELS", value)
+    assert mcp_server.warm_up_requested() is expected

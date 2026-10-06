@@ -14,7 +14,7 @@ from typing import Self
 
 import pytest
 
-from recon import cli, cli_edgar
+from recon import cli, cli_edgar, cli_retrieval
 from recon.adapters.finance_agent_bench import DATASET_ID
 from recon.cli import build_parser, compute_dataset_stats
 from recon.contracts import Case, CaseScore, EvalRun
@@ -729,3 +729,88 @@ def test_cmd_eval_refuses_a_broken_thresholds_file_before_running(
     with pytest.raises(SystemExit, match="thresholds.yaml can't be read"):
         args.func(args)
     assert "ids" not in seen
+
+
+class _FakeBackend:
+    """A filing-text index that is or isn't reachable."""
+
+    def __init__(self, reachable: bool) -> None:
+        self.reachable = reachable
+
+    def connection(self) -> object | None:
+        return object() if self.reachable else None
+
+
+def _with_corpus(monkeypatch: pytest.MonkeyPatch, reachable: bool) -> None:
+    monkeypatch.setattr(
+        cli_retrieval, "knowledge_chunks_path", lambda: Path("knowledge_chunks.parquet")
+    )
+    monkeypatch.setattr(
+        cli_retrieval, "KnowledgeBackend", lambda path: _FakeBackend(reachable)
+    )
+
+
+@pytest.mark.unit
+def test_cmd_eval_refuses_a_corpus_without_a_reachable_index_before_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#100: without the index every search says "unavailable", and the run
+    would still be scored and could become a baseline."""
+    _patch_dataset_loading(monkeypatch)
+    _with_corpus(monkeypatch, reachable=False)
+
+    def must_not_run(*args: object, **kwargs: object) -> EvalRun:
+        raise AssertionError("the eval ran, spending credit, without search")
+
+    monkeypatch.setattr(cli, "run_evaluation", must_not_run)
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    with pytest.raises(SystemExit, match="DATABASE_URL"):
+        args.func(args)
+
+
+@pytest.mark.unit
+def test_cmd_eval_replays_searches_through_a_reachable_index(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    _with_corpus(monkeypatch, reachable=True)
+    captured: dict[str, object] = {}
+
+    def fake_run_evaluation(
+        *args: object, passages: object, **kwargs: object
+    ) -> EvalRun:
+        captured["passages"] = passages
+        return _eval_run()
+
+    monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    args.func(args)
+
+    assert captured["passages"] is not None
+
+
+@pytest.mark.unit
+def test_cmd_eval_without_a_corpus_runs_without_search(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    monkeypatch.setattr(cli_retrieval, "knowledge_chunks_path", lambda: None)
+    captured: dict[str, object] = {}
+
+    def fake_run_evaluation(
+        *args: object, passages: object, **kwargs: object
+    ) -> EvalRun:
+        captured["passages"] = passages
+        return _eval_run()
+
+    monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    args.func(args)
+
+    assert captured["passages"] is None

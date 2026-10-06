@@ -18,3 +18,9 @@ candidates_per_search: 40
 rerank_pool: 30
 # Reciprocal rank fusion constant (Cormack et al., 2009).
 rrf_k: 60
+
+# Bump when the search code ranks differently (src/recon/tools/knowledge_search.py).
+# It goes into the tool_data_snapshot every eval run records, so the gate
+# refuses to compare runs across a ranking change (#105). 2: full-text search
+# matches any query term (#98).
+search_version: 2

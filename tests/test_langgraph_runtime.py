@@ -314,6 +314,9 @@ async def test_run_passes_created_by_and_parent_env_to_mcp_subprocess(
     assert connection["env"]["RECON_CREATED_BY"] == "langgraph:single"
     assert connection["env"]["RECON_TEST_PARENT_VAR"] == "present"
     assert connection["env"]["PATH"] == os.environ["PATH"]
+    # #99: LangGraph spawns a server per tool call, so a warm-up would only
+    # start a torch import that the process abandons.
+    assert "RECON_WARM_SEARCH_MODELS" not in connection["env"]
 
 
 @pytest.mark.anyio
