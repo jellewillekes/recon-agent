@@ -34,6 +34,10 @@ from recon.tools.knowledge_index import (
 Reranker = Callable[[str, Sequence[str]], list[float]]
 MAX_TOP_K = 20
 
+# The search tool's own ranking is "hybrid_rerank". The others are the parts
+# it's built from, ranked alone, for the retrieval metrics (#18).
+VARIANTS = ("dense", "full_text", "hybrid", "hybrid_rerank")
+
 _COLUMNS = "chunk_id, company_id, form, filed, accession, section, text"
 
 
@@ -74,6 +78,54 @@ def _full_text(
         (query, corpus, limit),
     ).fetchall()
     return [row[0] for row in rows]
+
+
+def _fused(
+    conn: psycopg.Connection[Any],
+    corpus: str,
+    config: KnowledgeConfig,
+    embed: Embedder,
+    query: str,
+) -> list[str]:
+    """Dense and full-text candidates merged by reciprocal rank fusion."""
+    return reciprocal_rank_fusion(
+        [
+            _dense(conn, corpus, embed([query])[0], config.candidates_per_search),
+            _full_text(conn, corpus, query, config.candidates_per_search),
+        ],
+        config.rrf_k,
+    )
+
+
+def ranked_ids(
+    conn: psycopg.Connection[Any],
+    corpus: str,
+    config: KnowledgeConfig,
+    embed: Embedder,
+    rerank: Reranker,
+    query: str,
+    top_k: int,
+    variant: str,
+) -> list[str]:
+    """The top `top_k` chunk ids for `query` under one of `VARIANTS`.
+
+    "hybrid_rerank" goes through `search_knowledge` itself, so it can't drift
+    from what the tool returns. Raises on a search failure.
+    """
+    # Each variant ranks the same candidate pools the tool fuses.
+    if variant == "dense":
+        vector = embed([query])[0]
+        return _dense(conn, corpus, vector, config.candidates_per_search)[:top_k]
+    if variant == "full_text":
+        return _full_text(conn, corpus, query, config.candidates_per_search)[:top_k]
+    if variant == "hybrid":
+        return _fused(conn, corpus, config, embed, query)[:top_k]
+    if variant == "hybrid_rerank":
+        result = search_knowledge(conn, corpus, config, embed, rerank, query, top_k)
+        if result.status in ("unavailable", "invalid_input"):
+            raise RuntimeError(result.message)
+        return [row["chunk_id"] for row in result.data]
+    raise ValueError(f"Unknown search variant {variant!r}. Use one of {VARIANTS}.")
 
 
 def _fetch(
@@ -124,15 +176,7 @@ def search_knowledge(
             "from the XBRL tools, and say that filing text couldn't be searched.",
         )
     try:
-        ranked = reciprocal_rank_fusion(
-            [
-                _dense(
-                    conn, corpus, embed([args.query])[0], config.candidates_per_search
-                ),
-                _full_text(conn, corpus, args.query, config.candidates_per_search),
-            ],
-            config.rrf_k,
-        )[: config.rerank_pool]
+        ranked = _fused(conn, corpus, config, embed, args.query)[: config.rerank_pool]
         rows = _fetch(conn, corpus, ranked)
     except psycopg.Error as exc:
         return failure(
@@ -252,6 +296,29 @@ class KnowledgeBackend:
             query,
             top_k,
         )
+
+    def variant_search(self, variant: str) -> Callable[[str, int], list[str]]:
+        """A search ranked by one of `VARIANTS`, for the retrieval metrics.
+
+        Raises when the index isn't reachable, like `chunk_ids`.
+        """
+
+        def search(query: str, top_k: int) -> list[str]:
+            conn = self.connection()
+            if conn is None:
+                raise RuntimeError("The filing-text index isn't reachable.")
+            return ranked_ids(
+                conn,
+                self.corpus,
+                self.config,
+                self.embed,
+                self.rerank,
+                query,
+                top_k,
+                variant,
+            )
+
+        return search
 
     def chunk_ids(self, query: str, top_k: int) -> list[str]:
         """Ids of the best matching chunks, for the retrieval metrics.

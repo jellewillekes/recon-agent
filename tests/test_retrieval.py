@@ -582,3 +582,54 @@ def test_an_embedding_model_that_cannot_load_is_unavailable() -> None:
     )
     assert result.status == "unavailable"
     assert "failed to load" in result.message
+
+
+def test_variant_metrics_score_each_search_variant_on_the_same_labels() -> None:
+    labels = {"q1": ["a", "b"]}
+    cases = [_case("q1", "first?")]
+    searches = {
+        "dense": lambda query, k: ["a", "b", "x", "y", "z"],
+        "full_text": lambda query, k: ["x", "y", "z", "w", "v"],
+    }
+
+    metrics = retrieval.variant_metrics(labels, cases, searches)
+
+    assert metrics == {
+        "retrieval_precision_at_5_dense": pytest.approx(0.4),
+        "retrieval_recall_at_5_dense": pytest.approx(1.0),
+        "retrieval_precision_at_5_full_text": pytest.approx(0.0),
+        "retrieval_recall_at_5_full_text": pytest.approx(0.0),
+    }
+    assert retrieval.variant_metrics({}, cases, searches) == {}
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected"),
+    [
+        ("dense", ["c0", "c1"]),
+        ("full_text", ["c3", "c1"]),
+        ("hybrid", ["c1", "c0"]),
+        ("hybrid_rerank", ["c1", "c3"]),
+    ],
+)
+def test_ranked_ids_follow_each_variant(variant: str, expected: list[str]) -> None:
+    conn: Any = _FakeConn()
+    ids = knowledge_search.ranked_ids(
+        conn, "corpus", CONFIG, _embed, _rerank, "fictional guidance", 2, variant
+    )
+    assert ids == expected
+
+
+def test_the_full_variant_ranks_exactly_like_the_tool() -> None:
+    conn: Any = _FakeConn()
+    tool_ids = [row["chunk_id"] for row in _search(conn).data]
+    assert tool_ids == knowledge_search.ranked_ids(
+        conn,
+        "corpus",
+        CONFIG,
+        _embed,
+        _rerank,
+        "fictional guidance",
+        2,
+        "hybrid_rerank",
+    )

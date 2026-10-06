@@ -68,3 +68,21 @@ def with_retrieval_metrics(run: EvalRun, metrics: dict[str, float]) -> EvalRun:
     if not metrics:
         return run
     return run.model_copy(update={"aggregate": {**run.aggregate, **metrics}})
+
+
+def variant_metrics(
+    labels: dict[str, list[str]], cases: list[Case], searches: dict[str, Search]
+) -> dict[str, float]:
+    """Precision@5 and recall@5 per search variant, on the same labelled cases.
+
+    Shows what each part of the hybrid search adds. The tool's own ranking is
+    scored by `retrieval_metrics`; this covers the variants it's built from.
+    """
+    metrics: dict[str, float] = {}
+    for name, search in searches.items():
+        scored = retrieval_metrics(labels, cases, search)
+        if not scored:
+            return {}
+        metrics[f"retrieval_precision_at_5_{name}"] = scored["retrieval_precision_at_5"]
+        metrics[f"retrieval_recall_at_5_{name}"] = scored["retrieval_recall_at_5"]
+    return metrics

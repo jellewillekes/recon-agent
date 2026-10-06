@@ -131,7 +131,7 @@ def test_cmd_eval_writes_json_and_markdown(
     monkeypatch.setattr(
         cli,
         "run_evaluation",
-        lambda cases, runtime, tool_data_snapshot, max_cost_eur: _eval_run(),
+        lambda cases, runtime, tool_data_snapshot, max_cost_eur, passages: _eval_run(),
     )
     monkeypatch.chdir(tmp_path)
 
@@ -155,6 +155,7 @@ def test_cmd_eval_mode_flag_reaches_runtime(
         runtime: object,
         tool_data_snapshot: object,
         max_cost_eur: object,
+        passages: object,
     ) -> EvalRun:
         captured["mode"] = runtime._mode  # type: ignore[attr-defined]
         return _eval_run()
@@ -180,6 +181,7 @@ def test_cmd_eval_defaults_to_single_mode(
         runtime: object,
         tool_data_snapshot: object,
         max_cost_eur: object,
+        passages: object,
     ) -> EvalRun:
         captured["mode"] = runtime._mode  # type: ignore[attr-defined]
         captured["max_cost_eur"] = max_cost_eur
@@ -207,6 +209,7 @@ def test_cmd_eval_runtime_flag_reaches_langgraph_runtime(
         runtime: object,
         tool_data_snapshot: object,
         max_cost_eur: object,
+        passages: object,
     ) -> EvalRun:
         captured["runtime_type"] = type(runtime).__name__
         return _eval_run()
@@ -232,6 +235,7 @@ def test_cmd_eval_defaults_to_sdk_runtime(
         runtime: object,
         tool_data_snapshot: object,
         max_cost_eur: object,
+        passages: object,
     ) -> EvalRun:
         captured["runtime_type"] = type(runtime).__name__
         return _eval_run()
@@ -267,7 +271,7 @@ def test_cmd_eval_gate_passes_prints_message(
     monkeypatch.setattr(
         cli,
         "run_evaluation",
-        lambda cases, runtime, tool_data_snapshot, max_cost_eur: _eval_run(),
+        lambda cases, runtime, tool_data_snapshot, max_cost_eur, passages: _eval_run(),
     )
     monkeypatch.chdir(tmp_path)
     baseline_path = tmp_path / "baseline.json"
@@ -285,7 +289,7 @@ def test_cmd_eval_gate_failure_exits_nonzero(
     monkeypatch.setattr(
         cli,
         "run_evaluation",
-        lambda cases, runtime, tool_data_snapshot, max_cost_eur: _eval_run(
+        lambda cases, runtime, tool_data_snapshot, max_cost_eur, passages: _eval_run(
             aggregate={"task_completion_rate": 0.5, "answer_score_mean": 0.5}
         ),
     )
@@ -317,6 +321,7 @@ def test_cmd_eval_records_the_tool_data_snapshot(
         runtime: object,
         tool_data_snapshot: object,
         max_cost_eur: object,
+        passages: object,
     ) -> EvalRun:
         seen["snapshot"] = tool_data_snapshot
         return _eval_run()
@@ -610,6 +615,7 @@ def _capture_cases(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
         runtime: object,
         tool_data_snapshot: object,
         max_cost_eur: object,
+        passages: object,
     ) -> EvalRun:
         seen["ids"] = [case.case_id for case in cases]
         return _eval_run()

@@ -17,6 +17,7 @@ from recon.adapters.finance_agent_bench import (
 )
 from recon.contracts import Case, EvalRun
 from recon.eval import case_selection, retrieval
+from recon.eval.faithfulness import Passages
 from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate, comparability_failures
 from recon.eval.harness import (
     RUBRIC_VERSION,
@@ -28,7 +29,7 @@ from recon.eval.thresholds import load_thresholds
 from recon.runtimes.agent_sdk import AgentSdkRuntime
 from recon.runtimes.base import Runtime
 from recon.runtimes.langgraph import LangGraphRuntime
-from recon.tools.data_source import tool_data_snapshot_id
+from recon.tools.data_source import knowledge_chunks_path, tool_data_snapshot_id
 from recon.tracing import ENDPOINT_ENV, configure_tracing, shutdown_tracing
 
 # Filename carries the pinned commit, so bumping the pin in the adapter also
@@ -147,6 +148,17 @@ def _refuse_over_cap(case_count: int, max_cost_eur: float) -> None:
         )
 
 
+def _faithfulness_replay() -> Passages | None:
+    """The search replay for faithfulness, or None without a reachable index."""
+    if knowledge_chunks_path() is None:
+        return None
+    backend = cli_retrieval.open_backend()
+    if backend is None:
+        print("Faithfulness skipped.")
+        return None
+    return cli_retrieval.replay_passages(backend)
+
+
 def _with_retrieval_metrics(run: EvalRun, cases: list[Case]) -> EvalRun:
     """Score the retriever on the run's labelled cases. Offline: no model call."""
     labels = retrieval.load_labels()
@@ -159,6 +171,14 @@ def _with_retrieval_metrics(run: EvalRun, cases: list[Case]) -> EvalRun:
     ran = cases[: len(run.case_scores)]
     try:
         metrics = retrieval.retrieval_metrics(labels, ran, backend.chunk_ids)
+        metrics |= retrieval.variant_metrics(
+            labels,
+            ran,
+            {
+                variant: backend.variant_search(variant)
+                for variant in ("dense", "full_text", "hybrid")
+            },
+        )
     except RuntimeError as exc:
         print(f"Retrieval metrics skipped: a search failed ({exc})")
         return run
@@ -196,6 +216,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
             _build_runtime(args.runtime, args.mode),
             tool_data_snapshot=tool_data_snapshot,
             max_cost_eur=args.max_cost_eur,
+            passages=_faithfulness_replay(),
         )
     finally:
         shutdown_tracing()
@@ -237,6 +258,8 @@ def _cmd_cases(args: argparse.Namespace) -> None:
     by_ticker = sec_edgar_tickers.read_case_ids(_case_tickers_paths(args))
     cases = load_cases(fetch_csv(args.path))
     try:
+        if args.tag:
+            cases = case_selection.with_tags(cases, args.tag)
         picked = case_selection.spread_across_companies(cases, by_ticker, args.spread)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
@@ -345,6 +368,11 @@ def build_parser() -> argparse.ArgumentParser:
     cases_parser.add_argument("--spread", type=int, required=True)
     cases_parser.add_argument("--path", type=Path, default=DEFAULT_DATASET_PATH)
     cases_parser.add_argument("--tickers-file", type=Path, action="append")
+    cases_parser.add_argument(
+        "--tag",
+        action="append",
+        help="Only cases with this dataset tag (repeatable: any of them).",
+    )
     cases_parser.set_defaults(func=_cmd_cases)
 
     cli_edgar.add_edgar_parser(subparsers, DEFAULT_DATASET_PATH)
