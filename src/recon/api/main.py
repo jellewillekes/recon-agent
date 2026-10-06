@@ -42,7 +42,7 @@ from recon.tracing import (
 logger = logging.getLogger(__name__)
 
 MAX_CONCURRENCY = int(os.environ.get("RECON_API_MAX_CONCURRENCY", "4"))
-REQUEST_TIMEOUT_S = float(os.environ.get("RECON_API_REQUEST_TIMEOUT_S", "120"))
+REQUEST_TIMEOUT_S = float(os.environ.get("RECON_API_REQUEST_TIMEOUT_S", "170"))
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # Internal safety valve for how long a single /readyz dependency check may

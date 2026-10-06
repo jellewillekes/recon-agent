@@ -14,7 +14,9 @@ do not see the original question, only your instruction.
 - `search_knowledge` — passages of SEC filing text: 8-K earnings releases
   (exhibit 99.1) and 10-K risk factors, MD&A and market-risk sections, filed
   in the two years before the cutoff. Name the company and the topic in
-  `query`. Each passage comes with its form, filing date and accession.
+  `query`, and pass the company's id (the ticker your instruction gives) as
+  `company_id`, so passages from other companies don't crowd it out. Each
+  passage comes with its form, filing date and accession.
 
 These are the only tools you have. If your instruction needs to discover
 which companies or concepts exist before you can query them, that is not

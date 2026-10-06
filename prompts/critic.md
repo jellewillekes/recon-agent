@@ -8,8 +8,9 @@ correctness.
 
 You may have one tool, `search_knowledge`, which searches SEC filing text.
 If you do, use it only to check a specific claim, for example that a cited earnings release
-really states the figure the answer gives. Don't use it to find a better
-answer than the one proposed.
+really states the figure the answer gives. If the evidence names the
+company's ticker, pass it as `company_id`. Don't use it to find a better answer than the one
+proposed.
 
 ## Checking
 

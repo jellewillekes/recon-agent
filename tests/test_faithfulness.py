@@ -120,7 +120,10 @@ def test_searched_queries_keeps_only_searches_that_returned_passages() -> None:
         ]
     )
 
-    assert faithfulness.searched_queries(result) == [("guidance", 3), ("no top_k", 5)]
+    assert faithfulness.searched_queries(result) == [
+        ("guidance", 3, None),
+        ("no top_k", 5, None),
+    ]
 
 
 @pytest.mark.unit
@@ -131,7 +134,9 @@ def test_replay_returns_each_passage_once_in_first_seen_order() -> None:
     }
     asked: list[tuple[str, int]] = []
 
-    def passages(query: str, top_k: int) -> list[dict[str, Any]]:
+    def passages(
+        query: str, top_k: int, company_id: str | None
+    ) -> list[dict[str, Any]]:
         asked.append((query, top_k))
         return returned[query]
 
@@ -169,7 +174,7 @@ def test_no_search_means_no_judge_call_and_no_score(
     result = faithfulness.judge_faithfulness(
         CASE,
         _agent_result([]),
-        lambda query, top_k: [_passage("a")],
+        lambda query, top_k, company_id: [_passage("a")],
         models_config_path=REPO_MODELS_CONFIG,
         prompt_path=prompt_path,
     )
@@ -194,7 +199,7 @@ def test_judge_sees_the_answer_and_every_replayed_passage(
     result = faithfulness.judge_faithfulness(
         CASE,
         _agent_result([_search("guidance")]),
-        lambda query, top_k: [
+        lambda query, top_k, company_id: [
             _passage("acc:EX-99.1:0"),
             _passage("acc:EX-99.1:1", "Margin rose."),
         ],
@@ -264,7 +269,7 @@ def test_harness_records_faithfulness_outside_the_answer_score(
     runtime = _FakeRuntime(_agent_result([_search("guidance")]))
 
     score, _ = harness.score_case(
-        CASE, runtime, RUBRICS, passages=lambda query, top_k: []
+        CASE, runtime, RUBRICS, passages=lambda query, top_k, company_id: []
     )
 
     assert score.rubric_scores["faithfulness"] == 0.25
@@ -281,7 +286,7 @@ def test_harness_leaves_faithfulness_out_without_a_score_or_a_replay(
     runtime = _FakeRuntime(_agent_result([]))
 
     with_replay, _ = harness.score_case(
-        CASE, runtime, RUBRICS, passages=lambda query, top_k: []
+        CASE, runtime, RUBRICS, passages=lambda query, top_k, company_id: []
     )
     without_replay, _ = harness.score_case(CASE, runtime, RUBRICS)
 
@@ -309,8 +314,33 @@ def test_faithfulness_mean_covers_only_the_cases_that_were_scored(
     runtime = _FakeRuntime(_agent_result([_search("guidance")]))
     cases = [CASE.model_copy(update={"case_id": f"c{i}"}) for i in range(3)]
 
-    run = harness.run_evaluation(cases, runtime, passages=lambda query, top_k: [])
+    run = harness.run_evaluation(
+        cases, runtime, passages=lambda query, top_k, company_id: []
+    )
 
     assert run.aggregate["faithfulness_mean"] == 0.75
     assert run.aggregate["faithfulness_scored_cases"] == 2
     assert run.aggregate["answer_score_mean"] == pytest.approx(0.8)
+
+
+@pytest.mark.unit
+def test_replay_searches_the_same_company_the_agent_did() -> None:
+    """#104: an unfiltered replay of a filtered search would hand the judge
+    passages from other companies, which the agent never saw."""
+    asked: list[str | None] = []
+
+    def passages(
+        query: str, top_k: int, company_id: str | None
+    ) -> list[dict[str, Any]]:
+        asked.append(company_id)
+        return []
+
+    filtered = ToolCall(
+        tool="search_knowledge",
+        arguments={"query": "guidance", "top_k": 5, "company_id": "FICT"},
+        status="ok",
+        elapsed_ms=5,
+    )
+    faithfulness.replay(_agent_result([filtered, _search("risks")]), passages)
+
+    assert asked == ["FICT", None]

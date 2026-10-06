@@ -32,7 +32,7 @@ DEFAULT_TOP_K = 5
 
 # (query, top_k) -> the passages the search returns, best first. Each has at
 # least chunk_id, form, filed, section and text.
-Passages = Callable[[str, int], list[dict[str, Any]]]
+Passages = Callable[[str, int, str | None], list[dict[str, Any]]]
 
 _SCHEMA: dict[str, Any] = {
     "type": "json_schema",
@@ -71,24 +71,34 @@ class FaithfulnessResult:
     num_turns: int = 0
 
 
-def searched_queries(agent_result: AgentResult) -> list[tuple[str, int]]:
-    """(query, top_k) of every search that returned passages, in order."""
-    queries: list[tuple[str, int]] = []
+def searched_queries(
+    agent_result: AgentResult,
+) -> list[tuple[str, int, str | None]]:
+    """(query, top_k, company_id) of every search that returned passages, in
+    order. The company filter is replayed too (#104)."""
+    queries: list[tuple[str, int, str | None]] = []
     for call in agent_result.tool_calls:
         if call.tool != SEARCH_TOOL or call.status != "ok":
             continue
         query = call.arguments.get("query")
         if isinstance(query, str) and query:
             top_k = call.arguments.get("top_k", DEFAULT_TOP_K)
-            queries.append((query, top_k if isinstance(top_k, int) else DEFAULT_TOP_K))
+            company = call.arguments.get("company_id")
+            queries.append(
+                (
+                    query,
+                    top_k if isinstance(top_k, int) else DEFAULT_TOP_K,
+                    company if isinstance(company, str) and company else None,
+                )
+            )
     return queries
 
 
 def replay(agent_result: AgentResult, passages: Passages) -> list[dict[str, Any]]:
     """The passages the agent's searches returned, each once, in first-seen order."""
     seen: dict[str, dict[str, Any]] = {}
-    for query, top_k in searched_queries(agent_result):
-        for passage in passages(query, top_k):
+    for query, top_k, company_id in searched_queries(agent_result):
+        for passage in passages(query, top_k, company_id):
             seen.setdefault(passage["chunk_id"], passage)
     return list(seen.values())
 

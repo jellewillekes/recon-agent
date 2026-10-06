@@ -12,13 +12,15 @@ from typing import Any
 
 import yaml
 
+from recon.adapters import sec_edgar_tickers
 from recon.adapters.finance_agent_bench import fetch_csv, load_cases
+from recon.adapters.sec_edgar import DEFAULT_RAW_DIR
 from recon.contracts import Case, EvalRun
 from recon.eval import retrieval
 from recon.eval.case_selection import read_case_file, select_cases
 from recon.eval.faithfulness import Passages
 from recon.tools.data_source import knowledge_chunks_path
-from recon.tools.knowledge_search import KnowledgeBackend
+from recon.tools.knowledge_backend import KnowledgeBackend
 
 DEFAULT_CANDIDATES_PATH = Path("data/processed/retrieval-candidates.yaml")
 
@@ -74,8 +76,15 @@ def with_retrieval_metrics(
             labels,
             ran,
             {
-                variant: backend.variant_search(variant)
-                for variant in ("dense", "full_text", "hybrid")
+                **{
+                    variant: backend.variant_search(variant)
+                    for variant in ("dense", "full_text", "hybrid")
+                },
+                "company": company_search(
+                    backend,
+                    ran,
+                    case_companies(sorted(DEFAULT_RAW_DIR.glob("tickers*.txt"))),
+                ),
             },
         )
     except RuntimeError as exc:
@@ -84,12 +93,41 @@ def with_retrieval_metrics(
     return retrieval.with_retrieval_metrics(run, metrics)
 
 
+def case_companies(paths: list[Path]) -> dict[str, str]:
+    """Case id -> the one ticker the tickers files record for it (#104).
+
+    A case recorded under two tickers compares companies, so it gets none.
+    """
+    tickers: dict[str, set[str]] = {}
+    for ticker, case_ids in sec_edgar_tickers.read_case_ids(paths).items():
+        for case_id in case_ids:
+            tickers.setdefault(case_id, set()).add(ticker)
+    return {
+        case_id: names.pop() for case_id, names in tickers.items() if len(names) == 1
+    }
+
+
+def company_search(
+    backend: KnowledgeBackend, cases: list[Case], companies: dict[str, str]
+) -> retrieval.Search:
+    """The tool's search with each case's company as `company_id`, as the agent
+    is told to pass it. A case without one known searches unfiltered."""
+    by_question = {case.question: companies.get(case.case_id) for case in cases}
+
+    def search(query: str, top_k: int) -> list[str]:
+        return backend.chunk_ids(query, top_k, by_question.get(query))
+
+    return search
+
+
 def replay_passages(backend: KnowledgeBackend) -> Passages:
     """Re-run a search for the faithfulness score (docs/adr/0026). A search
     that fails returns no passages, so that case goes unscored, with a note."""
 
-    def passages(query: str, top_k: int) -> list[dict[str, Any]]:
-        result = backend.search(query, top_k)
+    def passages(
+        query: str, top_k: int, company_id: str | None
+    ) -> list[dict[str, Any]]:
+        result = backend.search(query, top_k, company_id)
         if result.status in ("unavailable", "invalid_input"):
             print(f"Faithfulness replay failed for {query!r}: {result.message}")
             return []

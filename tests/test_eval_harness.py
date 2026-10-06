@@ -112,14 +112,14 @@ def test_score_case_records_the_tool_names_in_call_order(
     _patch_judge(monkeypatch, {"answer_correctness": 1.0})
     calls = [
         ToolCall(tool=name, arguments={}, status="ok", elapsed_ms=1)
-        for name in ("search_companies", "search_knowledge", "search_knowledge")
+        for name in ("list_companies", "search_knowledge", "search_knowledge")
     ]
     runtime = _FakeRuntime({"c1": _agent_result(case_id="c1", tool_calls=calls)})
 
     score, _ = harness.score_case(_case("c1"), runtime, {})
 
     assert score.tool_names == [
-        "search_companies",
+        "list_companies",
         "search_knowledge",
         "search_knowledge",
     ]

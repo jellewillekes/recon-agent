@@ -23,7 +23,13 @@ from recon.adapters import knowledge_corpus as corpus
 from recon.adapters import sec_edgar_text as text
 from recon.contracts import Case, EvalRun
 from recon.eval import retrieval
-from recon.tools import data_source, knowledge_index, knowledge_search, mcp_server
+from recon.tools import (
+    data_source,
+    knowledge_backend,
+    knowledge_index,
+    knowledge_search,
+    mcp_server,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = corpus.load_knowledge_config(ROOT / "config" / "knowledge.yaml")
@@ -427,6 +433,113 @@ def test_search_with_no_match_is_empty() -> None:
     assert _search(_Nothing()).status == "empty"
 
 
+class _FilterRecordingConn(_FakeConn):
+    """Records the candidate queries, to check the company filter reaches them."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.candidate_queries: list[tuple[str, tuple[Any, ...]]] = []
+
+    def execute(self, sql: str, params: tuple[Any, ...]) -> Any:
+        if "embedding <=>" in sql or "tsv @@" in sql:
+            self.candidate_queries.append((sql, params))
+        return super().execute(sql, params)
+
+
+def test_a_company_filter_restricts_both_candidate_searches() -> None:
+    """#104: a question naming a company by ticker got passages from others."""
+    conn = _FilterRecordingConn()
+    result = knowledge_search.search_knowledge(
+        conn,  # type: ignore[arg-type]
+        "corpus",
+        CONFIG,
+        _embed,
+        _rerank,
+        "fictional guidance",
+        2,
+        "fict",
+    )
+    assert result.status == "ok"
+    assert len(conn.candidate_queries) == 2
+    for sql, params in conn.candidate_queries:
+        assert "company_id = %s" in sql
+        assert "FICT" in params
+
+
+def test_a_filtered_dense_search_ranks_the_companys_rows_exactly() -> None:
+    """#104: the HNSW index scan takes the nearest neighbours of the whole
+    corpus first and filters after, which left Micron with no dense
+    candidates. A company's few hundred rows are ranked exactly instead."""
+    conn = _FilterRecordingConn()
+    knowledge_search.search_knowledge(
+        conn,  # type: ignore[arg-type]
+        "corpus",
+        CONFIG,
+        _embed,
+        _rerank,
+        "fictional guidance",
+        2,
+        "FICT",
+    )
+    dense = [sql for sql, _ in conn.candidate_queries if "embedding <=>" in sql]
+    assert len(dense) == 1
+    assert "MATERIALIZED" in dense[0]
+
+
+def test_without_a_company_the_search_is_unfiltered() -> None:
+    conn = _FilterRecordingConn()
+    _search(conn)
+    assert all("company_id" not in sql for sql, _ in conn.candidate_queries)
+
+
+def test_a_malformed_company_id_is_invalid_input() -> None:
+    result = knowledge_search.search_knowledge(
+        _FakeConn(),  # type: ignore[arg-type]
+        "corpus",
+        CONFIG,
+        _embed,
+        _rerank,
+        "fictional guidance",
+        2,
+        "no such id!",
+    )
+    assert result.status == "invalid_input"
+    assert "list_companies" in result.message
+
+
+def test_a_company_without_matching_text_says_how_to_widen_the_search() -> None:
+    class _Nothing(_FakeConn):
+        def execute(self, sql: str, params: tuple[Any, ...]) -> Any:
+            return _Rows([])
+
+    result = knowledge_search.search_knowledge(
+        _Nothing(),  # type: ignore[arg-type]
+        "corpus",
+        CONFIG,
+        _embed,
+        _rerank,
+        "fictional guidance",
+        2,
+        "FICT",
+    )
+    assert result.status == "empty"
+    assert "without company_id" in result.message
+
+
+def test_the_server_tool_takes_a_company_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(ROOT)
+    chunks_path = tmp_path / corpus.CHUNKS_FILENAME
+    corpus.write_chunks(
+        corpus.build_chunks(_raw_snapshot(tmp_path), {1234: "FICT"}, CUTOFF, CONFIG),
+        chunks_path,
+    )
+    server = mcp_server.build_server(data_source.open_tool_data(), chunks_path)
+    tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
+    assert "company_id" in tools["search_knowledge_tool"].inputSchema["properties"]
+
+
 class _RecordingConn:
     def __init__(self, already: int) -> None:
         self.already = already
@@ -487,7 +600,7 @@ def test_the_server_offers_search_knowledge_only_with_a_corpus(
     server = mcp_server.build_server(conn, chunks_path)
     assert "search_knowledge_tool" in names(server)
     # The tool returns backend.search(); without DATABASE_URL that's unavailable.
-    backend = knowledge_search.KnowledgeBackend(chunks_path)
+    backend = knowledge_backend.KnowledgeBackend(chunks_path)
     assert backend.search("fictional revenue", 3).status == "unavailable"
 
 
@@ -637,11 +750,11 @@ def test_a_partly_built_index_is_not_served(
             self.closed = True
 
     rows = {"n": len(chunks) - 1}
-    monkeypatch.setattr(knowledge_search, "connect", lambda url: _Conn())
-    monkeypatch.setattr(knowledge_search, "indexed_count", lambda conn, c: rows["n"])
-    assert knowledge_search.KnowledgeBackend(chunks_path).connection() is None
+    monkeypatch.setattr(knowledge_backend, "connect", lambda url: _Conn())
+    monkeypatch.setattr(knowledge_backend, "indexed_count", lambda conn, c: rows["n"])
+    assert knowledge_backend.KnowledgeBackend(chunks_path).connection() is None
     rows["n"] = len(chunks)
-    assert knowledge_search.KnowledgeBackend(chunks_path).connection() is not None
+    assert knowledge_backend.KnowledgeBackend(chunks_path).connection() is not None
 
 
 def test_metrics_stop_when_a_search_is_unavailable(
@@ -655,7 +768,7 @@ def test_metrics_stop_when_a_search_is_unavailable(
         corpus.build_chunks(_raw_snapshot(tmp_path), {1234: "FICT"}, CUTOFF, CONFIG),
         chunks_path,
     )
-    backend = knowledge_search.KnowledgeBackend(chunks_path)
+    backend = knowledge_backend.KnowledgeBackend(chunks_path)
     with pytest.raises(RuntimeError, match="isn't available"):
         retrieval.retrieval_metrics(
             {"q1": ["a"]}, [_case("q1", "first?")], backend.chunk_ids
@@ -730,13 +843,13 @@ def test_the_full_variant_ranks_exactly_like_the_tool() -> None:
     )
 
 
-def _backend(tmp_path: Path) -> knowledge_search.KnowledgeBackend:
+def _backend(tmp_path: Path) -> knowledge_backend.KnowledgeBackend:
     chunks_path = tmp_path / corpus.CHUNKS_FILENAME
     corpus.write_chunks(
         corpus.build_chunks(_raw_snapshot(tmp_path), {1234: "FICT"}, CUTOFF, CONFIG),
         chunks_path,
     )
-    return knowledge_search.KnowledgeBackend(chunks_path)
+    return knowledge_backend.KnowledgeBackend(chunks_path)
 
 
 def test_warm_up_loads_both_models_in_the_background(
