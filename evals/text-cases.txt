@@ -1,0 +1,10 @@
+# 7 cases that need filing text, each about a different company:
+# recon.cli cases --spread 7 --tag "Simple retrieval - Qualitative" --tag "Beat or Miss".
+# Picked by case-id order, blind to scores. For measuring search_knowledge (#18).
+finance-agent-bench:13c5dd1da565
+finance-agent-bench:408f6ef07a58
+finance-agent-bench:56d6f9e6e1a4
+finance-agent-bench:731403050270
+finance-agent-bench:7f4652ac9ae3
+finance-agent-bench:8ba731818e62
+finance-agent-bench:8f4e936df23b

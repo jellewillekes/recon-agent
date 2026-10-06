@@ -56,3 +56,16 @@ def spread_across_companies(
         f"Only {len(picked)} single-company cases with distinct companies, "
         f"{count} asked for. Lower the count or review the tickers files."
     )
+
+
+def with_tags(cases: list[Case], tags: list[str]) -> list[Case]:
+    """The cases carrying any of `tags`, in their order. A tag no case carries
+    is an error, since a typo would otherwise quietly narrow the selection."""
+    known = {tag for case in cases for tag in case.tags}
+    unknown = sorted(set(tags) - known)
+    if unknown:
+        raise ValueError(
+            f"No case is tagged {unknown[0]!r}. Known tags: {', '.join(sorted(known))}."
+        )
+    wanted = set(tags)
+    return [case for case in cases if wanted & set(case.tags)]

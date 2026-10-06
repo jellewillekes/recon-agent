@@ -11,12 +11,13 @@ from recon.eval.case_selection import (
     read_case_file,
     select_cases,
     spread_across_companies,
+    with_tags,
 )
 
 pytestmark = pytest.mark.unit
 
 
-def _case(case_id: str) -> Case:
+def _case(case_id: str, tags: list[str] | None = None) -> Case:
     return Case(
         case_id=case_id,
         source="finance-agent-bench",
@@ -24,7 +25,7 @@ def _case(case_id: str) -> Case:
         expected_answer="a",
         expected_tool_path=None,
         context={"rubric": []},
-        tags=[],
+        tags=tags or [],
         license="MIT",
         attribution="attribution",
     )
@@ -62,6 +63,22 @@ def test_spread_takes_one_single_company_case_per_company_in_id_order() -> None:
 def test_spread_refuses_when_too_few_companies() -> None:
     with pytest.raises(ValueError, match="Only 2 single-company cases"):
         spread_across_companies(CASES, {"AAA": ["c1"], "BBB": ["c3"]}, 3)
+
+
+def test_with_tags_keeps_cases_carrying_any_of_the_tags_in_order() -> None:
+    cases = [
+        _case("c1", ["Trends"]),
+        _case("c2", ["Beat or Miss"]),
+        _case("c3", ["Qualitative", "Trends"]),
+        _case("c4", []),
+    ]
+    picked = with_tags(cases, ["Qualitative", "Beat or Miss"])
+    assert [c.case_id for c in picked] == ["c2", "c3"]
+
+
+def test_with_tags_refuses_a_tag_no_case_carries() -> None:
+    with pytest.raises(ValueError, match="'Nope'"):
+        with_tags([_case("c1", ["Trends"])], ["Trends", "Nope"])
 
 
 def test_read_case_ids_merges_files_and_skips_missing_ones(tmp_path: Path) -> None:
