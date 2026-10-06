@@ -87,6 +87,17 @@ class JudgeResult:
 
 
 @dataclass(frozen=True)
+class StructuredCall:
+    """A judge query's structured output and usage."""
+
+    structured: dict[str, Any]
+    cost_usd: float
+    tokens_in: int
+    tokens_out: int
+    num_turns: int
+
+
+@dataclass(frozen=True)
 class _JudgeCall:
     holds: dict[str, bool]
     cost_usd: float
@@ -163,7 +174,8 @@ def _build_prompt(case: Case, agent_result: AgentResult, items: list[_Item]) -> 
     )
 
 
-def _load_judge_config(models_config_path: Path) -> tuple[dict[str, Any], float]:
+def load_judge_config(models_config_path: Path) -> tuple[dict[str, Any], float]:
+    """The `judge` section of models.yaml, and the USD to EUR rate."""
     with models_config_path.open(encoding="utf-8") as f:
         config: dict[str, Any] = yaml.safe_load(f)
     return config["judge"], float(config["usd_to_eur_rate"])
@@ -181,7 +193,11 @@ def _build_options(judge_config: dict[str, Any]) -> ClaudeAgentOptions:
     )
 
 
-async def _run_async(prompt: str, options: ClaudeAgentOptions) -> _JudgeCall:
+async def structured_query(
+    prompt: str, options: ClaudeAgentOptions, required_key: str
+) -> StructuredCall:
+    """Run one judge query and return its structured output, which must hold
+    `required_key`. Raises when the run fails or returns no such output."""
     result_message: ResultMessage | None = None
     async for message in query(prompt=prompt, options=options):
         if isinstance(message, ResultMessage):
@@ -196,14 +212,13 @@ async def _run_async(prompt: str, options: ClaudeAgentOptions) -> _JudgeCall:
         )
 
     structured = result_message.structured_output
-    if not isinstance(structured, dict) or "results" not in structured:
+    if not isinstance(structured, dict) or required_key not in structured:
         raise TypeError(
             f"judge run produced no structured output (subtype={result_message.subtype!r})."
         )
-    holds = {entry["id"]: bool(entry["holds"]) for entry in structured["results"]}
     usage = result_message.usage or {}
-    return _JudgeCall(
-        holds=holds,
+    return StructuredCall(
+        structured=structured,
         cost_usd=result_message.total_cost_usd or 0.0,
         # Cached input counts as input, as in runtimes/agent_sdk.py.
         tokens_in=sum(
@@ -216,6 +231,18 @@ async def _run_async(prompt: str, options: ClaudeAgentOptions) -> _JudgeCall:
         ),
         tokens_out=int(usage.get("output_tokens", 0)),
         num_turns=result_message.num_turns,
+    )
+
+
+async def _run_async(prompt: str, options: ClaudeAgentOptions) -> _JudgeCall:
+    call = await structured_query(prompt, options, "results")
+    holds = {entry["id"]: bool(entry["holds"]) for entry in call.structured["results"]}
+    return _JudgeCall(
+        holds=holds,
+        cost_usd=call.cost_usd,
+        tokens_in=call.tokens_in,
+        tokens_out=call.tokens_out,
+        num_turns=call.num_turns,
     )
 
 
@@ -256,7 +283,7 @@ def judge_case(
     items = build_judge_items(case, rubrics)
 
     if items:
-        judge_config, usd_to_eur_rate = _load_judge_config(models_config_path)
+        judge_config, usd_to_eur_rate = load_judge_config(models_config_path)
         options = _build_options(judge_config)
         prompt = _build_prompt(case, agent_result, items)
         call = asyncio.run(_run_async(prompt, options))

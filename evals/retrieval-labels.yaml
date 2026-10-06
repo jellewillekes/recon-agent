@@ -1,0 +1,42 @@
+# Relevant filing-text chunks per case, for the retrieval metrics (#18,
+# src/recon/eval/retrieval.py). Labelled by the user on 2026-10-06 from
+# candidates drafted with `recon.cli retrieval propose` and direct searches of
+# corpus eb7c46d7bfe6. Chunk ids depend on the chunking: a corpus with other
+# chunk sizes needs new labels.
+#
+# Cases whose answer isn't in the corpus are left out, since an empty label
+# would score recall 1.0 and precision 0: TSM (no filings), KKR Series D
+# (offering document), MSCI leases (10-K note), BBSI nominees (proxy),
+# Airbnb CFO (not named), Paylocity regulatory risks (too broad to label).
+
+# AMD revenue guidance ranges, Q2 2024 to Q1 2025.
+finance-agent-bench:17931c2e2766:
+  - "0000002488-24-000054:earnings release:7"
+  - "0000002488-24-000121:earnings release:7"
+  - "0000002488-24-000161:earnings release:7"
+  - "0000002488-25-000009:earnings release:10"
+
+# TKO's consideration for the Endeavor assets at close. The October 2024
+# agreement-time figures are left out: the question asks for the value at close.
+finance-agent-bench:0b26fac6d4af:
+  - "0001193125-25-057890:earnings release:129"
+  - "0001193125-25-057890:earnings release:5"
+
+# When production begins at Smucker's McCalla facility.
+finance-agent-bench:13c5dd1da565:
+  - "0000091419-23-000072:md&a:50"
+  - "0000091419-23-000072:risk factors:12"
+  - "0000091419-24-000054:md&a:65"
+  - "0000091419-24-000054:risk factors:17"
+
+# Workday's gross revenue retention rate and its definition.
+finance-agent-bench:56d6f9e6e1a4:
+  - "0001327811-25-000056:md&a:16"
+  - "0001327811-25-000056:md&a:17"
+
+# Micron's FQ3 2024 GAAP gross margin: the guidance and the actual. The
+# reconciliation chunks repeating the guidance are left out as duplicates.
+finance-agent-bench:8f4e936df23b:
+  - "0000723125-24-000004:earnings release:2"
+  - "0000723125-24-000004:earnings release:3"
+  - "0000723125-24-000016:earnings release:1"

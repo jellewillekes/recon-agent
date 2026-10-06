@@ -444,10 +444,16 @@ def test_supervisor_gets_only_the_flag_tool() -> None:
 
 
 @pytest.mark.unit
-def test_no_role_is_granted_search_knowledge_until_its_prompts_say_so() -> None:
-    """ADR 0025: the grants (investigator, worker_facts, critic) land with the
-    prompt changes and a new baseline in step 13 part 2. Until then the
-    prompts say there is no document text, so no role may call the tool."""
+def test_search_knowledge_goes_to_worker_facts_critic_and_the_investigator() -> None:
+    """ADR 0025: lookups and the critic's checks search filing text; the
+    supervisor routes and the lookup worker resolves ids, so neither does."""
     roles = yaml.safe_load(Path("config/roles.yaml").read_text())
-    assert not any("search_knowledge" in c.get("tools", []) for c in roles.values())
-    assert not any("search_knowledge" in tool for tool in agent_sdk.ALLOWED_TOOLS)
+    with_tool = {
+        role for role, c in roles.items() if "search_knowledge" in c.get("tools", [])
+    }
+    assert with_tool == {"worker_facts", "critic"}
+    critic = multi_agent._build_role_options(
+        "critic", roles["critic"], Path("prompts"), multi_agent._CRITIC_SCHEMA
+    )
+    assert critic.allowed_tools == ["mcp__recon-tools__search_knowledge_tool", "Read"]
+    assert "mcp__recon-tools__search_knowledge_tool" in agent_sdk.ALLOWED_TOOLS

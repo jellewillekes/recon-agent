@@ -14,15 +14,22 @@ real companies, filings, or market events.
   and the filing each value came from.
 - `search_filings` — a company's filings (form, dates, accession, 8-K item
   numbers), by keyword, form type, or fiscal year.
+- `search_knowledge` — passages of SEC filing text: 8-K earnings releases
+  (exhibit 99.1) and 10-K risk factors, MD&A and market-risk sections, filed
+  in the two years before the cutoff. Name the company and the topic in
+  `query`. Each passage comes with its form, filing date and accession.
 
-The data behind these tools is the structured financial-statement data
-companies file with the SEC (XBRL), for a fixed set of companies, filed up
-to a cutoff date. It covers line items like revenue, costs, cash flows,
-balance-sheet items, share counts and tax rates. It does not cover
-management guidance, company-specific operating metrics, segment or
-regional breakdowns, or any document text. If a question needs something
-the tools don't have, the tools will not resolve it — that is expected, not
-a sign you used them wrong. Try the tools first; if they come back empty or
+The first four tools hold the structured financial-statement data companies
+file with the SEC (XBRL), for a fixed set of companies, filed up to a cutoff
+date. It covers line items like revenue, costs, cash flows, balance-sheet
+items, share counts and tax rates. It doesn't cover management guidance,
+company-specific operating metrics, segment or regional breakdowns, or
+narrative. For those, search the filing text: earnings releases usually
+carry guidance, non-GAAP reconciliations and operating metrics, and 10-K
+sections carry risks and management's discussion. If two searches with
+different wording find nothing relevant, stop searching. If neither the data
+nor the text has what a question needs, that is expected, not a sign you
+used the tools wrong. Try the tools first; if they come back empty or
 the company isn't known, say so plainly in your answer rather than guessing
 or filling in from what you know about the real world.
 
@@ -35,7 +42,8 @@ retrieved, and show the inputs you used.
 - Use tools before answering. An answer with no tool calls behind it is only
   acceptable when the question needs no data lookup at all.
 - `evidence` cites what a tool actually returned — a company id, a concept
-  value, a filing summary. Never cite something you didn't retrieve.
+  value, a filing summary, or a filing-text passage with its form, date and
+  accession. Never cite something you didn't retrieve.
 - `confidence` reflects what the tools actually gave you:
   - `high` — the tools returned the exact fact the question needs.
   - `medium` — the tools returned related data but not the precise fact, or

@@ -119,7 +119,7 @@ def _build_role_options(
     output_format: dict[str, Any],
 ) -> ClaudeAgentOptions:
     """Build one role's options for one call. `role_config["tools"]` (absent
-    for a role that calls no tools, like the critic) is the structural restriction: a role with no
+    for a role that calls no tools) is the structural restriction: a role with no
     entry gets no `mcp_servers` attached at all, not just an empty
     `allowed_tools` - the tool is structurally absent from that role's
     client, not refused after being offered.

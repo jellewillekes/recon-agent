@@ -40,6 +40,8 @@ _TOOL_NAMES = (
     "list_financial_concepts_tool",
     "get_financial_fact_tool",
     "search_filings_tool",
+    # Registered only when a filing-text corpus is built (docs/adr/0025).
+    "search_knowledge_tool",
     # Single mode has no worker/supervisor split - the one agent acts as
     # supervisor, so it gets the write path too (docs/contracts.md section 6:
     # "supervisor only").

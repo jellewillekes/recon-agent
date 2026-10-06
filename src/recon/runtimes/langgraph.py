@@ -49,6 +49,8 @@ _TOOL_NAMES = (
     "list_financial_concepts_tool",
     "get_financial_fact_tool",
     "search_filings_tool",
+    # Registered only when a filing-text corpus is built (docs/adr/0025).
+    "search_knowledge_tool",
     "flag_case_for_review_tool",
 )
 

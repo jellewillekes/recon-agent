@@ -8,12 +8,14 @@ they go to the gitignored data/ folder, not into the repo.
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 import yaml
 
 from recon.adapters.finance_agent_bench import fetch_csv, load_cases
 from recon.eval import retrieval
 from recon.eval.case_selection import read_case_file, select_cases
+from recon.eval.faithfulness import Passages
 from recon.tools.data_source import knowledge_chunks_path
 from recon.tools.knowledge_search import KnowledgeBackend
 
@@ -34,6 +36,20 @@ def open_backend() -> KnowledgeBackend | None:
         )
         return None
     return backend
+
+
+def replay_passages(backend: KnowledgeBackend) -> Passages:
+    """Re-run a search for the faithfulness score (docs/adr/0026). A search
+    that fails returns no passages, so that case goes unscored, with a note."""
+
+    def passages(query: str, top_k: int) -> list[dict[str, Any]]:
+        result = backend.search(query, top_k)
+        if result.status in ("unavailable", "invalid_input"):
+            print(f"Faithfulness replay failed for {query!r}: {result.message}")
+            return []
+        return result.data
+
+    return passages
 
 
 def _cmd_propose(args: argparse.Namespace) -> None:

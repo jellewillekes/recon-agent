@@ -43,5 +43,5 @@ def test_every_multi_agent_role_is_isolated(role: str) -> None:
 
 @pytest.mark.unit
 def test_judge_is_isolated() -> None:
-    judge_config, _ = judge._load_judge_config(judge.DEFAULT_MODELS_CONFIG_PATH)
+    judge_config, _ = judge.load_judge_config(judge.DEFAULT_MODELS_CONFIG_PATH)
     _assert_isolated(judge._build_options(judge_config))
