@@ -2,13 +2,14 @@
 
 How the pieces of recon-agent fit together. Each section has a diagram and links to the
 doc or ADR that holds the detail. Module boundaries are defined in
-[`contracts.md`](contracts.md). This page describes them, it doesn't redefine them.
+[`contracts.md`](contracts.md). This page describes them, it doesn't redefine them. Terms are explained in the
+[glossary](glossary.md).
 
 ## System context
 
-An analyst question goes to an agent runtime. The runtime calls MCP tools that read SEC
-EDGAR data. The evaluation harness scores both the answer and the path the agent took,
-then gates the result against a committed baseline.
+An analyst question goes to an agent [runtime](glossary.md#runtime). The runtime calls [MCP](glossary.md#mcp) tools that read [SEC
+EDGAR](glossary.md#sec-edgar) data. The evaluation [harness](glossary.md#harness) scores both the answer and the path the agent took,
+then [gates](glossary.md#promotion-gate) the result against a committed [baseline](glossary.md#baseline).
 
 ```mermaid
 flowchart LR
@@ -37,7 +38,7 @@ scores are comparable.
 
 ## Module map
 
-Every arrow below crosses a boundary typed by a Pydantic model in
+Every arrow below crosses a boundary typed by a Pydantic [contract](glossary.md#contract) in
 [`src/recon/contracts.py`](../src/recon/contracts.py).
 
 ```mermaid
@@ -84,7 +85,7 @@ flowchart TB
 | Write path | `ReviewFlag`, `ReviewFlagResult` | §6 |
 | Harness → gate | `CaseScore`, `EvalRun` | §7, §9 |
 
-Two stores, deliberately separate. DuckDB serves read-only analytics to the tools.
+Two stores, deliberately separate. [DuckDB](glossary.md#duckdb) serves read-only analytics to the tools.
 Postgres holds everything with concurrent writers: LangGraph checkpoints, review flags
 and pgvector embeddings.
 
@@ -94,7 +95,7 @@ and pgvector embeddings.
 
 One investigator gets four read tools (`list_companies`, `list_financial_concepts`,
 `get_financial_fact`, `search_filings`) plus `flag_case_for_review`, and answers with a
-structured `answer`, `evidence` and `confidence`. Budgets in
+structured `answer`, `evidence` and `confidence`. [Budgets](glossary.md#run-budget) in
 [`config/models.yaml`](../config/models.yaml) cap each run at 30 tool calls, 300k tokens
 and 100 seconds. A breach ends the run with a partial `AgentResult` instead of an
 exception ([ADR 0009](adr/0009-tool-reliability-and-run-budgets.md)).
@@ -102,7 +103,7 @@ exception ([ADR 0009](adr/0009-tool-reliability-and-run-budgets.md)).
 ### Multi mode
 
 A supervisor decomposes the question into at most four subtasks, each for one of two
-workers with disjoint tool sets. It synthesizes their findings into an answer, and a
+[workers](glossary.md#supervisor-worker-and-critic) with disjoint tool sets. It synthesizes their findings into an answer, and a
 critic checks that answer against the evidence. Tool restriction is structural. Each
 role's allowed tools come from [`config/roles.yaml`](../config/roles.yaml), not from its
 prompt.
@@ -134,8 +135,8 @@ happens.
 |---|---|---|
 | Orchestration | One Claude Agent SDK `query()` per step: decompose, each subtask, synthesize, critic. Workers run one after another | A `StateGraph`: `decompose` → `Send` to workers in parallel → `synthesize` → `critic` → `confirm_flag` |
 | Review flag | The supervisor calls `flag_case_for_review` itself, during decompose or synthesize | The supervisor sets `flag_reason`. The `confirm_flag` node then writes the flag in Python, after the critic |
-| Human-in-the-loop | None. The supervisor confirms its own flag | `interrupt()` in `confirm_flag`, resumed with the human's decision |
-| Checkpoints | None | `AsyncPostgresSaver`, or `InMemorySaver` without `DATABASE_URL` |
+| [Human-in-the-loop](glossary.md#human-in-the-loop) | None. The supervisor confirms its own flag | `interrupt()` in `confirm_flag`, resumed with the human's decision |
+| [Checkpoints](glossary.md#checkpoint) | None | `AsyncPostgresSaver`, or `InMemorySaver` without `DATABASE_URL` |
 | Billing | Agent SDK subscription credit | Metered `ANTHROPIC_API_KEY` |
 
 Full comparison: [`runtimes.md`](runtimes.md). Why four calls instead of SDK subagents:
@@ -144,15 +145,15 @@ Full comparison: [`runtimes.md`](runtimes.md). Why four calls instead of SDK sub
 ### The write path
 
 `flag_case_for_review` is the only write. As a tool, only the single-mode investigator
-and the sdk supervisor have it. A write takes three steps. A dry run returns
-`would_write` with a preview. An unconfirmed call returns `confirmation_required` and a
+and the sdk supervisor have it. An optional dry run returns `would_write`
+with a preview. An unconfirmed call returns `confirmation_required` and a
 `preview_token`. Only a call that passes the token back with `confirmed` returns
 `created`. In the sdk runtime and in langgraph single mode, the agent answers the
-confirmation itself. Only langgraph multi mode pauses for a human. An idempotency key makes a
+confirmation itself. Only langgraph multi mode pauses for a human. An [idempotency key](glossary.md#write-path) makes a
 retried write return `already_exists` instead of a duplicate row
 ([ADR 0008](adr/0008-review-flag-write-path.md)). Deterministic safety graders in
 [`safety_eval.py`](../src/recon/safety_eval.py) check that a write followed this protocol
-and that injected instructions in tool data never trigger one.
+and that [injected instructions](glossary.md#prompt-injection) in tool data never trigger one.
 
 ## Evaluation pipeline
 
@@ -181,11 +182,11 @@ flowchart TB
 
 What each piece guards against:
 
-- **Path, not just answer.** The judge's `tool_efficiency` rubric scores the path the
+- **Path, not just answer.** The [judge](glossary.md#llm-judge)'s `tool_efficiency` [rubric](glossary.md#rubric) scores the path the
   agent took. Each `CaseScore` also records tool-call accuracy, the share of calls that
   returned a usable status. A tool-path match exists too, but finance-agent-bench sets no
   expected path, so it's N/A for every current case.
-- **Comparability.** The gate refuses a run whose rubric version, dataset, tool data
+- **[Comparability](glossary.md#comparability).** The gate refuses a run whose rubric version, dataset, tool data
   snapshot or case set differs from the baseline's, or that stopped at its cost cap
   ([ADR 0018](adr/0018-run-comparability-in-the-gate.md)). The CLI checks this before
   the run starts.
@@ -217,9 +218,9 @@ flowchart LR
     HYB --> F2[search_knowledge]
 ```
 
-Nothing filed after `filed_cutoff` in [`config/sec_edgar.yaml`](../config/sec_edgar.yaml)
+Nothing filed after [`filed_cutoff`](glossary.md#snapshot-and-cutoff) in [`config/sec_edgar.yaml`](../config/sec_edgar.yaml)
 is kept, so the tools can't see data newer than the questions. Everything under `data/`
-is gitignored. `search_knowledge` ships in the MCP server but isn't granted to any role
+is gitignored. `search_knowledge`, the [RAG](glossary.md#rag) tool, ships in the MCP server but isn't granted to any role
 yet. The grants, prompt changes and a new baseline land together in #18 part 2
 ([ADR 0025](adr/0025-retrieval-over-filing-text.md)). Sources and licensing:
 [`data-sources.md`](data-sources.md).
@@ -243,7 +244,7 @@ flowchart TB
 ```
 
 The API serves `POST /investigate`, `/healthz`, `/readyz` and `/metrics`, plus a small
-static UI. Spans follow the OpenTelemetry GenAI conventions: `eval.run` → `eval.case` →
+static UI. [Spans](glossary.md#opentelemetry) follow the OpenTelemetry GenAI conventions: `eval.run` → `eval.case` →
 `invoke_agent` → `execute_tool <tool>`, with the judge call beside it
 ([`observability.md`](observability.md)). Deployment detail, including what changes for a
 managed cluster: [`deployment.md`](deployment.md).
