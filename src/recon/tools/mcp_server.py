@@ -153,9 +153,18 @@ def build_server(
     return server
 
 
+def warm_up_requested() -> bool:
+    """Whether to load the search models as the server starts (#99).
+
+    Only a caller whose server lives for a whole run asks. LangGraph and the
+    health probe start a server per call, which would abandon the load.
+    """
+    return os.environ.get("RECON_WARM_SEARCH_MODELS") == "1"
+
+
 def main() -> None:
     conn = open_tool_data()
-    server = build_server(conn, knowledge_chunks_path(), warm_up=True)
+    server = build_server(conn, knowledge_chunks_path(), warm_up=warm_up_requested())
     server.run()
 
 

@@ -67,3 +67,9 @@ Built to fit the rest of the harness:
   storing tool outputs on `ToolCall` (a contract change).
 - 10-K sections are found by their "Item N" headings. A filing that formats them
   differently contributes no 10-K text, which `fetch-text`'s chunk counts show.
+- The Agent SDK runtimes start one tool server per case, and its first search spent
+  about 10 s loading the models, inside the case's wall-clock budget. Those servers
+  now load the models in the background as they start (#99), so a case that never
+  searches loads them too, off its critical path. LangGraph and the health probe
+  start a server per call, so they don't warm up, and LangGraph's first search
+  still pays the load.

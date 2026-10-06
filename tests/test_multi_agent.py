@@ -457,3 +457,20 @@ def test_search_knowledge_goes_to_worker_facts_critic_and_the_investigator() -> 
     )
     assert critic.allowed_tools == ["mcp__recon-tools__search_knowledge_tool", "Read"]
     assert "mcp__recon-tools__search_knowledge_tool" in agent_sdk.ALLOWED_TOOLS
+
+
+@pytest.mark.unit
+def test_sdk_tool_servers_ask_for_the_search_models_warm_up() -> None:
+    """#99: an Agent SDK tool server lives for the whole case, so loading the
+    models as it starts takes them off the first search's clock."""
+    facts = multi_agent._build_role_options(
+        "worker_facts", ROLES_CONFIG["worker_facts"], Path("prompts"), {}
+    )
+    single, _, _ = agent_sdk._build_options(
+        Path("config/models.yaml"), Path("prompts/investigator.md")
+    )
+    for options in (facts, single):
+        servers: Any = options.mcp_servers
+        assert (
+            servers[agent_sdk.MCP_SERVER_NAME]["env"]["RECON_WARM_SEARCH_MODELS"] == "1"
+        )
