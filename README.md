@@ -50,15 +50,17 @@ filing text ([`evals/text-cases.txt`](evals/text-cases.txt)), with `search_knowl
 
 | Runtime | Mode | Task completion | Answer score | Tool-call accuracy | Total cost (€) | Cases |
 |---|---|---|---|---|---|---|
-| sdk | single | 0.857 | 0.518 | 1.000 | 1.07 | 7 (text cases) |
+| sdk | single | 1.000 | 0.652 | 1.000 | 1.34 | 7 (text cases) |
 | sdk | multi | — (pending) | — (pending) | — (pending) | — (pending) | — |
 | langgraph | single | — (pending) | — (pending) | — (pending) | — (pending) | — |
 | langgraph | multi | — (pending) | — (pending) | — (pending) | — (pending) | — |
 
-The sdk single row is run `eval-20261006T103610Z`, judged on Haiku 4.5. One case hit the
-100 s wall-clock budget. Seven cases is a small sample: one case moves a mean by 0.14. The
-earlier baseline, on the 7-case [smoke set](docs/glossary.md#smoke-set) without filing text,
-is run `eval-20261001T085035Z` (answer score 0.566, €0.68). The other rows wait for an explicit go-ahead,
+The sdk single row is run `eval-20261006T204756Z`, judged on Haiku 4.5. The same run
+repeated scored 0.696, and single cases moved by up to 0.47, so treat a change in the
+answer score under about 0.1 as noise ([run-to-run noise](docs/eval-noise.md)). The earlier
+baselines are `eval-20261006T103610Z` (text cases, before the company filter, 0.518) and
+`eval-20261001T085035Z` (the 7-case [smoke set](docs/glossary.md#smoke-set) without filing
+text, 0.566). The other rows wait for an explicit go-ahead,
 because each run spends model credit (see `AGENTS.md`'s Cost section).
 
 ## Quickstart

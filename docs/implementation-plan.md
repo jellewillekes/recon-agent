@@ -301,7 +301,9 @@ Covers *CI/CD pipelines, production deployment*.
 
 **Verify:** `uv run pytest tests/test_retrieval.py -q` green; new metrics appear in `EvalRun.aggregate`.
 
-**Part 1 done (#91):** corpus, pgvector index, `search_knowledge`, retrieval metrics (ADR 0025). **Part 2:** `search_knowledge` granted to the investigator, `worker_facts` and the critic, the user's retrieval labels, and a new baseline on the 7 text cases (`eval-20261006T103610Z`). Eval runs need `DATABASE_URL` pointing at the index, or every search returns "index unavailable".
+**Part 1 done (#91):** corpus, pgvector index, `search_knowledge`, retrieval metrics (ADR 0025). **Part 2:** `search_knowledge` granted to the investigator, `worker_facts` and the critic, the user's retrieval labels, and a new baseline on the 7 text cases (`eval-20261006T103610Z`). Eval runs need `DATABASE_URL` pointing at the index; `eval` refuses to start without it (#100).
+
+**Step 13 done.** Follow-ups: full-text search matches any term (#98, #106), more labels (#102), runs record their tool calls and the gate sees ranking changes (#101, #105, #107), and a `company_id` filter for `search_knowledge` with a new baseline, `eval-20261006T204756Z` (#104). The run budget went to 150 s (#99), and the run-to-run noise is in `docs/eval-noise.md` (#77).
 
 ---
 

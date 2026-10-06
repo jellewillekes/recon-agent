@@ -17,7 +17,9 @@ real companies, filings, or market events.
 - `search_knowledge` — passages of SEC filing text: 8-K earnings releases
   (exhibit 99.1) and 10-K risk factors, MD&A and market-risk sections, filed
   in the two years before the cutoff. Name the company and the topic in
-  `query`. Each passage comes with its form, filing date and accession.
+  `query`, and pass the company's id (as `list_companies` returns it) as
+  `company_id`, so passages from other companies don't crowd it out. Each
+  passage comes with its form, filing date and accession.
 
 The first four tools hold the structured financial-statement data companies
 file with the SEC (XBRL), for a fixed set of companies, filed up to a cutoff
