@@ -40,3 +40,18 @@ finance-agent-bench:8f4e936df23b:
   - "0000723125-24-000004:earnings release:2"
   - "0000723125-24-000004:earnings release:3"
   - "0000723125-24-000016:earnings release:1"
+
+# AMD's non-GAAP gross profit against its guide, Q1 to Q4 2024: each quarter's
+# guidance (revenue range and gross margin) and the reconciliation table with
+# the actual non-GAAP gross profit. The summary tables repeating the actuals
+# are left out as duplicates. Chosen by Claude on the user's instruction on
+# 2026-10-06, not labelled by the user.
+finance-agent-bench:408f6ef07a58:
+  - "0000002488-24-000009:earnings release:10"
+  - "0000002488-24-000054:earnings release:7"
+  - "0000002488-24-000121:earnings release:7"
+  - "0000002488-24-000161:earnings release:7"
+  - "0000002488-24-000054:earnings release:8"
+  - "0000002488-24-000121:earnings release:8"
+  - "0000002488-24-000161:earnings release:8"
+  - "0000002488-25-000009:earnings release:11"
