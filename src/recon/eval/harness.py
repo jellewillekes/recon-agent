@@ -9,7 +9,7 @@ import yaml
 
 from recon.adapters.finance_agent_bench import ATTRIBUTION, DATASET_ID, LICENSE
 from recon.contracts import AgentResult, Case, CaseScore, EvalRun
-from recon.eval import hashing, metrics
+from recon.eval import faithfulness, hashing, metrics
 from recon.eval.gate import SKIPPED_AT_COST_CAP
 from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH, judge_case
 from recon.eval.rubrics import DEFAULT_RUBRICS_DIR, Rubric, load_rubrics
@@ -42,11 +42,19 @@ def score_case(
     rubrics: dict[str, Rubric],
     *,
     models_config_path: Path = DEFAULT_MODELS_CONFIG_PATH,
+    passages: faithfulness.Passages | None = None,
 ) -> tuple[CaseScore, AgentResult]:
-    """Run, judge and score one case, under an `eval.case` trace span."""
+    """Run, judge and score one case, under an `eval.case` trace span.
+
+    With `passages`, an answer that used filing-text search is also scored
+    for faithfulness to what the search returned."""
     with span("eval.case", **{"recon.case_id": case.case_id}) as case_span:
         score, agent_result = _score_case(
-            case, runtime, rubrics, models_config_path=models_config_path
+            case,
+            runtime,
+            rubrics,
+            models_config_path=models_config_path,
+            passages=passages,
         )
         case_span.set_attributes(
             {
@@ -64,6 +72,7 @@ def _score_case(
     rubrics: dict[str, Rubric],
     *,
     models_config_path: Path,
+    passages: faithfulness.Passages | None,
 ) -> tuple[CaseScore, AgentResult]:
     with span("invoke_agent") as agent_span:
         agent_result = runtime.run(case)
@@ -113,6 +122,17 @@ def _score_case(
         rubric_scores = judge_result.rubric_scores
         answer_score = metrics.weighted_answer_score(rubric_scores, rubrics)
         judge_cost_eur = judge_result.cost_eur
+        if passages is not None:
+            faithful = _judge_faithfulness(
+                case, agent_result, passages, models_config_path
+            )
+            if faithful.score is not None:
+                # Not a rubric, so weighted_answer_score has already ignored it.
+                rubric_scores = {
+                    **rubric_scores,
+                    faithfulness.DIMENSION: faithful.score,
+                }
+            judge_cost_eur += faithful.cost_eur
 
     score = CaseScore(
         case_id=case.case_id,
@@ -127,6 +147,28 @@ def _score_case(
         notes="; ".join(notes_parts),
     )
     return score, agent_result
+
+
+def _judge_faithfulness(
+    case: Case,
+    agent_result: AgentResult,
+    passages: faithfulness.Passages,
+    models_config_path: Path,
+) -> faithfulness.FaithfulnessResult:
+    """`faithfulness.judge_faithfulness` under its own judge trace span."""
+    with span("chat judge faithfulness") as judge_span:
+        result = faithfulness.judge_faithfulness(
+            case, agent_result, passages, models_config_path=models_config_path
+        )
+        record_judge_call(
+            judge_span,
+            model=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            num_turns=result.num_turns,
+            cost_eur=result.cost_eur,
+        )
+    return result
 
 
 def _aggregate(
@@ -171,6 +213,9 @@ def _aggregate(
             if dimension in s.rubric_scores
         ]
         aggregate[f"{dimension}_mean"] = sum(values) / len(values)
+        if dimension == faithfulness.DIMENSION:
+            # Scored only on cases that searched, so the mean may rest on few.
+            aggregate["faithfulness_scored_cases"] = float(len(values))
 
     return aggregate
 
@@ -211,6 +256,10 @@ def run_evaluation(
     # Stop before a case that could take the run past this many euros. None
     # means no cap. See _over_budget for how "could" is judged.
     max_cost_eur: float | None = None,
+    # Replays filing-text searches for the faithfulness score. Passed in, like
+    # tool_data_snapshot, so the harness depends on no tool module. None skips
+    # faithfulness.
+    passages: faithfulness.Passages | None = None,
 ) -> EvalRun:
     if limit is not None:
         cases = cases[:limit]
@@ -226,6 +275,7 @@ def run_evaluation(
             roles_config_path=roles_config_path,
             tool_data_snapshot=tool_data_snapshot,
             max_cost_eur=max_cost_eur,
+            passages=passages,
         )
         run_span.set_attributes(
             {
@@ -246,6 +296,7 @@ def _run_cases(
     *,
     models_config_path: Path,
     max_cost_eur: float | None,
+    passages: faithfulness.Passages | None,
 ) -> tuple[list[CaseScore], float, str, str]:
     """Score cases until done or the cost cap is near. Returns the scores, the
     agent's share of the cost, and the runtime and mode that ran them."""
@@ -257,7 +308,11 @@ def _run_cases(
         if _over_budget(case_scores, max_cost_eur):
             break
         score, agent_result = score_case(
-            case, runtime, rubrics, models_config_path=models_config_path
+            case,
+            runtime,
+            rubrics,
+            models_config_path=models_config_path,
+            passages=passages,
         )
         case_scores.append(score)
         agent_cost_eur += agent_result.cost_eur
@@ -275,6 +330,7 @@ def _evaluate(
     roles_config_path: Path,
     tool_data_snapshot: str | None,
     max_cost_eur: float | None,
+    passages: faithfulness.Passages | None,
 ) -> EvalRun:
     case_scores, agent_cost_eur, runtime_name, mode = _run_cases(
         cases,
@@ -282,6 +338,7 @@ def _evaluate(
         rubrics,
         models_config_path=models_config_path,
         max_cost_eur=max_cost_eur,
+        passages=passages,
     )
     run_cases = cases[: len(case_scores)]
     aggregate = _aggregate(run_cases, case_scores, agent_cost_eur)
