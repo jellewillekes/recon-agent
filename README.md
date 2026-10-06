@@ -1,7 +1,7 @@
 # recon-agent
 
 An evaluation platform for AI agents doing financial research. An agent answers analyst
-questions with tools over real SEC EDGAR data. The harness measures how well it does
+questions with tools over real [SEC EDGAR](docs/glossary.md#sec-edgar) data. The [harness](docs/glossary.md#harness) measures how well it does
 that: not just the answer, but the path it took to reach it.
 
 **The harness is the product, not the agent.** The agent is the thing being measured.
@@ -16,35 +16,36 @@ flowchart LR
 ```
 
 Full diagrams for every subsystem: [`docs/architecture.md`](docs/architecture.md).
+New to a term? See the [glossary](docs/glossary.md).
 
 ## What's in it
 
-- **Two runtimes, two modes.** The Claude Agent SDK and LangGraph each run a single
-  investigator or a supervisor with two workers and a critic. All four combinations share
+- **Two [runtimes](docs/glossary.md#runtime), [two modes](docs/glossary.md#single-and-multi-mode).** The [Claude Agent SDK](docs/glossary.md#claude-agent-sdk) and [LangGraph](docs/glossary.md#langgraph) each run a single
+  investigator or a [supervisor with two workers and a critic](docs/glossary.md#supervisor-worker-and-critic). All four combinations share
   the same cases, tools and judge, so their scores compare directly
   ([`docs/runtimes.md`](docs/runtimes.md)).
-- **Real tool data.** MCP tools query XBRL facts and filings from SEC EDGAR through
-  DuckDB. Hybrid search over earnings releases and 10-K sections (pgvector, full-text
-  search and a reranker) is built but not yet granted to any agent role
+- **Real tool data.** [MCP](docs/glossary.md#mcp) tools query [XBRL](docs/glossary.md#xbrl) facts and filings from SEC EDGAR through
+  [DuckDB](docs/glossary.md#duckdb). For [RAG](docs/glossary.md#rag), [hybrid search](docs/glossary.md#hybrid-search) over earnings releases and 10-K sections ([pgvector](docs/glossary.md#pgvector), full-text
+  search and a [reranker](docs/glossary.md#cross-encoder-reranker)) is built but not yet granted to any agent role
   ([`docs/data-sources.md`](docs/data-sources.md)).
-- **Scores the path.** Each case gets an answer score from an LLM judge, weighted across
-  correctness, grounding and tool-efficiency rubrics. It also gets tool-call accuracy,
+- **Scores the path.** Each case gets an [answer score](docs/glossary.md#answer-score) from an [LLM judge](docs/glossary.md#llm-judge), weighted across
+  correctness, grounding and tool-efficiency [rubrics](docs/glossary.md#rubric). It also gets [tool-call accuracy](docs/glossary.md#tool-call-accuracy),
   the share of tool calls that returned a usable result.
-- **A promotion gate.** A candidate run is compared with the committed baseline. The gate
-  refuses runs that measured something different: another rubric, dataset, data snapshot
-  or case set. It fails a run whose task completion, answer score or cost regressed.
+- **A [promotion gate](docs/glossary.md#promotion-gate).** A candidate run is compared with the committed [baseline](docs/glossary.md#baseline). The gate
+  refuses runs that [measured something different](docs/glossary.md#comparability): another rubric, dataset, data snapshot
+  or case set. It fails a run whose [task completion](docs/glossary.md#task-completion), answer score or cost regressed.
 - **Guardrails.** Tools always return one of five statuses, never an exception. Runs
-  have budgets for tool calls, tokens and time. The one write path needs confirmation,
-  and prompt-injection tests check it's never triggered by tool data.
-- **Cost controls.** Eval runs are capped at €1 by default, and the judge runs on
+  have [budgets](docs/glossary.md#run-budget) for tool calls, tokens and time. The one [write path](docs/glossary.md#write-path) needs confirmation,
+  and [prompt-injection](docs/glossary.md#prompt-injection) tests check it's never triggered by tool data.
+- **Cost controls.** Eval runs are [capped at €1](docs/glossary.md#cost-cap) by default, and the judge runs on
   Haiku 4.5.
-- **Production shape.** A FastAPI service with health, readiness and Prometheus metrics,
-  OpenTelemetry tracing into Grafana, a Docker image scanned in CI, and a Helm chart
-  tested on k3d.
+- **Production shape.** A [FastAPI](docs/glossary.md#fastapi) service with health, readiness and [Prometheus](docs/glossary.md#tempo-prometheus-and-grafana) metrics,
+  [OpenTelemetry](docs/glossary.md#opentelemetry) tracing into Grafana, a Docker image scanned in CI, and a [Helm chart
+  tested on k3d](docs/glossary.md#helm-and-k3d).
 
 ## Results
 
-The first baseline is recorded on a 7-case smoke set
+The first baseline is recorded on a 7-case [smoke set](docs/glossary.md#smoke-set)
 ([`evals/baseline.json`](evals/baseline.json)).
 
 | Runtime | Mode | Task completion | Answer score | Tool-call accuracy | Total cost (€) | Cases |
@@ -93,6 +94,7 @@ docker compose -f docker/compose.yaml up -d
 
 | Question | Doc |
 |---|---|
+| What does a term mean? | [`docs/glossary.md`](docs/glossary.md) |
 | How does it fit together? | [`docs/architecture.md`](docs/architecture.md) |
 | What crosses each module boundary? | [`docs/contracts.md`](docs/contracts.md) |
 | How do the runtimes differ? | [`docs/runtimes.md`](docs/runtimes.md) |
