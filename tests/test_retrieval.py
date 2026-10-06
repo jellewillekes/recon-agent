@@ -257,7 +257,7 @@ class _FakeConn:
             raise psycopg.OperationalError("connection lost")
         if "embedding <=>" in sql:
             ids = ["c0", "c1", "c2"]
-        elif "websearch_to_tsquery" in sql:
+        elif "tsv @@" in sql:
             ids = ["c3", "c1"]
         else:
             return _Rows([ROWS[i] for i in params[1]])
@@ -480,6 +480,33 @@ def _hash_embed(texts: Any) -> list[list[float]]:
         norm = sum(x * x for x in raw) ** 0.5
         vectors.append([x / norm for x in raw])
     return vectors
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not os.environ.get("RECON_TEST_DATABASE_URL"),
+    reason="needs RECON_TEST_DATABASE_URL pointing at Postgres",
+)
+def test_full_text_matches_passages_holding_only_some_query_terms() -> None:
+    """#98: a question names words a passage doesn't repeat, so requiring every
+    term matched almost nothing. Any term may match; more terms rank higher."""
+    sql = (
+        f"SELECT to_tsvector('english', %s) @@ q, ts_rank(to_tsvector('english', %s), q)"
+        f" FROM {knowledge_search._ANY_TERM} q"
+    )
+    query = "When does Fictional Corp expect production to begin?"
+    with knowledge_index.connect(os.environ["RECON_TEST_DATABASE_URL"]) as conn:
+
+        def match(passage: str) -> tuple[bool, float]:
+            row = conn.execute(sql, (passage, passage, query)).fetchone()
+            assert row is not None
+            return row[0], row[1]
+
+        some, rank_some = match("Production begins in 2025.")
+        more, rank_more = match("Fictional expects production to begin in 2025.")
+        none, _ = match("Revenue grew.")
+    assert some and more and not none
+    assert rank_more > rank_some
 
 
 @pytest.mark.integration
