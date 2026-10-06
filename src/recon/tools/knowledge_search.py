@@ -5,7 +5,9 @@ candidates. Reciprocal rank fusion merges them, and a local cross-encoder
 reranks the best of the merged list. See docs/adr/0025-retrieval-over-filing-text.md.
 """
 
+import logging
 import os
+import threading
 import time
 from collections.abc import Callable, Sequence
 from functools import cache
@@ -29,6 +31,8 @@ from recon.tools.knowledge_index import (
     indexed_count,
     sentence_embedder,
 )
+
+logger = logging.getLogger(__name__)
 
 # (query, passages) -> one relevance score per passage, higher is better.
 Reranker = Callable[[str, Sequence[str]], list[float]]
@@ -268,8 +272,8 @@ def cross_encoder_reranker(model_name: str) -> Reranker:
 
 
 class KnowledgeBackend:
-    """Opens the index connection and loads the models on the first search, so
-    starting the server stays fast and a run that never searches pays nothing."""
+    """Opens the index connection on the first search. The models load then
+    too, unless `start_warm_up` loaded them in the background already."""
 
     def __init__(self, chunks_path: Path) -> None:
         self.config = load_knowledge_config()
@@ -278,6 +282,26 @@ class KnowledgeBackend:
         self.embed = sentence_embedder(self.config.embedding_model)
         self.rerank = cross_encoder_reranker(self.config.reranker_model)
         self._conn: psycopg.Connection[Any] | None = None
+        self._warm_up: threading.Thread | None = None
+
+    def start_warm_up(self) -> None:
+        """Load both models in a background thread (#99).
+
+        The tool server starts per case, and loading took about 10 s of the
+        first search, inside the case's wall-clock budget. Started with the
+        server, it overlaps the agent's first model call instead. A case that
+        never searches loads them anyway, off its critical path.
+        """
+        self._warm_up = threading.Thread(target=self._load_models, daemon=True)
+        self._warm_up.start()
+
+    def _load_models(self) -> None:
+        try:
+            self.embed(["warm up"])
+            self.rerank("warm up", ["warm up"])
+        except (ImportError, OSError) as exc:
+            # The first search hits the same error and reports it as a status.
+            logger.warning("Warming up the search models failed: %s", exc)
 
     def connection(self) -> psycopg.Connection[Any] | None:
         """The index connection, or None when the index isn't reachable or built."""
@@ -299,6 +323,9 @@ class KnowledgeBackend:
 
     def search(self, query: str, top_k: int) -> ToolResult:
         """`search_knowledge` against this backend's index."""
+        if self._warm_up is not None:
+            # Waits rather than loading the models a second time alongside it.
+            self._warm_up.join()
         conn = self.connection()
         return search_knowledge(
             conn,

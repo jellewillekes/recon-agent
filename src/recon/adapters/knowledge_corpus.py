@@ -41,6 +41,7 @@ class KnowledgeConfig:
     candidates_per_search: int
     rerank_pool: int
     rrf_k: int
+    search_version: int
 
 
 def load_knowledge_config(path: Path = DEFAULT_KNOWLEDGE_CONFIG) -> KnowledgeConfig:
@@ -186,3 +187,16 @@ def corpus_id(chunks_path: Path, config: KnowledgeConfig) -> str:
     digest = hashlib.sha256(chunks_path.read_bytes())
     digest.update(f"{config.embedding_model}|{config.reranker_model}".encode())
     return digest.hexdigest()[:12]
+
+
+def search_settings_id(config: KnowledgeConfig) -> str:
+    """Hash of what decides the ranking but not the index's contents (#105).
+
+    Kept out of `corpus_id`, which keys the index rows: changing it would
+    force a reindex for a setting that doesn't touch them.
+    """
+    settings = (
+        f"{config.search_version}|{config.candidates_per_search}|"
+        f"{config.rerank_pool}|{config.rrf_k}"
+    )
+    return hashlib.sha256(settings.encode()).hexdigest()[:8]

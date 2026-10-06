@@ -40,6 +40,9 @@ Built to fit the rest of the harness:
 - The chunks are written to `knowledge_chunks.parquet` in the processed EDGAR snapshot.
   Their hash, with the model names, is the corpus id. It's appended to
   `tool_data_snapshot` as `-k<id>`, so the gate never compares runs across corpora.
+  The ranking settings (`search_version`, candidate and rerank pool sizes, the RRF
+  constant) follow as `-s<hash>` (#105), so it doesn't compare runs across a ranking
+  change either. They stay out of the corpus id, which keys the index rows.
   Runs without a corpus keep their old id.
 - `search_knowledge` is registered only when a corpus exists. It returns `unavailable`
   when the index isn't reachable, isn't built, or the models aren't installed.

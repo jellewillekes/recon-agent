@@ -7,6 +7,7 @@ costs no credit. The labels are the user's (AGENTS.md: relevance labels are
 not delegated); `recon.cli retrieval propose` only drafts candidates.
 """
 
+import hashlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,12 @@ def load_labels(path: Path = DEFAULT_LABELS_PATH) -> dict[str, list[str]]:
         return {}
     raw: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return {case_id: list(ids or []) for case_id, ids in raw.items()}
+
+
+def labels_hash(path: Path = DEFAULT_LABELS_PATH) -> str:
+    """Content hash of the labels file, so retrieval metrics are only compared
+    between runs scored on the same labels (#105)."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
 
 
 def precision_at_k(retrieved: list[str], relevant: set[str], k: int = K) -> float:
@@ -63,11 +70,19 @@ def retrieval_metrics(
     }
 
 
-def with_retrieval_metrics(run: EvalRun, metrics: dict[str, float]) -> EvalRun:
-    """`run` with the retrieval metrics added to its aggregate."""
+def with_retrieval_metrics(
+    run: EvalRun, metrics: dict[str, float], labels_path: Path = DEFAULT_LABELS_PATH
+) -> EvalRun:
+    """`run` with the retrieval metrics added to its aggregate, and the hash of
+    the labels that scored them."""
     if not metrics:
         return run
-    return run.model_copy(update={"aggregate": {**run.aggregate, **metrics}})
+    return run.model_copy(
+        update={
+            "aggregate": {**run.aggregate, **metrics},
+            "retrieval_labels_hash": labels_hash(labels_path),
+        }
+    )
 
 
 def variant_metrics(

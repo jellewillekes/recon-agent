@@ -67,3 +67,23 @@ def test_render_markdown_shows_the_tool_data_snapshot() -> None:
         _run(tool_data_snapshot="20260928")
     )
     assert "- Tool data: not recorded" in render_markdown(_run())
+
+
+@pytest.mark.unit
+def test_render_markdown_lists_each_cases_tools() -> None:
+    md = render_markdown(
+        _run(
+            case_scores=[
+                _case_score(tool_names=["search_knowledge", "get_financial_fact"])
+            ]
+        )
+    )
+    assert "| tools |" in md
+    assert "search_knowledge, get_financial_fact" in md
+
+
+@pytest.mark.unit
+def test_a_result_recorded_before_tool_names_still_loads() -> None:
+    raw = _case_score().model_dump()
+    del raw["tool_names"]
+    assert CaseScore.model_validate(raw).tool_names == []

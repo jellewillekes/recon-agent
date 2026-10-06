@@ -12,6 +12,7 @@ def render_markdown(run: EvalRun) -> str:
         f"- Timestamp: {run.timestamp_utc.isoformat()}",
         f"- Rubric version: {run.rubric_version}",
         f"- Tool data: {run.tool_data_snapshot or 'not recorded'}",
+        f"- Retrieval labels: {run.retrieval_labels_hash or 'not scored'}",
         f"- Model config hash: {run.model_config_hash}",
         "- Prompt hashes: "
         + ", ".join(
@@ -32,14 +33,18 @@ def render_markdown(run: EvalRun) -> str:
         "",
         "## Per-case",
         "",
-        "| case_id | task_completion | answer_score | tool_call_accuracy | cost_eur | notes |",
-        "|---|---|---|---|---|---|",
+        (
+            "| case_id | task_completion | answer_score | tool_call_accuracy "
+            "| cost_eur | tools | notes |"
+        ),
+        "|---|---|---|---|---|---|---|",
     ]
     for score in run.case_scores:
         notes = score.notes.replace("|", "/") or "-"
+        tools = ", ".join(score.tool_names) or "-"
         lines.append(
             f"| {score.case_id} | {score.task_completion} | {score.answer_score:.2f} | "
-            f"{score.tool_call_accuracy:.2f} | {score.cost_eur:.4f} | {notes} |"
+            f"{score.tool_call_accuracy:.2f} | {score.cost_eur:.4f} | {tools} | {notes} |"
         )
 
     return "\n".join(lines) + "\n"

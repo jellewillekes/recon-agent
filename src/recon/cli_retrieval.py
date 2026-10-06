@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from recon.adapters.finance_agent_bench import fetch_csv, load_cases
+from recon.contracts import Case, EvalRun
 from recon.eval import retrieval
 from recon.eval.case_selection import read_case_file, select_cases
 from recon.eval.faithfulness import Passages
@@ -36,6 +37,51 @@ def open_backend() -> KnowledgeBackend | None:
         )
         return None
     return backend
+
+
+def require_backend() -> KnowledgeBackend | None:
+    """The filing-text index for an eval run, checked before credit is spent.
+
+    None when the snapshot has no corpus, so the agent has no search tool.
+    With a corpus the agent sees `search_knowledge`, so an index it can't reach
+    would fail every search while the run still gets scored (#100).
+    """
+    path = knowledge_chunks_path()
+    if path is None:
+        return None
+    backend = KnowledgeBackend(path)
+    if backend.connection() is None:
+        raise SystemExit(
+            "The tool data has a filing-text corpus, but its index isn't reachable "
+            "or isn't fully built, so every search_knowledge call would fail. Set "
+            "DATABASE_URL to the index's Postgres (and run `recon.cli edgar "
+            "index-text` if it isn't built), then run the eval again."
+        )
+    return backend
+
+
+def with_retrieval_metrics(
+    run: EvalRun, cases: list[Case], backend: KnowledgeBackend
+) -> EvalRun:
+    """Score the retriever on the run's labelled cases. Offline: no model call."""
+    labels = retrieval.load_labels()
+    if not any(case.case_id in labels for case in cases):
+        return run
+    ran = cases[: len(run.case_scores)]
+    try:
+        metrics = retrieval.retrieval_metrics(labels, ran, backend.chunk_ids)
+        metrics |= retrieval.variant_metrics(
+            labels,
+            ran,
+            {
+                variant: backend.variant_search(variant)
+                for variant in ("dense", "full_text", "hybrid")
+            },
+        )
+    except RuntimeError as exc:
+        print(f"Retrieval metrics skipped: a search failed ({exc})")
+        return run
+    return retrieval.with_retrieval_metrics(run, metrics)
 
 
 def replay_passages(backend: KnowledgeBackend) -> Passages:

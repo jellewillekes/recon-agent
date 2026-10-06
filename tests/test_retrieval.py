@@ -10,7 +10,8 @@ import asyncio
 import hashlib
 import json
 import os
-from datetime import date
+import time
+from datetime import UTC, date, datetime
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, Self
@@ -20,7 +21,7 @@ import pytest
 
 from recon.adapters import knowledge_corpus as corpus
 from recon.adapters import sec_edgar_text as text
-from recon.contracts import Case
+from recon.contracts import Case, EvalRun
 from recon.eval import retrieval
 from recon.tools import data_source, knowledge_index, knowledge_search, mcp_server
 
@@ -225,6 +226,73 @@ def test_a_built_corpus_changes_the_tool_data_snapshot(
     corpus.write_chunks(chunks, snapshot / corpus.CHUNKS_FILENAME)
     after = data_source.tool_data_snapshot_id(tmp_path)
     assert after.startswith(before + "-k")
+
+
+@pytest.mark.parametrize(
+    "setting", ["search_version", "candidates_per_search", "rerank_pool", "rrf_k"]
+)
+def test_a_search_setting_changes_the_tool_data_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, setting: str
+) -> None:
+    """#105: ranking changes what the agent reads, so the gate must see it.
+    The corpus id is the index's key and stays the same."""
+    monkeypatch.setenv(data_source.TOOL_DATA_ENV, "edgar")
+    monkeypatch.chdir(ROOT)
+    snapshot = tmp_path / "20250101"
+    snapshot.mkdir()
+    (snapshot / "manifest.json").write_text("{}")
+    for table in data_source.EDGAR_TABLES:
+        (snapshot / f"{table}.parquet").write_bytes(table.encode())
+    chunks = corpus.build_chunks(
+        _raw_snapshot(tmp_path), {1234: "FICT"}, CUTOFF, CONFIG
+    )
+    corpus.write_chunks(chunks, snapshot / corpus.CHUNKS_FILENAME)
+    changed = corpus.KnowledgeConfig(
+        **{**CONFIG.__dict__, setting: getattr(CONFIG, setting) + 1}
+    )
+    before = data_source.tool_data_snapshot_id(tmp_path)
+    monkeypatch.setattr(data_source, "load_knowledge_config", lambda: changed)
+    after = data_source.tool_data_snapshot_id(tmp_path)
+    assert before != after
+    chunks_path = snapshot / corpus.CHUNKS_FILENAME
+    assert corpus.corpus_id(chunks_path, CONFIG) == corpus.corpus_id(
+        chunks_path, changed
+    )
+
+
+def _eval_run() -> EvalRun:
+    return EvalRun(
+        run_id="eval-1",
+        timestamp_utc=datetime(2026, 1, 1, tzinfo=UTC),
+        dataset="finance-agent-bench",
+        dataset_license="MIT",
+        dataset_attribution="attribution",
+        runtime="agent_sdk",
+        mode="single",
+        model_config_hash="abc",
+        prompt_hashes={"investigator": "abc"},
+        rubric_version="1",
+        case_scores=[],
+        aggregate={},
+        total_cost_eur=0.0,
+    )
+
+
+def test_retrieval_metrics_record_which_labels_scored_them(tmp_path: Path) -> None:
+    """#105: retrieval metrics compare only on the same label set."""
+    labels = tmp_path / "labels.yaml"
+    labels.write_text("c1: [a]\n")
+    first = retrieval.labels_hash(labels)
+    labels.write_text("c1: [a, b]\n")
+    assert retrieval.labels_hash(labels) != first
+    run = _eval_run()
+    assert (
+        retrieval.with_retrieval_metrics(run, {}, labels).retrieval_labels_hash is None
+    )
+    scored = retrieval.with_retrieval_metrics(
+        run, {"retrieval_recall_at_5": 1.0}, labels
+    )
+    assert scored.retrieval_labels_hash == retrieval.labels_hash(labels)
 
 
 # --- search ---------------------------------------------------------------------
@@ -660,3 +728,74 @@ def test_the_full_variant_ranks_exactly_like_the_tool() -> None:
         2,
         "hybrid_rerank",
     )
+
+
+def _backend(tmp_path: Path) -> knowledge_search.KnowledgeBackend:
+    chunks_path = tmp_path / corpus.CHUNKS_FILENAME
+    corpus.write_chunks(
+        corpus.build_chunks(_raw_snapshot(tmp_path), {1234: "FICT"}, CUTOFF, CONFIG),
+        chunks_path,
+    )
+    return knowledge_search.KnowledgeBackend(chunks_path)
+
+
+def test_warm_up_loads_both_models_in_the_background(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#99: each case starts its own tool server, and loading the models took
+    about 10 s of the first search's time inside the case's wall-clock budget."""
+    monkeypatch.chdir(ROOT)
+    backend = _backend(tmp_path)
+    loaded: list[str] = []
+
+    def embed(texts: Any) -> list[list[float]]:
+        loaded.append("embed")
+        return [[1.0, 0.0] for _ in texts]
+
+    def rerank(query: str, passages: Any) -> list[float]:
+        loaded.append("rerank")
+        return [0.0] * len(passages)
+
+    backend.embed = embed
+    backend.rerank = rerank
+
+    backend.start_warm_up()
+    backend.search("fictional guidance", 2)
+
+    assert loaded[:2] == ["embed", "rerank"]
+
+
+def test_a_search_waits_for_the_warm_up_instead_of_loading_twice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(ROOT)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    backend = _backend(tmp_path)
+    finished: list[bool] = []
+
+    def slow_embed(texts: Any) -> list[list[float]]:
+        time.sleep(0.2)
+        finished.append(True)
+        return [[1.0, 0.0] for _ in texts]
+
+    backend.embed = slow_embed
+    backend.rerank = lambda query, passages: [0.0] * len(passages)
+    backend.start_warm_up()
+    backend.search("fictional guidance", 2)
+
+    assert finished == [True]
+
+
+def test_a_failed_warm_up_leaves_the_search_to_report_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(ROOT)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    backend = _backend(tmp_path)
+
+    def missing(texts: Any) -> list[list[float]]:
+        raise ImportError("No module named 'sentence_transformers'")
+
+    backend.embed = missing
+    backend.start_warm_up()
+    assert backend.search("fictional guidance", 2).status == "unavailable"

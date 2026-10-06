@@ -179,6 +179,7 @@ class CaseScore(BaseModel):
     cost_eur: float
     elapsed_ms: int
     notes: str
+    tool_names: list[str] = []         # the agent's tool calls by name, in call order; empty before this field existed
 
 class EvalRun(BaseModel):
     run_id: str
@@ -195,6 +196,7 @@ class EvalRun(BaseModel):
     aggregate: dict[str, float]
     total_cost_eur: float
     tool_data_snapshot: str | None = None  # "<fetch date>-<content hash>" or "fixture-<hash>"; None before this field existed
+    retrieval_labels_hash: str | None = None  # hash of evals/retrieval-labels.yaml when retrieval metrics were scored
 ```
 
 **`prompt_hashes` is not optional.** Without it a score is not reproducible and the promotion gate cannot work.
