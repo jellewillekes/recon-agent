@@ -1,8 +1,8 @@
 """`Runtime` backed by LangGraph, against the same step-3 MCP server the SDK
 runtime uses (`tools/mcp_server.py`, unchanged) via `langchain-mcp-adapters`.
 
-See `docs/adr/0010-langgraph-runtime.md` for why this needs a real
-`ANTHROPIC_API_KEY` (a second, separately-billed cost source alongside the
+See `docs/adr/0010-langgraph-runtime.md` for why this needs a real API key,
+read from `RECON_ANTHROPIC_API_KEY` (ADR 0027) (a second, separately-billed cost source alongside the
 Agent SDK subscription credit `runtimes/agent_sdk.py` uses exclusively), why
 `mcp` is pinned below 2.0 project-wide, and the tool-restriction mechanism.
 
@@ -40,6 +40,7 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel
 
 from recon.contracts import AgentResult, Case, ToolCall
+from recon.runtimes.api_key import langgraph_api_key, without_api_keys
 
 RUNTIME_NAME = "langgraph"
 
@@ -252,7 +253,7 @@ class _BudgetExceeded(Exception):
     `run_budget` ceiling breaches - `max_tool_calls` mid-stream, or
     `max_wall_clock_s` on cancellation - carrying everything gathered up to
     that point so the caller returns a partial `AgentResult` instead of
-    either letting a runaway loop keep spending real `ANTHROPIC_API_KEY`
+    either letting a runaway loop keep spending real metered API
     credit until `max_turns`/`recursion_limit` eventually intervenes (round 2
     review of PR #46), or discarding that partial telemetry on a wall-clock
     breach (round 3 review of PR #46).
@@ -467,7 +468,7 @@ async def _build_react_subgraph(
     `checkpointer=None` - workers are invoked directly with `.ainvoke()`,
     with no thread/interrupt needs of their own).
     """
-    env = {**os.environ, "RECON_CREATED_BY": created_by}
+    env = {**without_api_keys(os.environ), "RECON_CREATED_BY": created_by}
     # No explicit teardown here - verified directly against this project's
     # installed langchain-mcp-adapters source, not just its docs (round 3
     # review of PR #46 asked for this): both get_tools()'s discovery call and
@@ -487,7 +488,7 @@ async def _build_react_subgraph(
     # `model` as a valid kwarg, though it's a genuine pydantic field
     # (confirmed: ChatAnthropic.model_fields, and constructs fine at
     # runtime) - a stub gap, not a real type error.
-    model = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
+    model = ChatAnthropic(model=model_name, api_key=langgraph_api_key())  # type: ignore[call-arg]
     return create_react_agent(
         model,
         tools,

@@ -443,3 +443,20 @@ def test_run_evaluation_within_the_cap_runs_everything(
     run = _run_three(monkeypatch, 0.05)
     assert len(run.case_scores) == 3
     assert harness.SKIPPED_AT_COST_CAP not in run.aggregate
+
+
+@pytest.mark.unit
+def test_run_evaluation_reports_each_case_as_it_finishes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A paid run took 20 minutes with no output until the end."""
+    _run_three(monkeypatch, max_cost_eur=None)
+
+    lines = capsys.readouterr().out.splitlines()
+    assert [line.split(":")[0] for line in lines] == [
+        "case 1/3 c1",
+        "case 2/3 c2",
+        "case 3/3 c3",
+    ]
+    assert "completed" in lines[0]
+    assert "€0.01" in lines[0]

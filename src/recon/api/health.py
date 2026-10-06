@@ -14,6 +14,8 @@ import asyncpg
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
+from recon.runtimes.api_key import without_api_keys
+
 MCP_SERVER_COMMAND = [sys.executable, "-m", "recon.tools.mcp_server"]
 
 
@@ -31,7 +33,7 @@ async def check_mcp_server(timeout_s: float) -> tuple[bool, str]:
             params = StdioServerParameters(
                 command=MCP_SERVER_COMMAND[0],
                 args=MCP_SERVER_COMMAND[1:],
-                env=dict(os.environ),
+                env=without_api_keys(os.environ),
             )
             async with (
                 stdio_client(params) as (read, write),

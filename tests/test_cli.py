@@ -202,6 +202,8 @@ def test_cmd_eval_runtime_flag_reaches_langgraph_runtime(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _patch_dataset_loading(monkeypatch)
+    # A LangGraph eval refuses to start without its metered key (ADR 0010).
+    monkeypatch.setenv("RECON_ANTHROPIC_API_KEY", "test-key")
     captured: dict[str, object] = {}
 
     def fake_run_evaluation(
@@ -850,3 +852,23 @@ def test_the_company_variant_searches_with_each_cases_company() -> None:
     search("q1?", 5)
     search("q2?", 5)
     assert [company for _, company in asked] == ["FICT", None]
+
+
+@pytest.mark.unit
+def test_cmd_eval_refuses_an_exported_sdk_api_key_before_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The judge runs on the Agent SDK, whose CLI bills ANTHROPIC_API_KEY
+    instead of the subscription whenever it's set (ADR 0010)."""
+    _patch_dataset_loading(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "would-bill-the-api")
+
+    def must_not_run(*args: object, **kwargs: object) -> EvalRun:
+        raise AssertionError("the eval ran on the wrong account")
+
+    monkeypatch.setattr(cli, "run_evaluation", must_not_run)
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    with pytest.raises(SystemExit, match="RECON_ANTHROPIC_API_KEY"):
+        args.func(args)

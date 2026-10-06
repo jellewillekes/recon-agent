@@ -20,6 +20,8 @@ to get just one turn out of it, slow and architecturally awkward for uncertain b
 This means a second, separately-billed cost source alongside the Agent SDK subscription
 credit `runtimes/agent_sdk.py` uses exclusively — Step 0 originally required
 `ANTHROPIC_API_KEY` to be *empty*; that constraint now applies only to the SDK runtime.
+ADR 0027 later moved the LangGraph key to `RECON_ANTHROPIC_API_KEY`, so the constraint
+holds for every eval: the judge runs on the SDK too.
 
 **`mcp` is pinned below 2.0 project-wide — forced, not chosen freely.** The plan assumed
 `langchain-mcp-adapters` would bridge the *existing* MCP server unchanged. Installing it

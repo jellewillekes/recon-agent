@@ -35,6 +35,7 @@ from recon.runtimes.agent_sdk import (
     _run_query,
     _validate_answer,
 )
+from recon.runtimes.api_key import without_api_keys
 
 DEFAULT_ROLES_CONFIG_PATH = Path("config/roles.yaml")
 DEFAULT_PROMPTS_DIR = Path("prompts")
@@ -132,7 +133,7 @@ def _build_role_options(
             command=sys.executable,
             args=["-m", "recon.tools.mcp_server"],
             env={
-                **os.environ,
+                **without_api_keys(os.environ),
                 "RECON_CREATED_BY": _CREATED_BY,
                 # This server lives for the whole run, so loading the
                 # search models as it starts pays off (#99).

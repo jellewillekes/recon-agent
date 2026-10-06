@@ -318,6 +318,13 @@ def _run_cases(
         case_scores.append(score)
         agent_cost_eur += agent_result.cost_eur
         runtime_name, mode = agent_result.runtime, agent_result.mode
+        status = "completed" if score.task_completion else "not completed"
+        print(
+            f"case {len(case_scores)}/{len(cases)} {case.case_id}: {status}, "
+            f"answer {score.answer_score:.2f}, {score.elapsed_ms / 1000:.0f} s, "
+            f"€{score.cost_eur:.2f}",
+            flush=True,
+        )
     return case_scores, agent_cost_eur, runtime_name, mode
 
 

@@ -25,6 +25,7 @@ from recon.eval.harness import (
 )
 from recon.eval.report import render_markdown
 from recon.eval.thresholds import load_thresholds
+from recon.runtimes import api_key
 from recon.runtimes.agent_sdk import AgentSdkRuntime
 from recon.runtimes.base import Runtime
 from recon.runtimes.langgraph import LangGraphRuntime
@@ -148,6 +149,9 @@ def _refuse_over_cap(case_count: int, max_cost_eur: float) -> None:
 
 
 def _cmd_eval(args: argparse.Namespace) -> None:
+    key_problem = api_key.eval_key_problem(args.runtime)
+    if key_problem is not None:
+        raise SystemExit(key_problem)
     cases = _select_cases(args)
     _refuse_over_cap(len(cases), args.max_cost_eur)
     # Read now, so a broken thresholds file fails before credit is spent.
@@ -273,7 +277,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["sdk", "langgraph"],
         default="sdk",
         help="sdk: Claude Agent SDK, subscription credit. langgraph: LangGraph, "
-        "needs ANTHROPIC_API_KEY (docs/adr/0010-langgraph-runtime.md).",
+        "needs RECON_ANTHROPIC_API_KEY (docs/adr/0027).",
     )
     run_parser.set_defaults(func=_cmd_run)
 
@@ -298,7 +302,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["sdk", "langgraph"],
         default="sdk",
         help="sdk: Claude Agent SDK, subscription credit. langgraph: LangGraph, "
-        "needs ANTHROPIC_API_KEY (docs/adr/0010-langgraph-runtime.md).",
+        "needs RECON_ANTHROPIC_API_KEY (docs/adr/0027).",
     )
     eval_parser.add_argument(
         "--baseline",
