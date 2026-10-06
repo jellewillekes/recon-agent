@@ -69,11 +69,19 @@ def _dense(
     return [row[0] for row in rows]
 
 
+# The query's terms ORed, not ANDed: a question names the company and other
+# words a passage rarely repeats all of, so requiring every term matched
+# almost nothing (#98). ts_rank still puts passages matching more terms first.
+_ANY_TERM = (
+    "CAST(replace(plainto_tsquery('english', %s)::text, ' & ', ' | ') AS tsquery)"
+)
+
+
 def _full_text(
     conn: psycopg.Connection[Any], corpus: str, query: str, limit: int
 ) -> list[str]:
     rows = conn.execute(
-        "SELECT chunk_id FROM knowledge_chunks, websearch_to_tsquery('english', %s) q"
+        f"SELECT chunk_id FROM knowledge_chunks, {_ANY_TERM} q"
         " WHERE corpus_id = %s AND tsv @@ q ORDER BY ts_rank(tsv, q) DESC LIMIT %s",
         (query, corpus, limit),
     ).fetchall()
