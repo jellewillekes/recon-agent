@@ -1,13 +1,13 @@
 {
-  "run_id": "api-saved1",
+  "run_id": "api-saved2",
   "created_at": "2026-10-07T10:00:00Z",
-  "question": "How did FIRM-001's revenue change?",
+  "question": "What risks does FIRM-001 list?",
   "context": {},
   "runtime": "agent_sdk",
   "mode": "single",
   "data_source": "fixture-abc123",
   "result": {
-    "case_id": "api-saved1",
+    "case_id": "api-saved2",
     "answer": "FIRM-001 reported revenue of 120 million in FY2024, up from 100 million.",
     "evidence": [
       "[E000000000aa1] financial_fact (FIRM-001, 10-K, filed 2025-02-01): Revenue FY2024 = 120000000",
@@ -89,9 +89,5 @@
       }
     ]
   },
-  "feedback": {
-    "rating": "up",
-    "note": "wrong ticker",
-    "created_at": "2026-10-07T10:05:00Z"
-  }
+  "feedback": null
 }

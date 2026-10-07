@@ -9,16 +9,22 @@ import { EvalDetail } from "./EvalDetail";
 // (GET /evals/compare) and one run's cases (GET /evals/{id}). Benchmark
 // results only; nothing here starts a run.
 export function EvaluationView({ active }: { active: boolean }) {
-  const [runs, setRuns] = useState<EvalSummary[] | string | null>(null);
+  const [runs, setRuns] = useState<EvalSummary[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<RunFilters>({ mode: "", rubric: "", routing: "" });
   const [detailId, setDetailId] = useState<string | null>(null);
   const detailRef = useRef<HTMLElement>(null);
 
+  // Loads on first view. A failed load leaves `runs` empty, so showing the
+  // view again retries, as the old page did.
   useEffect(() => {
     if (!active || runs !== null) return;
     api.evals().then(
-      (list) => setRuns(list.runs),
-      (error: Error) => setRuns(error.message),
+      (list) => {
+        setRuns(list.runs);
+        setLoadError(null);
+      },
+      (error: Error) => setLoadError(error.message),
     );
   }, [active, runs]);
 
@@ -27,7 +33,7 @@ export function EvaluationView({ active }: { active: boolean }) {
     detailRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }
 
-  const all = Array.isArray(runs) ? runs : [];
+  const all = runs ?? [];
   const shown = filterRuns(all, filters);
   return (
     <>
@@ -49,8 +55,8 @@ export function EvaluationView({ active }: { active: boolean }) {
         </div>
         <Filters runs={all} filters={filters} onChange={setFilters} />
         <div className="table-scroll">
-          {typeof runs === "string" ? (
-            <p className="error-box">{runs}</p>
+          {loadError && runs === null ? (
+            <p className="error-box">{loadError}</p>
           ) : (
             <RunTable runs={shown} loading={runs === null} onOpen={openDetail} />
           )}

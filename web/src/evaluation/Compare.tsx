@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { api, type Comparison, type EvalSummary } from "../api/client";
 import { defaultComparePair, METRIC_LABELS } from "../lib/evals";
 import { formatDuration, number } from "../lib/format";
@@ -15,25 +15,28 @@ function metricValue(name: string, value: number | null | undefined): string {
 export function Compare({ runs }: { runs: EvalSummary[] }) {
   const [pair, setPair] = useState(() => defaultComparePair(runs));
   const [result, setResult] = useState<Comparison | string | null>(null);
+  // Only the latest comparison may show: an earlier one finishing late would
+  // otherwise put its result under the user's newer pair (review of #121).
+  const latest = useRef(0);
 
-  const compare = useCallback(async (baseline: string, candidate: string) => {
-    try {
-      setResult(await api.compare(baseline, candidate));
-    } catch (error) {
-      setResult((error as Error).message);
-    }
+  const compare = useCallback((baseline: string, candidate: string) => {
+    const request = ++latest.current;
+    api.compare(baseline, candidate).then(
+      (comparison) => request === latest.current && setResult(comparison),
+      (error: Error) => request === latest.current && setResult(error.message),
+    );
   }, []);
 
   // Opens on the default pair, so the panel isn't empty on first view.
   useEffect(() => {
     if (runs.length < 2) return;
     const initial = defaultComparePair(runs);
-    api.compare(initial.baseline, initial.candidate).then(setResult, (error: Error) => setResult(error.message));
-  }, [runs]);
+    compare(initial.baseline, initial.candidate);
+  }, [runs, compare]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    void compare(pair.baseline, pair.candidate);
+    compare(pair.baseline, pair.candidate);
   }
 
   return (

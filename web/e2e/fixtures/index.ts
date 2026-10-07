@@ -15,6 +15,7 @@ import evalRunJson from "./eval-run.json" with { type: "json" };
 import evalsJson from "./evals.json" with { type: "json" };
 import resultJson from "./result.json" with { type: "json" };
 import runJson from "./run.json" with { type: "json" };
+import run2Json from "./run2.json" with { type: "json" };
 import runsJson from "./runs.json" with { type: "json" };
 
 // JSON imports widen literal types (e.g. "high" to string); the API's own
@@ -23,6 +24,7 @@ export const capabilities = capabilitiesJson as unknown as Capabilities;
 export const result = resultJson as unknown as AgentResult;
 export const runs = runsJson as unknown as RunList;
 export const run = runJson as unknown as ResearchRun;
+export const run2 = run2Json as unknown as ResearchRun;
 export const evals = evalsJson as unknown as EvalList;
 export const evalRun = evalRunJson as unknown as EvalRun;
 export const comparison = compareJson as unknown as Comparison;

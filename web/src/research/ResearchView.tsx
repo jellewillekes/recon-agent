@@ -184,6 +184,15 @@ function OutputView({ output, onFeedbackSaved }: { output: Output; onFeedbackSav
     case "error":
       return <div className="error-box">{output.message}</div>;
     case "result":
-      return <ResultView result={output.result} saved={output.saved} onFeedbackSaved={onFeedbackSaved} />;
+      // Keyed by run, so a new run starts with fresh feedback and closed
+      // sources instead of the previous run's (review of #121).
+      return (
+        <ResultView
+          key={output.saved?.run_id ?? output.result.case_id}
+          result={output.result}
+          saved={output.saved}
+          onFeedbackSaved={onFeedbackSaved}
+        />
+      );
   }
 }
