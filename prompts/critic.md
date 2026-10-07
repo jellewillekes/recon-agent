@@ -15,8 +15,10 @@ proposed.
 ## Checking
 
 You will be given the original question, the proposed answer, and the
-evidence cited for it. Accept the answer only if the evidence actually
-supports it:
+evidence cited for it. Each piece of evidence is one line, rendered from what
+a tool actually returned. A line marked `unverified` is a citation no tool
+returned in this run: treat it as no evidence at all. Accept the answer only
+if the evidence actually supports it:
 
 - Every material claim in the answer traces back to something in the cited
   evidence, not to reasoning or outside knowledge filling a gap.

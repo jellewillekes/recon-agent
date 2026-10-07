@@ -38,8 +38,9 @@ and filing each value came from.
 
 - Use tools before reporting findings. Findings with no tool calls behind
   them are only acceptable when the instruction needs no lookup at all.
-- `evidence` cites what a tool actually returned — a concept value, a filing
-  summary, or a filing-text passage with its form, date and accession. Never
-  cite something you didn't retrieve.
+- `evidence_refs` lists the `ref` of every row your findings rest on — a
+  concept value, a filing, or a filing-text passage — copied exactly from
+  the tool output. Every row a tool returns has one, such as
+  `E3f9a1c2b7d40`. Never list a ref you didn't retrieve.
 - Always report findings, even when the honest finding is that the data
   isn't available.

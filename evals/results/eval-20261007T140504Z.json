@@ -1,0 +1,76 @@
+{
+  "run_id": "eval-20261007T140504Z",
+  "timestamp_utc": "2026-10-07T14:05:04.242581Z",
+  "dataset": "finance-agent-bench@8ba65f81ab75",
+  "dataset_license": "MIT",
+  "dataset_attribution": "Data from vals-ai/finance-agent (MIT License), Copyright (c) 2025 Vals AI, Inc. https://github.com/vals-ai/finance-agent — benchmark details at https://www.vals.ai/benchmarks/finance_agent",
+  "runtime": "agent_sdk",
+  "mode": "single",
+  "model_config_hash": "54ddf70415cec3468584c3926fba15c3f5dcf60c016a3fa7eb5be58206471049",
+  "prompt_hashes": {
+    "critic": "3d8af43bed199f8f6ce5d412d6b4f3d63ef3c1a3bf238504c5a6d15c8a9e477c",
+    "investigator": "4c78d0e84b7eb9cb2f81bd2eaf09cf63f901af98d2e193850f62ac84546b379a",
+    "judge_faithfulness": "1a4f47d7ed4703d42435b171b7ee68db65d4f04b44bdeb49cbeed3e06f2bceb8",
+    "supervisor": "ff3b1cd886c16640ebec15616ddc4d806a801bfd510fe6e7e5e15336f820f928",
+    "supervisor_langgraph": "c5644135eaafe35ef358603e2cca428b0c1dd546142fdf279f8a8c0e9cd812a9",
+    "worker_facts": "354fc782beb5d7ecae903ebd608d30876c3f99b13c8548f851d91de830831572",
+    "worker_lookup": "a31de5324e4af1eb371a638214fc2ce08b08ff2b5448ab9f159a1f7ba9fab80b"
+  },
+  "rubric_version": "4",
+  "case_scores": [
+    {
+      "case_id": "finance-agent-bench:1167a2e783bf",
+      "task_completion": true,
+      "answer_score": 0.5555555555555556,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 1.0,
+      "rubric_scores": {
+        "evidence_grounding": 1.0,
+        "tool_efficiency": 1.0,
+        "answer_correctness": 0.1111111111111111,
+        "faithfulness": 1.0
+      },
+      "cost_eur": 0.42595245600000003,
+      "elapsed_ms": 146394,
+      "notes": "N/A: no expected_tool_path for this case",
+      "tool_names": [
+        "list_companies",
+        "search_knowledge",
+        "search_knowledge",
+        "search_knowledge",
+        "search_filings",
+        "search_filings",
+        "search_knowledge",
+        "search_knowledge",
+        "search_filings",
+        "search_filings"
+      ],
+      "claim_support_rate": 1.0,
+      "citation_precision": 1.0
+    }
+  ],
+  "aggregate": {
+    "case_count": 1.0,
+    "task_completion_rate": 1.0,
+    "answer_score_mean": 0.5555555555555556,
+    "tool_call_accuracy_mean": 1.0,
+    "elapsed_ms_mean": 146394.0,
+    "tool_path_applicable_count": 0.0,
+    "agent_cost_eur": 0.285185096,
+    "judge_cost_eur": 0.14076736,
+    "claim_support_rate_mean": 1.0,
+    "citation_precision_mean": 1.0,
+    "citation_scored_cases": 1.0,
+    "answer_correctness_mean": 0.1111111111111111,
+    "faithfulness_mean": 1.0,
+    "faithfulness_scored_cases": 1.0,
+    "evidence_grounding_mean": 1.0,
+    "tool_efficiency_mean": 1.0,
+    "cost_per_correct_answer_eur": 0.42595245600000003
+  },
+  "total_cost_eur": 0.42595245600000003,
+  "tool_data_snapshot": "20260928-173c57a28fbf-keb7c46d7bfe6-sb9f40bee",
+  "retrieval_labels_hash": null,
+  "routing": false
+}
