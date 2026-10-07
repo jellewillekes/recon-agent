@@ -65,7 +65,7 @@ class ToolResult(BaseModel):
 | `invalid_input` | Schema or range error | `[]` | which field, and what is valid |
 | `unavailable` | Source down, timeout, circuit open | `[]` | whether a retry is worthwhile |
 
-Every row in `data` from the five read tools carries a `ref`: `"E"` plus the first 12 hex characters of the sha256 of the tool name and the row's canonical JSON (ADR 0030). The same row always gets the same ref, so the model can cite it and the runtime can check the citation.
+Every row in `data` from the five read tools carries a `ref`: `"E"` plus the first 12 hex characters of the sha256 of the tool name, the company the call asked about (for the tools that take `company_id`) and the row's canonical JSON (ADR 0030). The same row always gets the same ref, so the model can cite it and the runtime can check the citation.
 
 `MAX_ROWS = 500` per call. `TIMEOUT_S = 30`. `search_knowledge` returns at most `top_k` (up to 20) passages, so it never reports `truncated`.
 

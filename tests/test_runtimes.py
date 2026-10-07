@@ -373,7 +373,7 @@ def test_run_recovers_status_from_offloaded_result(
         json.dumps(
             {
                 "status": "truncated",
-                "data": [{"company_id": "FIRM-001"}],
+                "data": [{**COMPANY_ROW, "ref": COMPANY_REF}],
                 "row_count": 500,
                 "message": "500 companies match, showing the first 500.",
                 "elapsed_ms": 42,
@@ -410,6 +410,8 @@ def test_run_recovers_status_from_offloaded_result(
     assert result.error is None
     assert result.tool_calls[0].status == "truncated"
     assert result.tool_calls[0].elapsed_ms == 42
+    # The recovered rows verify citations too (ADR 0030).
+    assert [item.verified for item in result.evidence_items] == [True]
 
 
 @pytest.mark.unit

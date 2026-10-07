@@ -24,8 +24,9 @@ Options considered for how the model points at its sources:
 Decided by the user on 2026-10-07 (#115):
 
 - Every row the five read tools return carries `ref`: `"E"` plus the first 12 hex
-  characters of the sha256 of the tool name and the row's canonical JSON. It's added in
-  one place, the MCP server's tool wrappers, so both runtimes get it.
+  characters of the sha256 of the tool name, the company the call asked about and the
+  row's canonical JSON. The company is in it because a concept row doesn't carry one.
+  It's added in one place, the MCP server's tool wrappers, so both runtimes get it.
 - The answer schema asks for claims, each with its importance (`key` or `supporting`)
   and the refs it rests on. The model no longer writes evidence strings.
 - The runtime keeps the rows its tools returned during the run and resolves every cited

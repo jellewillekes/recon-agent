@@ -79,7 +79,7 @@ class _FakeConnection:
 def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, dict[str, Any]]:
     rows: dict[str, dict[str, Any]] = {}
 
-    async def fake_connect(database_url: str) -> _FakeConnection:
+    async def fake_connect(database_url: str, **kwargs: Any) -> _FakeConnection:
         assert database_url == SECRET_URL
         return _FakeConnection(rows)
 
@@ -292,7 +292,7 @@ async def test_investigate_still_answers_when_saving_fails(
     """A run store outage must not cost the user their answer."""
     _patch_runtimes(monkeypatch)
 
-    async def failing_connect(database_url: str) -> Any:
+    async def failing_connect(database_url: str, **kwargs: Any) -> Any:
         raise OSError("connection refused")
 
     monkeypatch.setattr(run_store.asyncpg, "connect", failing_connect)
@@ -327,3 +327,57 @@ async def test_no_response_contains_the_database_url_or_its_password(
     for body in bodies:
         assert "hunter2" not in body
         assert "db.internal" not in body
+
+
+async def test_run_history_with_postgres_down_is_503_with_what_to_do(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def failing_connect(database_url: str, **kwargs: Any) -> Any:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(run_store.asyncpg, "connect", failing_connect)
+    monkeypatch.setattr(api_main, "DATABASE_URL", SECRET_URL)
+    async with await _client() as client:
+        responses = [
+            await client.get("/runs"),
+            await client.get("/runs/r1"),
+            await client.get("/runs/r1/export"),
+            await client.post("/runs/r1/feedback", json={"rating": "up"}),
+        ]
+
+    for resp in responses:
+        assert resp.status_code == 503
+        assert "Postgres" in resp.json()["detail"]
+        assert "hunter2" not in resp.text
+
+
+async def test_investigate_still_answers_when_the_data_source_cant_be_named(
+    monkeypatch: pytest.MonkeyPatch, store: dict[str, dict[str, Any]]
+) -> None:
+    _patch_runtimes(monkeypatch)
+
+    def broken_source() -> tuple[str, str]:
+        raise ValueError("RECON_TOOL_DATA is invalid")
+
+    monkeypatch.setattr(api_main, "_data_source", broken_source)
+    async with await _client() as client:
+        resp = await client.post("/investigate", json={"question": "q"})
+
+    assert resp.status_code == 200
+
+
+async def test_the_run_store_gives_up_on_postgres_quickly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unreachable Postgres mustn't add asyncpg's 60 s default to a request."""
+    seen: dict[str, Any] = {}
+
+    async def fake_connect(database_url: str, **kwargs: Any) -> Any:
+        seen.update(kwargs)
+        raise OSError("refused")
+
+    monkeypatch.setattr(run_store.asyncpg, "connect", fake_connect)
+    with pytest.raises(OSError):
+        await run_store.list_runs(SECRET_URL, 1, 0)
+
+    assert seen["timeout"] <= 5

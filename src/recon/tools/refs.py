@@ -13,19 +13,26 @@ from typing import Any
 from recon.contracts import ToolResult
 
 
-def row_ref(tool: str, row: dict[str, Any]) -> str:
-    """`"E"` plus the first 12 hex characters of the sha256 of `tool` and the
-    row's canonical JSON. Dates and other non-JSON values hash as strings."""
+def row_ref(tool: str, row: dict[str, Any], scope: str | None = None) -> str:
+    """`"E"` plus the first 12 hex characters of the sha256 of `tool`, `scope`
+    and the row's canonical JSON. Dates and other non-JSON values hash as
+    strings.
+
+    `scope` is the company a call asked about. A concept row carries no
+    company, so without it two companies' identical rows would share a ref.
+    """
     canonical = json.dumps(row, sort_keys=True, default=str, separators=(",", ":"))
-    digest = hashlib.sha256(f"{tool}\n{canonical}".encode()).hexdigest()
+    digest = hashlib.sha256(f"{tool}\n{scope or ''}\n{canonical}".encode()).hexdigest()
     return f"E{digest[:12]}"
 
 
-def with_refs(tool: str, result: ToolResult) -> dict[str, Any]:
+def with_refs(
+    tool: str, result: ToolResult, scope: str | None = None
+) -> dict[str, Any]:
     """`result` as the dict the MCP server returns, with a `ref` on every row."""
     payload = result.model_dump()
     payload["data"] = [
-        {**row, "ref": row_ref(tool, original)}
+        {**row, "ref": row_ref(tool, original, scope)}
         for row, original in zip(payload["data"], result.data, strict=True)
     ]
     return payload

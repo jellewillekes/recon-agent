@@ -79,6 +79,7 @@ def _register_read_tools(server: FastMCP, conn: duckdb.DuckDBPyConnection) -> No
         return with_refs(
             "list_financial_concepts",
             list_financial_concepts(conn, company_id, keyword),
+            scope=company_id,
         )
 
     @server.tool(description=get_financial_fact.__doc__)
@@ -91,6 +92,7 @@ def _register_read_tools(server: FastMCP, conn: duckdb.DuckDBPyConnection) -> No
         return with_refs(
             "get_financial_fact",
             get_financial_fact(conn, company_id, concept, fiscal_year, fiscal_period),
+            scope=company_id,
         )
 
     @server.tool(description=search_filings.__doc__)
@@ -103,6 +105,7 @@ def _register_read_tools(server: FastMCP, conn: duckdb.DuckDBPyConnection) -> No
         return with_refs(
             "search_filings",
             search_filings(conn, company_id, keyword, form_type, fiscal_year),
+            scope=company_id,
         )
 
 

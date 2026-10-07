@@ -84,3 +84,31 @@ async def test_the_mcp_server_returns_rows_with_refs() -> None:
     assert payload["status"] == "ok"
     assert all(row["ref"].startswith("E") for row in payload["data"])
     json.dumps(payload)
+
+
+@pytest.mark.unit
+def test_rows_without_a_company_get_the_calls_company_in_their_ref() -> None:
+    """A concept row carries no company_id, so two companies' identical rows
+    must still get different refs, or a citation resolves to the wrong one."""
+    row = {"concept": "Revenues", "label": "Revenues", "units": "USD"}
+    assert row_ref("list_financial_concepts", row, scope="FIRM-001") != row_ref(
+        "list_financial_concepts", row, scope="FIRM-002"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_the_mcp_server_scopes_concept_refs_by_company() -> None:
+    conn = duckdb.connect(":memory:")
+    fixtures.seed(conn)
+    server = build_server(conn)
+
+    async def refs(company_id: str) -> set[str]:
+        _, raw = await server.call_tool(
+            "list_financial_concepts_tool", {"company_id": company_id}
+        )
+        structured = cast(dict[str, Any], raw)
+        payload: dict[str, Any] = structured.get("result", structured)
+        return {row["ref"] for row in payload["data"]}
+
+    assert not (await refs("FIRM-001")) & (await refs("FIRM-002"))

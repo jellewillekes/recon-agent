@@ -34,6 +34,7 @@ from recon.api.metrics import (
     INVESTIGATE_LATENCY,
     REQUEST_COUNT,
 )
+from recon.api.run_history import from_store, no_such_run
 from recon.api.schemas import (
     Capabilities,
     DataSource,
@@ -73,9 +74,7 @@ _LANGGRAPH_REASON = (
     "LangGraph needs a metered Anthropic API key (ADR 0027); this service runs "
     "on the Agent SDK subscription only."
 )
-_NO_RUN_HISTORY = (
-    "Run history needs Postgres. Set DATABASE_URL for the API and restart it."
-)
+
 
 REQUEST_ID_HEADER = "X-Request-ID"
 
@@ -245,39 +244,25 @@ async def _save(body: InvestigateRequest, result: AgentResult) -> None:
     the user waited for matters more than its history entry."""
     if DATABASE_URL is None:
         return
-    run = ResearchRun(
-        run_id=result.case_id,
-        created_at=datetime.now(UTC),
-        question=body.question,
-        context=body.context,
-        runtime=result.runtime,
-        mode=result.mode,
-        data_source=_data_source()[1],
-        result=result,
-    )
     try:
+        run = ResearchRun(
+            run_id=result.case_id,
+            created_at=datetime.now(UTC),
+            question=body.question,
+            context=body.context,
+            runtime=result.runtime,
+            mode=result.mode,
+            data_source=_data_source()[1],
+            result=result,
+        )
         await run_store.save_run(DATABASE_URL, run)
-    except (OSError, asyncpg.PostgresError) as exc:
+    except (OSError, ValueError, asyncpg.PostgresError) as exc:
         logger.warning(
-            "run_id=%s wasn't saved to the run store (%s); check Postgres "
-            "and DATABASE_URL",
-            run.run_id,
+            "run_id=%s wasn't saved to the run store (%s); check Postgres, "
+            "DATABASE_URL and the tool data",
+            result.case_id,
             type(exc).__name__,
         )
-
-
-def _no_run_history() -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        content={"detail": _NO_RUN_HISTORY},
-    )
-
-
-def _no_such_run(run_id: str) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND,
-        content={"detail": f"No saved run {run_id!r}. List saved runs at /runs."},
-    )
 
 
 @app.get("/capabilities")
@@ -309,33 +294,33 @@ async def runs(
     offset: int = Query(default=0, ge=0),
 ) -> RunList | JSONResponse:
     """Saved runs, newest first."""
-    if DATABASE_URL is None:
-        return _no_run_history()
-    summaries = await run_store.list_runs(DATABASE_URL, limit, offset)
-    return RunList(runs=summaries, limit=limit, offset=offset)
+    found = await from_store(
+        DATABASE_URL, lambda url: run_store.list_runs(url, limit, offset)
+    )
+    if isinstance(found, JSONResponse):
+        return found
+    return RunList(runs=found, limit=limit, offset=offset)
 
 
 @app.get("/runs/{run_id}", response_model=None)
 async def get_run(run_id: str) -> ResearchRun | JSONResponse:
     """One saved run: the question, settings, answer, claims, evidence and
     tool calls."""
-    if DATABASE_URL is None:
-        return _no_run_history()
-    run = await run_store.get_run(DATABASE_URL, run_id)
-    return _no_such_run(run_id) if run is None else run
+    found = await from_store(DATABASE_URL, lambda url: run_store.get_run(url, run_id))
+    return no_such_run(run_id) if found is None else found
 
 
 @app.get("/runs/{run_id}/export", response_model=None)
 async def export_run(run_id: str) -> Response:
     """A saved run as a JSON file to download."""
-    if DATABASE_URL is None:
-        return _no_run_history()
-    run = await run_store.get_run(DATABASE_URL, run_id)
-    if run is None:
-        return _no_such_run(run_id)
+    found = await from_store(DATABASE_URL, lambda url: run_store.get_run(url, run_id))
+    if found is None:
+        return no_such_run(run_id)
+    if isinstance(found, JSONResponse):
+        return found
     safe_id = "".join(c for c in run_id if c.isalnum() or c in "-_")
     return Response(
-        content=run.model_dump_json(indent=2),
+        content=found.model_dump_json(indent=2),
         media_type="application/json",
         headers={
             "Content-Disposition": f'attachment; filename="recon-run-{safe_id}.json"'
@@ -348,11 +333,12 @@ async def run_feedback(
     run_id: str, feedback: Feedback
 ) -> dict[str, str] | JSONResponse:
     """A 👍/👎 and an optional note on a saved run, replacing any earlier one."""
-    if DATABASE_URL is None:
-        return _no_run_history()
-    if not await run_store.set_feedback(DATABASE_URL, run_id, feedback):
-        return _no_such_run(run_id)
-    return {"status": "ok"}
+    saved = await from_store(
+        DATABASE_URL, lambda url: run_store.set_feedback(url, run_id, feedback)
+    )
+    if isinstance(saved, JSONResponse):
+        return saved
+    return {"status": "ok"} if saved else no_such_run(run_id)
 
 
 @app.get("/healthz")

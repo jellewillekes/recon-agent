@@ -45,8 +45,13 @@ UPDATE research_runs SET feedback = $2::jsonb WHERE run_id = $1 RETURNING run_id
 """
 
 
+# Seconds to wait for Postgres. Saving happens after the answer exists, so an
+# unreachable database mustn't hold the response for asyncpg's default 60 s.
+_CONNECT_TIMEOUT_S = 3.0
+
+
 async def _connect(database_url: str) -> Any:
-    conn = await asyncpg.connect(database_url)
+    conn = await asyncpg.connect(database_url, timeout=_CONNECT_TIMEOUT_S)
     await conn.execute(_CREATE_TABLE_SQL)
     return conn
 
