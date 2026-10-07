@@ -137,7 +137,7 @@ happens.
 | Review flag | The supervisor calls `flag_case_for_review` itself, during decompose or synthesize | The supervisor sets `flag_reason`. The `confirm_flag` node then writes the flag in Python, after the critic |
 | [Human-in-the-loop](glossary.md#human-in-the-loop) | None. The supervisor confirms its own flag | `interrupt()` in `confirm_flag`, resumed with the human's decision |
 | [Checkpoints](glossary.md#checkpoint) | None | `AsyncPostgresSaver`, or `InMemorySaver` without `DATABASE_URL` |
-| Billing | Agent SDK subscription credit | Metered `ANTHROPIC_API_KEY` |
+| Billing | Agent SDK subscription credit | Metered API key in `RECON_ANTHROPIC_API_KEY` (ADR 0027) |
 
 Full comparison: [`runtimes.md`](runtimes.md). Why four calls instead of SDK subagents:
 [ADR 0007](adr/0007-multi-agent-orchestration.md).

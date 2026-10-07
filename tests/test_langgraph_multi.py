@@ -34,6 +34,12 @@ from recon.tools import review_flag
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _langgraph_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The runtime reads its metered key before building the (stubbed) model."""
+    monkeypatch.setenv("RECON_ANTHROPIC_API_KEY", "test-key")
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

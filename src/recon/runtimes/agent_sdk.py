@@ -31,6 +31,7 @@ from claude_agent_sdk import (
 from claude_agent_sdk.types import McpStdioServerConfig
 
 from recon.contracts import AgentResult, Case, ToolCall
+from recon.runtimes.api_key import without_api_keys
 
 RUNTIME_NAME = "agent_sdk"
 
@@ -217,7 +218,7 @@ def _build_options(
                 command=sys.executable,
                 args=["-m", "recon.tools.mcp_server"],
                 env={
-                    **os.environ,
+                    **without_api_keys(os.environ),
                     "RECON_CREATED_BY": _CREATED_BY,
                     # This server lives for the whole run, so loading the
                     # search models as it starts pays off (#99).

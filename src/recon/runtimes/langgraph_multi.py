@@ -30,6 +30,7 @@ from langgraph.types import Command, Send, interrupt
 from pydantic import BaseModel, Field
 
 from recon.contracts import Case, ToolCall
+from recon.runtimes.api_key import langgraph_api_key
 from recon.runtimes.langgraph import (
     RUNTIME_NAME,
     AnswerResponse,
@@ -230,7 +231,7 @@ async def _decompose_node(
 ) -> dict[str, Any]:
     role_config = roles_config["supervisor"]
     model_name = role_config["model"]
-    model = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
+    model = ChatAnthropic(model=model_name, api_key=langgraph_api_key())  # type: ignore[call-arg]
     parsed, tokens_in, tokens_out = await _structured_call(
         model,
         [
@@ -282,7 +283,7 @@ async def _synthesize_node(
 ) -> dict[str, Any]:
     role_config = roles_config["supervisor"]
     model_name = role_config["model"]
-    model = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
+    model = ChatAnthropic(model=model_name, api_key=langgraph_api_key())  # type: ignore[call-arg]
     findings_text = "\n\n".join(state["findings"])
     parsed, tokens_in, tokens_out = await _structured_call(
         model,
@@ -321,7 +322,7 @@ async def _critic_node(
 ) -> dict[str, Any]:
     role_config = roles_config["critic"]
     model_name = role_config["model"]
-    model = ChatAnthropic(model=model_name)  # type: ignore[call-arg]
+    model = ChatAnthropic(model=model_name, api_key=langgraph_api_key())  # type: ignore[call-arg]
     parsed, tokens_in, tokens_out = await _structured_call(
         model,
         [

@@ -17,7 +17,7 @@ Select a combination with `--runtime {sdk,langgraph} --mode {single,multi}` on
 | Dimension | `sdk` (`agent_sdk.py`, `multi_agent.py`) | `langgraph` (`langgraph.py`, `langgraph_multi.py`) |
 |---|---|---|
 | Orchestration | The Claude Agent SDK's own CLI-driven agentic loop (`claude_agent_sdk.query()`). Multi mode makes a separate `query()` call per role, orchestrated in our own Python | A hand-built LangGraph `StateGraph`. Single mode is `create_react_agent` (LangGraph's prebuilt ReAct graph). Multi mode adds `decompose` → `Send`-fanned worker subgraphs → `synthesize` → `critic` → `confirm_flag` |
-| Model billing | The Agent SDK subscription credit | A separate, metered `ANTHROPIC_API_KEY` via `langchain_anthropic.ChatAnthropic` — `create_react_agent`/`StateGraph` need a real chat-model turn per step, which `query()`'s all-in-one loop has no way to expose |
+| Model billing | The Agent SDK subscription credit | A separate, metered API key (`RECON_ANTHROPIC_API_KEY`, ADR 0027) via `langchain_anthropic.ChatAnthropic` — `create_react_agent`/`StateGraph` need a real chat-model turn per step, which `query()`'s all-in-one loop has no way to expose |
 | Tool restriction | `ClaudeAgentOptions.allowed_tools`, CLI-enforced per role. Critic gets no `mcp_servers` attached at all | `client.get_tools()`'s flat list filtered client-side against `config/roles.yaml` before binding to each role's model — same config, no per-connection scoping primitive on the MCP client itself |
 | Checkpointing | None — a `query()` call runs to completion or fails, no mid-run persisted state | `AsyncPostgresSaver` when `DATABASE_URL` is set, `InMemorySaver` otherwise (both modes) |
 | Human-in-the-loop interrupt | Multi mode only, via ordinary multi-turn tool-calling on `flag_case_for_review_tool` per `prompts/supervisor.md` — no dedicated pause primitive, the supervisor drives the whole dry-run/pause/confirm protocol itself | Multi mode only, via a dedicated `confirm_flag` graph node calling `interrupt()`, reached when the supervisor sets `flag_reason`. Resumed with `LangGraphRuntime.resume(case, thread_id, approved)` |
@@ -48,8 +48,26 @@ Select a combination with `--runtime {sdk,langgraph} --mode {single,multi}` on
 
 Not yet populated — see the "Runtimes" section of the README. Populating it means
 running `recon.cli eval` for all four combinations, real spend against both the Agent
-SDK credit and a configured `ANTHROPIC_API_KEY` (`CLAUDE.md`'s Cost section: never run
-without being asked).
+SDK credit and the metered API key (`CLAUDE.md`'s Cost section: never run without being
+asked).
+
+### Passing the API key
+
+Never export the key as `ANTHROPIC_API_KEY`. The judge runs on the Agent SDK, whose CLI
+would then bill the API instead of the subscription, and `eval` refuses to start (ADR
+0027). Keep the key in the macOS Keychain, added once with a prompt so it stays out of
+shell history:
+
+```bash
+security add-generic-password -a "$USER" -s recon-anthropic-api-key -w
+```
+
+Then set it for the one command:
+
+```bash
+RECON_ANTHROPIC_API_KEY=$(security find-generic-password -a "$USER" -s recon-anthropic-api-key -w) \
+  DATABASE_URL=... uv run python -m recon.cli eval --runtime langgraph --cases evals/text-cases.txt
+```
 
 ## See also
 
