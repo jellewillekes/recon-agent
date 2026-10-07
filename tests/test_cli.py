@@ -649,26 +649,29 @@ def _capture_cases(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
 
 @pytest.mark.unit
 def test_cmd_eval_passes_the_correct_answer_cutoff_and_no_labels_without_an_index(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """#116: the failure class judges answers by the user's cutoff. Labels are
     only used with a search index to replay the agent's searches on."""
     seen = _capture_cases(monkeypatch)
+    thresholds = load_thresholds()
+    monkeypatch.setattr(cli, "load_thresholds", lambda: thresholds)
     monkeypatch.setattr(cli.cli_retrieval, "require_backend", lambda: None)
+    monkeypatch.chdir(tmp_path)
     args = build_parser().parse_args(["eval", "--limit", "1"])
     args.func(args)
-    cutoff = load_thresholds().correct_answer_score
     assert seen["options"] == [
-        f"correct_answer_score={cutoff!r}",
+        f"correct_answer_score={thresholds.correct_answer_score!r}",
         "retrieval_labels=None",
     ]
 
 
 @pytest.mark.unit
 def test_cmd_eval_passes_the_labels_when_a_search_index_is_reachable(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     seen = _capture_cases(monkeypatch)
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.cli_retrieval, "require_backend", lambda: object())
     monkeypatch.setattr(cli.cli_retrieval, "replay_passages", lambda index: None)
     monkeypatch.setattr(
