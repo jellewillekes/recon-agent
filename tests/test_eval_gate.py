@@ -5,7 +5,13 @@ from datetime import UTC, datetime
 import pytest
 
 from recon.contracts import CaseScore, EvalRun
-from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate, verdicts
+from recon.eval.gate import (
+    CASES_JUDGE_FAILED,
+    SKIPPED_AT_COST_CAP,
+    SKIPPED_AT_SESSION_LIMIT,
+    check_gate,
+    verdicts,
+)
 from recon.eval.thresholds import GateThresholds
 
 # Fixed here, not read from config/thresholds.yaml, so these tests don't
@@ -247,3 +253,28 @@ def test_verdicts_name_a_change_beyond_the_noise() -> None:
         "task_completion_rate": "same",
         "total_cost_eur": "worse",
     }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("side", ["candidate", "baseline"])
+@pytest.mark.parametrize(
+    ("key", "phrase"),
+    [
+        (
+            SKIPPED_AT_SESSION_LIMIT,
+            "stopped at the session limit with 2 case(s) cut short or not run",
+        ),
+        (CASES_JUDGE_FAILED, "has 2 case(s) the judge couldn't score"),
+    ],
+)
+def test_refuses_a_run_that_didnt_score_every_case(
+    side: str, key: str, phrase: str
+) -> None:
+    """#123: a run cut short by the session limit or a failed judge call
+    measured fewer cases than it lists, whichever side it's on."""
+    aggregate = {"task_completion_rate": 1.0, "answer_score_mean": 1.0, key: 2.0}
+    runs = {"candidate": _run(run_id="eval-2"), "baseline": _run()}
+    runs[side] = _run(run_id=f"eval-{side}", aggregate=aggregate)
+    failures = check_gate(runs["candidate"], runs["baseline"], LIMITS)
+    assert len(failures) == 1
+    assert f"the {side} run {phrase}" in failures[0]

@@ -21,6 +21,7 @@ from recon.eval.gate import (
     SKIPPED_AT_COST_CAP,
     check_gate,
     comparability_failures,
+    incomplete_reasons,
     verdicts,
 )
 from recon.eval.harness import (
@@ -156,6 +157,38 @@ def _refuse_over_cap(case_count: int, max_cost_eur: float) -> None:
         )
 
 
+def _write_run(run: EvalRun, max_cost_eur: float) -> None:
+    """Write the run's JSON and markdown, print its summary, and exit non-zero
+    when it didn't measure every case, since the gate would refuse it."""
+    results_dir = Path("evals/results")
+    results_dir.mkdir(parents=True, exist_ok=True)
+    json_path = results_dir / f"{run.run_id}.json"
+    md_path = results_dir / f"{run.run_id}.md"
+    # Trailing newline, so pre-commit's end-of-file fixer leaves results alone.
+    json_path.write_text(run.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    md_path.write_text(render_markdown(run), encoding="utf-8")
+
+    print(f"Wrote {json_path} and {md_path}")
+    print(
+        f"cases={len(run.case_scores)} "
+        f"task_completion_rate={run.aggregate.get('task_completion_rate', 0.0):.3f} "
+        f"answer_score_mean={run.aggregate.get('answer_score_mean', 0.0):.3f} "
+        f"total_cost_eur={run.total_cost_eur:.4f}"
+    )
+    if run.aggregate.get(SKIPPED_AT_COST_CAP):
+        raise SystemExit(
+            f"Stopped at the €{max_cost_eur:.2f} cap before "
+            f"{run.aggregate[SKIPPED_AT_COST_CAP]:.0f} case(s). The gate refuses "
+            "this run; rerun with fewer cases or a higher --max-cost-eur."
+        )
+    reasons = incomplete_reasons(run)
+    if reasons:
+        raise SystemExit(
+            f"The gate refuses this run: it {'; '.join(reasons)}. The cases' "
+            "notes say why. Rerun them once the cause is gone."
+        )
+
+
 def _cmd_eval(args: argparse.Namespace) -> None:
     key_problem = api_key.eval_key_problem(args.runtime)
     if key_problem is not None:
@@ -199,11 +232,8 @@ def _cmd_eval(args: argparse.Namespace) -> None:
             _build_runtime(args.runtime, args.mode, routing),
             tool_data_snapshot=tool_data_snapshot,
             max_cost_eur=args.max_cost_eur,
-            passages=(
-                cli_retrieval.replay_passages(search_index)
-                if search_index is not None
-                else None
-            ),
+            correct_answer_score=thresholds.correct_answer_score,
+            **cli_retrieval.scoring_inputs(search_index),
         )
     finally:
         shutdown_tracing()
@@ -213,27 +243,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     if search_index is not None:
         run = cli_retrieval.with_retrieval_metrics(run, cases, search_index)
 
-    results_dir = Path("evals/results")
-    results_dir.mkdir(parents=True, exist_ok=True)
-    json_path = results_dir / f"{run.run_id}.json"
-    md_path = results_dir / f"{run.run_id}.md"
-    # Trailing newline, so pre-commit's end-of-file fixer leaves results alone.
-    json_path.write_text(run.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    md_path.write_text(render_markdown(run), encoding="utf-8")
-
-    print(f"Wrote {json_path} and {md_path}")
-    print(
-        f"cases={len(run.case_scores)} "
-        f"task_completion_rate={run.aggregate.get('task_completion_rate', 0.0):.3f} "
-        f"answer_score_mean={run.aggregate.get('answer_score_mean', 0.0):.3f} "
-        f"total_cost_eur={run.total_cost_eur:.4f}"
-    )
-    if run.aggregate.get(SKIPPED_AT_COST_CAP):
-        raise SystemExit(
-            f"Stopped at the €{args.max_cost_eur:.2f} cap before "
-            f"{run.aggregate[SKIPPED_AT_COST_CAP]:.0f} case(s). The gate refuses "
-            "this run; rerun with fewer cases or a higher --max-cost-eur."
-        )
+    _write_run(run, args.max_cost_eur)
 
     if baseline is not None:
         for metric, verdict in verdicts(run, baseline, thresholds.gate).items():

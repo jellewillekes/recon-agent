@@ -47,8 +47,12 @@ def _run(run_id: str, **overrides: object) -> EvalRun:
                 notes="",
             )
         ],
-        "aggregate": {"task_completion_rate": 1.0, "answer_score_mean": 0.6},
-        "total_cost_eur": 1.0,
+        "aggregate": {
+            "task_completion_rate": 0.9,
+            "answer_score_mean": 0.6,
+            "cost_per_correct_answer_eur": 0.25,
+        },
+        "total_cost_eur": 1.5,
         "tool_data_snapshot": "snap",
     }
     defaults.update(overrides)
@@ -82,6 +86,30 @@ async def test_evals_lists_runs_newest_first(results: Path) -> None:
     runs = resp.json()["runs"]
     assert [r["run_id"] for r in runs] == ["eval-on", "eval-off", "eval-old"]
     assert runs[0]["routing"] is True and runs[0]["case_count"] == 1
+    # The summary reads each figure from the right aggregate key (#122 review).
+    assert runs[0]["task_completion_rate"] == 0.9
+    assert runs[0]["answer_score_mean"] == 0.6
+    assert runs[0]["total_cost_eur"] == 1.5
+    assert runs[0]["cost_per_correct_answer_eur"] == 0.25
+    assert runs[0]["incomplete"] == []
+
+
+async def test_a_run_that_didnt_score_every_case_says_so_in_the_list(
+    results: Path,
+) -> None:
+    """Review: its answer_score_mean includes placeholder zeros."""
+    run = _run(
+        "eval-partial",
+        timestamp_utc=T0 + timedelta(hours=2),
+        aggregate={"answer_score_mean": 0.3, "cases_judge_failed": 1.0},
+    )
+    (results / "eval-partial.json").write_text(run.model_dump_json())
+
+    resp = await _get("/evals")
+
+    partial = resp.json()["runs"][0]
+    assert partial["run_id"] == "eval-partial"
+    assert partial["incomplete"] == ["has 1 case(s) the judge couldn't score"]
 
 
 async def test_an_eval_run_comes_back_with_its_case_scores(results: Path) -> None:

@@ -18,7 +18,11 @@ from recon import cli, cli_edgar, cli_retrieval
 from recon.adapters.finance_agent_bench import DATASET_ID
 from recon.cli import build_parser, compute_dataset_stats
 from recon.contracts import Case, CaseScore, EvalRun
-from recon.eval.gate import SKIPPED_AT_COST_CAP
+from recon.eval.gate import (
+    CASES_JUDGE_FAILED,
+    SKIPPED_AT_COST_CAP,
+    SKIPPED_AT_SESSION_LIMIT,
+)
 from recon.eval.harness import RUBRIC_VERSION
 from recon.eval.thresholds import load_thresholds
 from recon.tools import data_source
@@ -131,7 +135,9 @@ def test_cmd_eval_writes_json_and_markdown(
     monkeypatch.setattr(
         cli,
         "run_evaluation",
-        lambda cases, runtime, tool_data_snapshot, max_cost_eur, passages: _eval_run(),
+        lambda cases, runtime, tool_data_snapshot, max_cost_eur, passages, **_: (
+            _eval_run()
+        ),
     )
     monkeypatch.chdir(tmp_path)
 
@@ -156,6 +162,7 @@ def test_cmd_eval_mode_flag_reaches_runtime(
         tool_data_snapshot: object,
         max_cost_eur: object,
         passages: object,
+        **_: object,
     ) -> EvalRun:
         captured["mode"] = runtime._mode  # type: ignore[attr-defined]
         return _eval_run()
@@ -182,6 +189,7 @@ def test_cmd_eval_defaults_to_single_mode(
         tool_data_snapshot: object,
         max_cost_eur: object,
         passages: object,
+        **_: object,
     ) -> EvalRun:
         captured["mode"] = runtime._mode  # type: ignore[attr-defined]
         captured["max_cost_eur"] = max_cost_eur
@@ -212,6 +220,7 @@ def test_cmd_eval_runtime_flag_reaches_langgraph_runtime(
         tool_data_snapshot: object,
         max_cost_eur: object,
         passages: object,
+        **_: object,
     ) -> EvalRun:
         captured["runtime_type"] = type(runtime).__name__
         return _eval_run()
@@ -238,6 +247,7 @@ def test_cmd_eval_defaults_to_sdk_runtime(
         tool_data_snapshot: object,
         max_cost_eur: object,
         passages: object,
+        **_: object,
     ) -> EvalRun:
         captured["runtime_type"] = type(runtime).__name__
         return _eval_run()
@@ -275,7 +285,9 @@ def test_cmd_eval_gate_passes_prints_message(
     monkeypatch.setattr(
         cli,
         "run_evaluation",
-        lambda cases, runtime, tool_data_snapshot, max_cost_eur, passages: _eval_run(),
+        lambda cases, runtime, tool_data_snapshot, max_cost_eur, passages, **_: (
+            _eval_run()
+        ),
     )
     monkeypatch.chdir(tmp_path)
     baseline_path = tmp_path / "baseline.json"
@@ -297,8 +309,8 @@ def test_cmd_eval_gate_failure_exits_nonzero(
     monkeypatch.setattr(
         cli,
         "run_evaluation",
-        lambda cases, runtime, tool_data_snapshot, max_cost_eur, passages: _eval_run(
-            aggregate={"task_completion_rate": 0.5, "answer_score_mean": 0.5}
+        lambda cases, runtime, tool_data_snapshot, max_cost_eur, passages, **_: (
+            _eval_run(aggregate={"task_completion_rate": 0.5, "answer_score_mean": 0.5})
         ),
     )
     monkeypatch.chdir(tmp_path)
@@ -330,6 +342,7 @@ def test_cmd_eval_records_the_tool_data_snapshot(
         tool_data_snapshot: object,
         max_cost_eur: object,
         passages: object,
+        **_: object,
     ) -> EvalRun:
         seen["snapshot"] = tool_data_snapshot
         return _eval_run()
@@ -624,12 +637,52 @@ def _capture_cases(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
         tool_data_snapshot: object,
         max_cost_eur: object,
         passages: object,
+        **options: object,
     ) -> EvalRun:
         seen["ids"] = [case.case_id for case in cases]
+        seen["options"] = [f"{key}={value!r}" for key, value in sorted(options.items())]
         return _eval_run()
 
     monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
     return seen
+
+
+@pytest.mark.unit
+def test_cmd_eval_passes_the_correct_answer_cutoff_and_no_labels_without_an_index(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#116: the failure class judges answers by the user's cutoff. Labels are
+    only used with a search index to replay the agent's searches on."""
+    seen = _capture_cases(monkeypatch)
+    thresholds = load_thresholds()
+    monkeypatch.setattr(cli, "load_thresholds", lambda: thresholds)
+    monkeypatch.setattr(cli.cli_retrieval, "require_backend", lambda: None)
+    monkeypatch.chdir(tmp_path)
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    args.func(args)
+    assert seen["options"] == [
+        f"correct_answer_score={thresholds.correct_answer_score!r}",
+        "retrieval_labels=None",
+    ]
+
+
+@pytest.mark.unit
+def test_cmd_eval_passes_the_labels_when_a_search_index_is_reachable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen = _capture_cases(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.cli_retrieval, "require_backend", lambda: object())
+    monkeypatch.setattr(cli.cli_retrieval, "replay_passages", lambda index: None)
+    monkeypatch.setattr(
+        cli.cli_retrieval, "with_retrieval_metrics", lambda run, cases, index: run
+    )
+    monkeypatch.setattr(
+        cli.cli_retrieval.retrieval, "load_labels", lambda: {"1": ["chunk-a"]}
+    )
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    args.func(args)
+    assert "retrieval_labels={'1': ['chunk-a']}" in seen["options"]
 
 
 @pytest.mark.unit
@@ -700,6 +753,29 @@ def test_cmd_eval_exits_nonzero_when_the_cap_stopped_the_run(
     monkeypatch.chdir(tmp_path)
     args = build_parser().parse_args(["eval"])
     with pytest.raises(SystemExit, match="before 2 case"):
+        args.func(args)
+    assert (tmp_path / "evals" / "results" / "eval-fixed.json").exists()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("key", "message"),
+    [
+        (SKIPPED_AT_SESSION_LIMIT, "session limit with 2 case"),
+        (CASES_JUDGE_FAILED, "has 2 case.s. the judge couldn't score"),
+    ],
+)
+def test_cmd_eval_writes_the_run_and_exits_nonzero_when_cases_went_unscored(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, key: str, message: str
+) -> None:
+    """#123: the cases that ran are kept on disk, and the exit says why the
+    gate will refuse the run."""
+    _patch_dataset_loading(monkeypatch)
+    incomplete = _eval_run(aggregate={"task_completion_rate": 1.0, key: 2.0})
+    monkeypatch.setattr(cli, "run_evaluation", lambda *a, **k: incomplete)
+    monkeypatch.chdir(tmp_path)
+    args = build_parser().parse_args(["eval"])
+    with pytest.raises(SystemExit, match=message):
         args.func(args)
     assert (tmp_path / "evals" / "results" / "eval-fixed.json").exists()
 

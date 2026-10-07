@@ -215,6 +215,25 @@ Rules:
 ## 7. Evaluation result
 
 ```python
+FailureClass = Literal["retrieval", "reasoning", "tool_use", "budget", "runtime_error", "none"]
+
+class RetrievalQuality(BaseModel):     # the agent's own searches, replayed, against the case's relevance labels
+    recall: float                      # labelled passages found among everything retrieved
+    precision_at_5: float
+    mrr_at_5: float
+    ndcg_at_5: float
+    retrieved_count: int
+
+class TrajectoryScore(BaseModel):      # the run path scored step by step from the trace, no model call (#116); None = not applicable
+    tool_selection: float | None = None        # overlap of the tools used with expected_tool_path; None without one
+    argument_correctness: float | None = None  # calls the tool didn't reject as invalid_input
+    retrieval_quality: RetrievalQuality | None = None  # only on labelled cases, with the filing-text search replayed
+    evidence_sufficiency: float | None = None  # key claims with a verified ref (= claim_support_rate)
+    recovery: float | None = None              # failed calls a later call to the same tool made good; None without failures
+    efficiency: float | None = None            # calls that weren't an exact repeat of an earlier one
+    grounding: float | None = None             # the evidence_grounding rubric score
+    final_correctness: float | None = None     # the answer_correctness rubric score
+
 class CaseScore(BaseModel):
     case_id: str
     task_completion: bool
@@ -229,6 +248,10 @@ class CaseScore(BaseModel):
     tool_names: list[str] = []         # the agent's tool calls by name, in call order; empty before this field existed
     claim_support_rate: float | None   # key claims with a verified ref (ADR 0030); None when nothing to score
     citation_precision: float | None   # cited refs that are verified (ADR 0030); None when nothing is cited
+    judge_failed: bool = False         # the rubric judge call failed, so answer_score and rubric_scores are placeholders (#123)
+    trajectory: TrajectoryScore | None = None  # #116; None before this field existed
+    failure_class: FailureClass | None = None  # the main reason the case failed, "none" when correct (ADR 0031); None when unscored
+    failure_reason: str | None = None          # one line naming what the class rests on
 
 class EvalRun(BaseModel):
     run_id: str

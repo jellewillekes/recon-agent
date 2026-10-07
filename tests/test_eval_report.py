@@ -87,3 +87,24 @@ def test_a_result_recorded_before_tool_names_still_loads() -> None:
     raw = _case_score().model_dump()
     del raw["tool_names"]
     assert CaseScore.model_validate(raw).tool_names == []
+
+
+@pytest.mark.unit
+def test_render_markdown_flags_a_run_that_didnt_score_every_case() -> None:
+    """Review of #123: the placeholder 0.0 mustn't read as a measured score."""
+    run = _run(
+        aggregate={"answer_score_mean": 0.4, "cases_judge_failed": 1.0},
+        case_scores=[_case_score(judge_failed=True, answer_score=0.0)],
+    )
+
+    markdown = render_markdown(run)
+
+    assert "Not comparable: has 1 case(s) the judge couldn't score" in markdown
+    assert "| unscored |" in markdown
+
+
+@pytest.mark.unit
+def test_render_markdown_lists_each_cases_failure_class() -> None:
+    run = _run(case_scores=[_case_score(failure_class="tool_use")])
+
+    assert "| tool_use |" in render_markdown(run)

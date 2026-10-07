@@ -8,6 +8,7 @@ not delegated); `recon.cli retrieval propose` only drafts candidates.
 """
 
 import hashlib
+import math
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -50,23 +51,53 @@ def recall_at_k(retrieved: list[str], relevant: set[str], k: int = K) -> float:
     return len(relevant & set(retrieved[:k])) / len(relevant)
 
 
+def reciprocal_rank_at_k(retrieved: list[str], relevant: set[str], k: int = K) -> float:
+    """1 / the rank of the first relevant result in the top `k`, else 0. Its
+    mean over the labelled cases is MRR@k (#116)."""
+    for rank, chunk in enumerate(retrieved[:k], start=1):
+        if chunk in relevant:
+            return 1 / rank
+    return 0.0
+
+
+def ndcg_at_k(retrieved: list[str], relevant: set[str], k: int = K) -> float:
+    """Normalised discounted cumulative gain at `k`, with binary relevance:
+    how close the top `k` come to listing the relevant chunks first (#116).
+    1.0 with none labelled, like `recall_at_k`."""
+    if not relevant:
+        return 1.0
+    dcg = sum(
+        1 / math.log2(rank + 1)
+        for rank, chunk in enumerate(retrieved[:k], start=1)
+        if chunk in relevant
+    )
+    ideal = sum(1 / math.log2(rank + 1) for rank in range(1, min(len(relevant), k) + 1))
+    return dcg / ideal
+
+
 def retrieval_metrics(
     labels: dict[str, list[str]], cases: list[Case], search: Search
 ) -> dict[str, float]:
-    """Mean precision@5 and recall@5 over the run's labelled cases. Empty if none."""
+    """Mean precision@5, recall@5, MRR@5 and NDCG@5 over the run's labelled
+    cases. Empty if none."""
     labelled = [case for case in cases if case.case_id in labels]
     if not labelled:
         return {}
-    precisions, recalls = [], []
+    scorers = {
+        "retrieval_precision_at_5": precision_at_k,
+        "retrieval_recall_at_5": recall_at_k,
+        "retrieval_mrr_at_5": reciprocal_rank_at_k,
+        "retrieval_ndcg_at_5": ndcg_at_k,
+    }
+    totals = dict.fromkeys(scorers, 0.0)
     for case in labelled:
         retrieved = search(case.question, K)
         relevant = set(labels[case.case_id])
-        precisions.append(precision_at_k(retrieved, relevant))
-        recalls.append(recall_at_k(retrieved, relevant))
+        for name, scorer in scorers.items():
+            totals[name] += scorer(retrieved, relevant, K)
     return {
         "retrieval_labelled_cases": float(len(labelled)),
-        "retrieval_precision_at_5": sum(precisions) / len(labelled),
-        "retrieval_recall_at_5": sum(recalls) / len(labelled),
+        **{name: total / len(labelled) for name, total in totals.items()},
     }
 
 

@@ -120,6 +120,17 @@ def company_search(
     return search
 
 
+def scoring_inputs(backend: KnowledgeBackend | None) -> dict[str, Any]:
+    """`run_evaluation`'s `passages` and `retrieval_labels`: the replayed
+    searches and the relevance labels, or neither without a search index."""
+    if backend is None:
+        return {"passages": None, "retrieval_labels": None}
+    return {
+        "passages": replay_passages(backend),
+        "retrieval_labels": retrieval.load_labels(),
+    }
+
+
 def replay_passages(backend: KnowledgeBackend) -> Passages:
     """Re-run a search for the faithfulness score (docs/adr/0026). A search
     that fails returns no passages, so that case goes unscored, with a note."""

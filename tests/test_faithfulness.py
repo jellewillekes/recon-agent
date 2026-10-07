@@ -11,7 +11,7 @@ import pytest
 from claude_agent_sdk import ClaudeAgentOptions
 
 from recon.contracts import AgentResult, Case, ToolCall
-from recon.eval import faithfulness, harness
+from recon.eval import faithfulness, harness, scoring
 from recon.eval.judge import JudgeResult, StructuredCall
 from recon.eval.rubrics import Rubric
 
@@ -235,7 +235,7 @@ def _patch_rubric_judge(monkeypatch: pytest.MonkeyPatch) -> None:
     ) -> JudgeResult:
         return JudgeResult(rubric_scores={"answer_correctness": 0.8}, cost_eur=0.002)
 
-    monkeypatch.setattr(harness, "judge_case", fake_judge_case)
+    monkeypatch.setattr(scoring, "judge_case", fake_judge_case)
 
 
 def _patch_faithfulness(monkeypatch: pytest.MonkeyPatch, score: float | None) -> None:
@@ -268,7 +268,7 @@ def test_harness_records_faithfulness_outside_the_answer_score(
     _patch_faithfulness(monkeypatch, 0.25)
     runtime = _FakeRuntime(_agent_result([_search("guidance")]))
 
-    score, _ = harness.score_case(
+    score, _ = scoring.score_case(
         CASE, runtime, RUBRICS, passages=lambda query, top_k, company_id: []
     )
 
@@ -285,10 +285,10 @@ def test_harness_leaves_faithfulness_out_without_a_score_or_a_replay(
     _patch_faithfulness(monkeypatch, None)
     runtime = _FakeRuntime(_agent_result([]))
 
-    with_replay, _ = harness.score_case(
+    with_replay, _ = scoring.score_case(
         CASE, runtime, RUBRICS, passages=lambda query, top_k, company_id: []
     )
-    without_replay, _ = harness.score_case(CASE, runtime, RUBRICS)
+    without_replay, _ = scoring.score_case(CASE, runtime, RUBRICS)
 
     assert "faithfulness" not in with_replay.rubric_scores
     assert "faithfulness" not in without_replay.rubric_scores

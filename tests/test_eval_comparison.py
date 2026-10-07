@@ -98,3 +98,24 @@ def test_a_metric_a_run_lacks_is_none() -> None:
 
     precision = next(m for m in result.metrics if m.name == "citation_precision_mean")
     assert (precision.baseline, precision.candidate) == (None, 0.9)
+
+
+def test_an_incomplete_candidate_is_refused_like_in_the_gate() -> None:
+    """The gate refuses a candidate cut short by the session limit (#123), so
+    the comparison mustn't hand out verdicts for it."""
+    candidate = _run(
+        run_id="eval-on",
+        aggregate={
+            "task_completion_rate": 1.0,
+            "answer_score_mean": 0.6,
+            "cases_skipped_at_session_limit": 1.0,
+        },
+    )
+
+    result = compare_runs(_run(), candidate, LIMITS)
+
+    assert not result.comparable
+    assert any(
+        "the candidate run stopped at the session limit" in r for r in result.reasons
+    )
+    assert all(metric.verdict is None for metric in result.metrics)

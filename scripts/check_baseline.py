@@ -3,7 +3,7 @@
 the minimums in config/thresholds.yaml.
 
 Step 11 (#16). The gate compares candidates against `evals/baseline.json`, so
-a baseline that's malformed, records no tool data, stopped at its cost cap, or
+a baseline that's malformed, records no tool data, didn't score every case, or
 scores below the agreed floor would make every later comparison meaningless.
 Until a baseline exists it only prints a notice. See docs/ci.md.
 """
@@ -16,7 +16,7 @@ import yaml
 from pydantic import ValidationError
 
 from recon.contracts import EvalRun
-from recon.eval.gate import SKIPPED_AT_COST_CAP
+from recon.eval.gate import incomplete_run_failures
 from recon.eval.harness import with_cost_per_correct_answer
 from recon.eval.thresholds import DEFAULT_THRESHOLDS_PATH, load_thresholds
 
@@ -28,8 +28,7 @@ def baseline_problems(baseline: EvalRun, minimums: dict[str, float]) -> list[str
     problems = []
     if baseline.tool_data_snapshot is None:
         problems.append("it doesn't record which tool data it queried")
-    if baseline.aggregate.get(SKIPPED_AT_COST_CAP):
-        problems.append("it stopped at its cost cap before its last case")
+    problems.extend(incomplete_run_failures(baseline, "baseline"))
     for metric, floor in sorted(minimums.items()):
         value = baseline.aggregate.get(metric)
         if value is None:

@@ -5,16 +5,19 @@ model config, assemble an `EvalRun`. See `docs/contracts.md` §7.
 from datetime import UTC, datetime
 from pathlib import Path
 
-import yaml
-
 from recon.adapters.finance_agent_bench import ATTRIBUTION, DATASET_ID, LICENSE
-from recon.contracts import AgentResult, Case, CaseScore, EvalRun
+from recon.contracts import Case, CaseScore, EvalRun
 from recon.eval import faithfulness, hashing, metrics
-from recon.eval.gate import SKIPPED_AT_COST_CAP
-from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH, judge_case
+from recon.eval.aggregate import aggregate_scores
+from recon.eval.gate import SKIPPED_AT_COST_CAP, SKIPPED_AT_SESSION_LIMIT
+from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH
+from recon.eval.judge_failures import (
+    SessionLimitReached,
+)
 from recon.eval.rubrics import DEFAULT_RUBRICS_DIR, Rubric, load_rubrics
+from recon.eval.scoring import score_case
 from recon.runtimes.base import Runtime
-from recon.tracing import record_agent_result, record_judge_call, span
+from recon.tracing import span
 
 # Bump when config/rubrics/*.yaml assertions change (docs/contracts.md §8:
 # "Rubric changes are breaking: earlier runs are no longer comparable.").
@@ -25,219 +28,9 @@ from recon.tracing import record_agent_result, record_judge_call, span
 # evidence instead of the model's own strings (docs/adr/0030).
 RUBRIC_VERSION = "4"
 
-JUDGED_DESPITE_ERROR_NOTE = "answer judged despite runtime error"
-
 
 def _run_id() -> str:
     return f"eval-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
-
-
-def _investigator_model(models_config_path: Path) -> str | None:
-    config = yaml.safe_load(models_config_path.read_text(encoding="utf-8"))
-    model = config.get("investigator", {}).get("model")
-    return str(model) if model else None
-
-
-def score_case(
-    case: Case,
-    runtime: Runtime,
-    rubrics: dict[str, Rubric],
-    *,
-    models_config_path: Path = DEFAULT_MODELS_CONFIG_PATH,
-    passages: faithfulness.Passages | None = None,
-) -> tuple[CaseScore, AgentResult]:
-    """Run, judge and score one case, under an `eval.case` trace span.
-
-    With `passages`, an answer that used filing-text search is also scored
-    for faithfulness to what the search returned."""
-    with span("eval.case", **{"recon.case_id": case.case_id}) as case_span:
-        score, agent_result = _score_case(
-            case,
-            runtime,
-            rubrics,
-            models_config_path=models_config_path,
-            passages=passages,
-        )
-        case_span.set_attributes(
-            {
-                "recon.answer_score": score.answer_score,
-                "recon.task_completion": score.task_completion,
-                "recon.cost_eur": score.cost_eur,
-            }
-        )
-    return score, agent_result
-
-
-def _score_case(
-    case: Case,
-    runtime: Runtime,
-    rubrics: dict[str, Rubric],
-    *,
-    models_config_path: Path,
-    passages: faithfulness.Passages | None,
-) -> tuple[CaseScore, AgentResult]:
-    with span("invoke_agent") as agent_span:
-        agent_result = runtime.run(case)
-        # Multi mode picks a model per role (config/roles.yaml), so only a
-        # single-mode run has one model to name.
-        model = (
-            _investigator_model(models_config_path)
-            if agent_result.mode == "single"
-            else None
-        )
-        record_agent_result(agent_span, agent_result, model)
-
-    exact, exact_note = metrics.tool_path_exact(case, agent_result)
-    equivalent, _ = metrics.tool_path_equivalent(case, agent_result)
-
-    has_answer = bool(agent_result.answer.strip())
-    notes_parts: list[str] = []
-    if agent_result.error is not None:
-        notes_parts.append(f"runtime error: {agent_result.error}")
-        if has_answer:
-            notes_parts.append(JUDGED_DESPITE_ERROR_NOTE)
-    if exact_note is not None:
-        notes_parts.append(exact_note)
-
-    # Gate on the answer, not on `error`: runtimes also set `error` for
-    # non-fatal outcomes that keep a complete answer (a token budget only
-    # checked after the run finished, a LangGraph run paused before its
-    # review-flag write). A real failure always returns an empty answer.
-    # See docs/adr/0013.
-    if not has_answer:
-        rubric_scores = {dimension: 0.0 for dimension in rubrics}
-        answer_score = 0.0
-        judge_cost_eur = 0.0
-    else:
-        with span("chat judge") as judge_span:
-            judge_result = judge_case(
-                case, agent_result, rubrics, models_config_path=models_config_path
-            )
-            record_judge_call(
-                judge_span,
-                model=judge_result.model,
-                tokens_in=judge_result.tokens_in,
-                tokens_out=judge_result.tokens_out,
-                num_turns=judge_result.num_turns,
-                cost_eur=judge_result.cost_eur,
-            )
-        rubric_scores = judge_result.rubric_scores
-        answer_score = metrics.weighted_answer_score(rubric_scores, rubrics)
-        judge_cost_eur = judge_result.cost_eur
-        if passages is not None:
-            faithful = _judge_faithfulness(
-                case, agent_result, passages, models_config_path
-            )
-            if faithful.score is not None:
-                # Not a rubric, so weighted_answer_score has already ignored it.
-                rubric_scores = {
-                    **rubric_scores,
-                    faithfulness.DIMENSION: faithful.score,
-                }
-            judge_cost_eur += faithful.cost_eur
-
-    score = CaseScore(
-        case_id=case.case_id,
-        task_completion=metrics.task_completion(agent_result),
-        answer_score=answer_score,
-        tool_path_exact=exact,
-        tool_path_equivalent=equivalent,
-        tool_call_accuracy=metrics.tool_call_accuracy(agent_result),
-        rubric_scores=rubric_scores,
-        cost_eur=agent_result.cost_eur + judge_cost_eur,
-        elapsed_ms=agent_result.elapsed_ms,
-        notes="; ".join(notes_parts),
-        tool_names=[call.tool for call in agent_result.tool_calls],
-        claim_support_rate=metrics.claim_support_rate(agent_result),
-        citation_precision=metrics.citation_precision(agent_result),
-    )
-    return score, agent_result
-
-
-def _judge_faithfulness(
-    case: Case,
-    agent_result: AgentResult,
-    passages: faithfulness.Passages,
-    models_config_path: Path,
-) -> faithfulness.FaithfulnessResult:
-    """`faithfulness.judge_faithfulness` under its own judge trace span."""
-    with span("chat judge faithfulness") as judge_span:
-        result = faithfulness.judge_faithfulness(
-            case, agent_result, passages, models_config_path=models_config_path
-        )
-        record_judge_call(
-            judge_span,
-            model=result.model,
-            tokens_in=result.tokens_in,
-            tokens_out=result.tokens_out,
-            num_turns=result.num_turns,
-            cost_eur=result.cost_eur,
-        )
-    return result
-
-
-def _aggregate(
-    cases: list[Case], case_scores: list[CaseScore], agent_cost_eur: float
-) -> dict[str, float]:
-    n = len(case_scores)
-    if n == 0:
-        return {}
-    total_cost_eur = sum(s.cost_eur for s in case_scores)
-
-    applicable = [
-        score
-        for case, score in zip(cases, case_scores, strict=True)
-        if case.expected_tool_path is not None
-    ]
-
-    aggregate: dict[str, float] = {
-        "case_count": float(n),
-        "task_completion_rate": sum(s.task_completion for s in case_scores) / n,
-        "answer_score_mean": sum(s.answer_score for s in case_scores) / n,
-        "tool_call_accuracy_mean": sum(s.tool_call_accuracy for s in case_scores) / n,
-        "elapsed_ms_mean": sum(s.elapsed_ms for s in case_scores) / n,
-        "tool_path_applicable_count": float(len(applicable)),
-        # Which side of a case the credit went to, so cost decisions rest on
-        # measurements (the judge model, say) rather than estimates.
-        "agent_cost_eur": agent_cost_eur,
-        "judge_cost_eur": total_cost_eur - agent_cost_eur,
-    }
-    if applicable:
-        aggregate["tool_path_exact_rate"] = sum(
-            s.tool_path_exact for s in applicable
-        ) / len(applicable)
-        aggregate["tool_path_equivalent_rate"] = sum(
-            s.tool_path_equivalent for s in applicable
-        ) / len(applicable)
-
-    aggregate.update(_citation_aggregate(case_scores))
-
-    dimension_names = {d for s in case_scores for d in s.rubric_scores}
-    for dimension in dimension_names:
-        values = [
-            s.rubric_scores[dimension]
-            for s in case_scores
-            if dimension in s.rubric_scores
-        ]
-        aggregate[f"{dimension}_mean"] = sum(values) / len(values)
-        if dimension == faithfulness.DIMENSION:
-            # Scored only on cases that searched, so the mean may rest on few.
-            aggregate["faithfulness_scored_cases"] = float(len(values))
-
-    return aggregate
-
-
-def _citation_aggregate(case_scores: list[CaseScore]) -> dict[str, float]:
-    """Means of the citation metrics over the cases that have them (ADR 0030)."""
-    aggregate: dict[str, float] = {}
-    for name in ("claim_support_rate", "citation_precision"):
-        values = [v for s in case_scores if (v := getattr(s, name)) is not None]
-        if values:
-            aggregate[f"{name}_mean"] = sum(values) / len(values)
-    scored = [s for s in case_scores if s.citation_precision is not None]
-    if scored:
-        aggregate["citation_scored_cases"] = float(len(scored))
-    return aggregate
 
 
 def _over_budget(case_scores: list[CaseScore], max_cost_eur: float | None) -> bool:
@@ -280,6 +73,12 @@ def run_evaluation(
     # tool_data_snapshot, so the harness depends on no tool module. None skips
     # faithfulness.
     passages: faithfulness.Passages | None = None,
+    # Relevant chunk ids per case, for each case's retrieval score (#116).
+    # Used only with `passages`, which replays the agent's searches.
+    retrieval_labels: dict[str, list[str]] | None = None,
+    # The answer_score a correct answer reaches, from config/thresholds.yaml.
+    # None leaves judged cases without a failure class.
+    correct_answer_score: float | None = None,
 ) -> EvalRun:
     if limit is not None:
         cases = cases[:limit]
@@ -296,17 +95,21 @@ def run_evaluation(
             tool_data_snapshot=tool_data_snapshot,
             max_cost_eur=max_cost_eur,
             passages=passages,
+            retrieval_labels=retrieval_labels,
+            correct_answer_score=correct_answer_score,
         )
-        run_span.set_attributes(
-            {
-                "recon.run_id": run.run_id,
-                "recon.runtime": run.runtime,
-                "recon.mode": run.mode,
-                "recon.total_cost_eur": run.total_cost_eur,
-                **{f"recon.{key}": value for key, value in run.aggregate.items()},
-            }
-        )
+        run_span.set_attributes(_run_attributes(run))
     return run
+
+
+def _run_attributes(run: EvalRun) -> dict[str, str | float]:
+    return {
+        "recon.run_id": run.run_id,
+        "recon.runtime": run.runtime,
+        "recon.mode": run.mode,
+        "recon.total_cost_eur": run.total_cost_eur,
+        **{f"recon.{key}": value for key, value in run.aggregate.items()},
+    }
 
 
 def _run_cases(
@@ -317,23 +120,33 @@ def _run_cases(
     models_config_path: Path,
     max_cost_eur: float | None,
     passages: faithfulness.Passages | None,
-) -> tuple[list[CaseScore], float, str, str]:
-    """Score cases until done or the cost cap is near. Returns the scores, the
-    agent's share of the cost, and the runtime and mode that ran them."""
+    retrieval_labels: dict[str, list[str]] | None,
+    correct_answer_score: float | None,
+) -> tuple[list[CaseScore], float, str, str, bool]:
+    """Score cases until done, the cost cap is near, or the session limit is
+    hit. Returns the scores, the agent's share of the cost, the runtime and
+    mode that ran them, and whether the session limit stopped the run."""
     case_scores: list[CaseScore] = []
     agent_cost_eur = 0.0
     runtime_name = "unknown"
     mode = "single"
+    session_limit = False
     for case in cases:
-        if _over_budget(case_scores, max_cost_eur):
+        if session_limit or _over_budget(case_scores, max_cost_eur):
             break
-        score, agent_result = score_case(
-            case,
-            runtime,
-            rubrics,
-            models_config_path=models_config_path,
-            passages=passages,
-        )
+        try:
+            score, agent_result = score_case(
+                case,
+                runtime,
+                rubrics,
+                models_config_path=models_config_path,
+                passages=passages,
+                retrieval_labels=retrieval_labels,
+                correct_answer_score=correct_answer_score,
+            )
+        except SessionLimitReached as reached:
+            score, agent_result = reached.score, reached.agent_result
+            session_limit = True
         case_scores.append(score)
         agent_cost_eur += agent_result.cost_eur
         runtime_name, mode = agent_result.runtime, agent_result.mode
@@ -344,7 +157,9 @@ def _run_cases(
             f"€{score.cost_eur:.2f}",
             flush=True,
         )
-    return case_scores, agent_cost_eur, runtime_name, mode
+    if session_limit and len(case_scores) < len(cases):
+        print("Stopped: the subscription's session limit was hit.", flush=True)
+    return case_scores, agent_cost_eur, runtime_name, mode, session_limit
 
 
 def _evaluate(
@@ -358,25 +173,27 @@ def _evaluate(
     tool_data_snapshot: str | None,
     max_cost_eur: float | None,
     passages: faithfulness.Passages | None,
+    retrieval_labels: dict[str, list[str]] | None,
+    correct_answer_score: float | None,
 ) -> EvalRun:
-    case_scores, agent_cost_eur, runtime_name, mode = _run_cases(
+    case_scores, agent_cost_eur, runtime_name, mode, session_limit = _run_cases(
         cases,
         runtime,
         rubrics,
         models_config_path=models_config_path,
         max_cost_eur=max_cost_eur,
         passages=passages,
+        retrieval_labels=retrieval_labels,
+        correct_answer_score=correct_answer_score,
     )
-    run_cases = cases[: len(case_scores)]
-    aggregate = _aggregate(run_cases, case_scores, agent_cost_eur)
-    if len(case_scores) < len(cases):
-        aggregate[SKIPPED_AT_COST_CAP] = float(len(cases) - len(case_scores))
+    aggregate = {
+        **aggregate_scores(cases[: len(case_scores)], case_scores, agent_cost_eur),
+        **_skip_markers(len(cases), len(case_scores), session_limit),
+    }
 
-    model_config_hash = (
-        hashing.compute_model_config_hash(models_config_path, roles_config_path)
-        if mode == "multi"
-        else hashing.compute_model_config_hash(models_config_path)
-    )
+    # Multi mode also reads config/roles.yaml, so it's part of the hash.
+    roles = [roles_config_path] if mode == "multi" else []
+    model_config_hash = hashing.compute_model_config_hash(models_config_path, *roles)
 
     return EvalRun(
         run_id=_run_id(),
@@ -394,6 +211,16 @@ def _evaluate(
         total_cost_eur=sum(s.cost_eur for s in case_scores),
         tool_data_snapshot=tool_data_snapshot,
     )
+
+
+def _skip_markers(requested: int, scored: int, session_limit: bool) -> dict[str, float]:
+    """The aggregate marker for cases the run didn't measure. A session limit
+    also counts the case it cut short, which is the last one scored (#123)."""
+    if session_limit:
+        return {SKIPPED_AT_SESSION_LIMIT: float(requested - scored + 1)}
+    if scored < requested:
+        return {SKIPPED_AT_COST_CAP: float(requested - scored)}
+    return {}
 
 
 def with_cost_per_correct_answer(

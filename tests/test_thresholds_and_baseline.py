@@ -10,7 +10,11 @@ import pytest
 from pydantic import ValidationError
 
 from recon.contracts import CaseScore, EvalRun
-from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate
+from recon.eval.gate import (
+    SKIPPED_AT_COST_CAP,
+    SKIPPED_AT_SESSION_LIMIT,
+    check_gate,
+)
 from recon.eval.harness import with_cost_per_correct_answer
 from recon.eval.metrics import cost_per_correct_answer_eur
 from recon.eval.thresholds import GateThresholds, load_thresholds
@@ -141,10 +145,15 @@ def test_a_usable_baseline_passes(tmp_path: Path) -> None:
             "{}",
             "stopped at its cost cap",
         ),
+        (
+            {"aggregate": {"answer_score_mean": 0.9, SKIPPED_AT_SESSION_LIMIT: 1.0}},
+            "{}",
+            "stopped at the session limit",
+        ),
         ({}, "{answer_score_mean: 0.9}", "below the minimum 0.9"),
         ({}, "{no_such_metric: 0.1}", "no_such_metric is missing"),
     ],
-    ids=["no-snapshot", "capped", "below-minimum", "missing-metric"],
+    ids=["no-snapshot", "capped", "session-limit", "below-minimum", "missing-metric"],
 )
 def test_an_unusable_baseline_fails(
     tmp_path: Path, overrides: dict[str, object], minimums: str, problem: str

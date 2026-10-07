@@ -9,10 +9,11 @@ covered separately in `tests/test_eval_judge.py`.
 from pathlib import Path
 
 import pytest
+from claude_agent_sdk import ProcessError, ResultError
 
 from recon.adapters.finance_agent_bench import DATASET_ID
 from recon.contracts import AgentResult, Case, EvalRun, ToolCall
-from recon.eval import harness
+from recon.eval import gate, harness, judge_failures, scoring
 from recon.eval.judge import JudgeResult
 from recon.eval.rubrics import Rubric
 
@@ -75,7 +76,7 @@ def _patch_judge(monkeypatch: pytest.MonkeyPatch, scores: dict[str, float]) -> N
     ) -> JudgeResult:
         return JudgeResult(rubric_scores=dict(scores), cost_eur=0.002)
 
-    monkeypatch.setattr(harness, "judge_case", fake_judge_case)
+    monkeypatch.setattr(scoring, "judge_case", fake_judge_case)
 
 
 @pytest.mark.unit
@@ -94,7 +95,7 @@ def test_score_case_success_uses_judge_and_combines_cost(
         )
     }
 
-    score, agent_result = harness.score_case(case, runtime, rubrics)
+    score, agent_result = scoring.score_case(case, runtime, rubrics)
 
     assert score.task_completion is True
     assert score.answer_score == 0.8
@@ -116,7 +117,7 @@ def test_score_case_records_the_tool_names_in_call_order(
     ]
     runtime = _FakeRuntime({"c1": _agent_result(case_id="c1", tool_calls=calls)})
 
-    score, _ = harness.score_case(_case("c1"), runtime, {})
+    score, _ = scoring.score_case(_case("c1"), runtime, {})
 
     assert score.tool_names == [
         "list_companies",
@@ -144,7 +145,7 @@ def test_score_case_answer_score_is_weighted_across_dimensions(
         ]
     }
 
-    score, _ = harness.score_case(case, runtime, rubrics)
+    score, _ = scoring.score_case(case, runtime, rubrics)
 
     assert score.answer_score == pytest.approx(0.5 * 0.2 + 0.3 * 1.0 + 0.2 * 0.5)
     assert score.rubric_scores["answer_correctness"] == 0.2
@@ -161,7 +162,7 @@ def test_score_case_runtime_error_without_answer_scores_zero_without_judge(
         called = True
         return JudgeResult(rubric_scores={}, cost_eur=0.0)
 
-    monkeypatch.setattr(harness, "judge_case", fake_judge_case)
+    monkeypatch.setattr(scoring, "judge_case", fake_judge_case)
 
     case = _case("c2")
     runtime = _FakeRuntime(
@@ -176,14 +177,14 @@ def test_score_case_runtime_error_without_answer_scores_zero_without_judge(
         ),
     }
 
-    score, _ = harness.score_case(case, runtime, rubrics)
+    score, _ = scoring.score_case(case, runtime, rubrics)
 
     assert called is False
     assert score.task_completion is False
     assert score.answer_score == 0.0
     assert score.rubric_scores == {"answer_correctness": 0.0, "evidence_grounding": 0.0}
     assert "runtime error: boom" in score.notes
-    assert harness.JUDGED_DESPITE_ERROR_NOTE not in score.notes
+    assert scoring.JUDGED_DESPITE_ERROR_NOTE not in score.notes
 
 
 @pytest.mark.unit
@@ -216,7 +217,7 @@ def test_score_case_judges_answer_despite_non_fatal_error(
         )
     }
 
-    score, _ = harness.score_case(case, runtime, rubrics)
+    score, _ = scoring.score_case(case, runtime, rubrics)
 
     assert score.answer_score == 0.9
     assert score.rubric_scores == {"answer_correctness": 0.9}
@@ -224,7 +225,7 @@ def test_score_case_judges_answer_despite_non_fatal_error(
     # task_completion stays strict: the run didn't finish within its constraints.
     assert score.task_completion is False
     assert f"runtime error: {error}" in score.notes
-    assert harness.JUDGED_DESPITE_ERROR_NOTE in score.notes
+    assert scoring.JUDGED_DESPITE_ERROR_NOTE in score.notes
 
 
 @pytest.mark.unit
@@ -238,7 +239,7 @@ def test_score_case_whitespace_answer_with_error_is_hard_fail(
         called = True
         return JudgeResult(rubric_scores={}, cost_eur=0.0)
 
-    monkeypatch.setattr(harness, "judge_case", fake_judge_case)
+    monkeypatch.setattr(scoring, "judge_case", fake_judge_case)
     case = _case("c4")
     runtime = _FakeRuntime(
         {"c4": _agent_result(case_id="c4", error="boom", answer="  \n")}
@@ -249,11 +250,11 @@ def test_score_case_whitespace_answer_with_error_is_hard_fail(
         )
     }
 
-    score, _ = harness.score_case(case, runtime, rubrics)
+    score, _ = scoring.score_case(case, runtime, rubrics)
 
     assert called is False
     assert score.answer_score == 0.0
-    assert harness.JUDGED_DESPITE_ERROR_NOTE not in score.notes
+    assert scoring.JUDGED_DESPITE_ERROR_NOTE not in score.notes
 
 
 @pytest.mark.unit
@@ -483,7 +484,7 @@ def test_score_case_records_the_citation_metrics(
     _patch_judge(monkeypatch, {"answer_correctness": 1.0})
     runtime = _FakeRuntime({"c1": _agent_result(case_id="c1", **_cited(False))})
 
-    score, _ = harness.score_case(_case("c1"), runtime, {})
+    score, _ = scoring.score_case(_case("c1"), runtime, {})
 
     assert score.claim_support_rate == 0.0
     assert score.citation_precision == 0.0
@@ -520,3 +521,291 @@ def test_run_aggregates_citation_metrics_over_the_cases_that_have_them(
 def test_the_rubric_version_is_4_for_claims() -> None:
     """ADR 0030: the judges see resolved evidence, so version 3 scores aren't comparable."""
     assert harness.RUBRIC_VERSION == "4"
+
+
+# --- judge failures (#123) ----------------------------------------------------
+
+SESSION_LIMIT_TEXT = "You've hit your session limit · resets 6:50pm"
+
+
+def _result_error(text: str) -> ResultError:
+    """What the SDK raises when the CLI reports an error result and exits."""
+    return ResultError(
+        f"Claude Code returned an error result: {text}",
+        data={"subtype": "success", "is_error": True, "result": text},
+        exit_code=1,
+    )
+
+
+def _patch_failing_judge(
+    monkeypatch: pytest.MonkeyPatch, failing_case: str, error: Exception
+) -> None:
+    def fake_judge_case(
+        case: Case,
+        agent_result: AgentResult,
+        rubrics: dict[str, Rubric],
+        *,
+        models_config_path: Path = REPO_MODELS_CONFIG,
+    ) -> JudgeResult:
+        if case.case_id == failing_case:
+            raise error
+        return JudgeResult(rubric_scores={"answer_correctness": 1.0}, cost_eur=0.002)
+
+    monkeypatch.setattr(scoring, "judge_case", fake_judge_case)
+
+
+def _run_ids(ids: list[str], runtime: _FakeRuntime | None = None) -> EvalRun:
+    return harness.run_evaluation(
+        [_case(cid) for cid in ids],
+        runtime or _FakeRuntime({cid: _agent_result(case_id=cid) for cid in ids}),
+        rubrics_dir=REPO_RUBRICS_DIR,
+        prompts_dir=REPO_PROMPTS_DIR,
+        models_config_path=REPO_MODELS_CONFIG,
+    )
+
+
+@pytest.mark.unit
+def test_a_session_limit_in_the_judge_stops_the_run_and_keeps_the_scored_cases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#123: the run crashed in case 3 and lost the two cases already scored."""
+    _patch_failing_judge(monkeypatch, "c2", _result_error(SESSION_LIMIT_TEXT))
+
+    run = _run_ids(["c1", "c2", "c3"])
+
+    assert [s.case_id for s in run.case_scores] == ["c1", "c2"]
+    first, second = run.case_scores
+    assert first.rubric_scores == {"answer_correctness": 1.0}
+    assert first.judge_failed is False
+    assert second.judge_failed is True
+    assert "session limit" in second.notes
+    # The agent's share of c2 was spent, so it still counts.
+    assert run.total_cost_eur == pytest.approx(0.012 + 0.01)
+    # c2, which the limit cut short, and c3, which never ran.
+    assert run.aggregate[gate.SKIPPED_AT_SESSION_LIMIT] == 2.0
+    assert run.aggregate[gate.CASES_JUDGE_FAILED] == 1.0
+
+
+@pytest.mark.unit
+def test_another_judge_failure_unscores_that_case_and_the_run_goes_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_failing_judge(monkeypatch, "c2", _result_error("API Error: overloaded"))
+
+    run = _run_ids(["c1", "c2", "c3"])
+
+    assert [s.case_id for s in run.case_scores] == ["c1", "c2", "c3"]
+    failed = run.case_scores[1]
+    assert failed.judge_failed is True
+    assert failed.rubric_scores == {}
+    assert failed.answer_score == 0.0
+    assert "judge failed: " in failed.notes and "overloaded" in failed.notes
+    assert run.aggregate[gate.CASES_JUDGE_FAILED] == 1.0
+    assert gate.SKIPPED_AT_SESSION_LIMIT not in run.aggregate
+
+
+@pytest.mark.unit
+def test_a_process_error_in_the_judge_is_caught_too(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_failing_judge(monkeypatch, "c1", ProcessError("CLI died", exit_code=1))
+
+    run = _run_ids(["c1", "c2"])
+
+    assert run.case_scores[0].judge_failed is True
+    assert len(run.case_scores) == 2
+
+
+@pytest.mark.unit
+def test_a_session_limit_in_the_agent_stops_the_run_after_that_case(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The agent hits the same limit first when a case starts after it."""
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    runtime = _FakeRuntime(
+        {
+            "c1": _agent_result(case_id="c1"),
+            "c2": _agent_result(
+                case_id="c2",
+                answer="",
+                error=f"Claude Code returned an error result: {SESSION_LIMIT_TEXT}",
+            ),
+            "c3": _agent_result(case_id="c3"),
+        }
+    )
+
+    run = _run_ids(["c1", "c2", "c3"], runtime)
+
+    assert [s.case_id for s in run.case_scores] == ["c1", "c2"]
+    assert run.aggregate[gate.SKIPPED_AT_SESSION_LIMIT] == 2.0
+    assert gate.CASES_JUDGE_FAILED not in run.aggregate
+
+
+@pytest.mark.unit
+def test_a_session_limit_on_the_last_case_still_marks_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review of #123: with no case left to skip, the run looked complete and
+    the cut-short case counted as a real runtime error."""
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    limited = f"Claude Code returned an error result: {SESSION_LIMIT_TEXT}"
+    runtime = _FakeRuntime(
+        {
+            "c1": _agent_result(case_id="c1"),
+            "c2": _agent_result(case_id="c2", answer="", error=limited),
+        }
+    )
+
+    run = _run_ids(["c1", "c2"], runtime)
+
+    assert len(run.case_scores) == 2
+    assert run.aggregate[gate.SKIPPED_AT_SESSION_LIMIT] == 1.0
+    assert run.case_scores[1].failure_class is None
+
+
+@pytest.mark.unit
+def test_a_judge_without_usable_output_unscores_the_case(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from recon.eval.judge import JudgeOutputError
+
+    _patch_failing_judge(monkeypatch, "c1", JudgeOutputError("no structured output"))
+
+    run = _run_ids(["c1", "c2"])
+
+    assert run.case_scores[0].judge_failed is True
+    assert len(run.case_scores) == 2
+
+
+@pytest.mark.unit
+def test_a_faithfulness_judge_failure_keeps_the_rubric_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_judge(monkeypatch, {"answer_correctness": 0.8})
+
+    def failing_faithfulness(*args: object, **kwargs: object) -> None:
+        raise _result_error("API Error: overloaded")
+
+    monkeypatch.setattr(
+        scoring.faithfulness, "judge_faithfulness", failing_faithfulness
+    )
+    runtime = _FakeRuntime({"c1": _agent_result(case_id="c1")})
+
+    score, _ = scoring.score_case(
+        _case("c1"), runtime, {}, passages=lambda query, top_k, company_id: []
+    )
+
+    assert score.rubric_scores == {"answer_correctness": 0.8}
+    assert score.judge_failed is False
+    assert "faithfulness judge failed: " in score.notes
+
+
+@pytest.mark.unit
+def test_score_case_raises_with_the_scored_case_at_a_session_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callers outside the harness's loop still get the case that ran."""
+    _patch_failing_judge(monkeypatch, "c1", _result_error(SESSION_LIMIT_TEXT))
+    runtime = _FakeRuntime({"c1": _agent_result(case_id="c1")})
+
+    with pytest.raises(judge_failures.SessionLimitReached) as caught:
+        scoring.score_case(_case("c1"), runtime, {})
+
+    assert caught.value.score.case_id == "c1"
+    assert caught.value.score.judge_failed is True
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (SESSION_LIMIT_TEXT, True),
+        ("Claude AI usage limit reached|1760000000", True),
+        ("API Error: 429 rate_limit_error", True),
+        ("You've hit your weekly limit · resets Mon 9am", True),
+        ("Claude Code returned an error result: hit your Opus limit", True),
+        ("API Error: overloaded", False),
+        ("tool-call budget of 12 exceeded", False),
+    ],
+)
+def test_is_session_limit(text: str, expected: bool) -> None:
+    assert judge_failures.is_session_limit(text) is expected
+
+
+# --- run-path breakdown and failure classes (#116) ---------------------------
+
+
+@pytest.mark.unit
+def test_every_scored_case_gets_a_breakdown_and_a_failure_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_judge(monkeypatch, {"answer_correctness": 0.2, "evidence_grounding": 0.2})
+    runtime = _FakeRuntime(
+        {
+            "c1": _agent_result(
+                case_id="c1",
+                tool_calls=[
+                    ToolCall(
+                        tool="list_companies", arguments={}, status="ok", elapsed_ms=1
+                    )
+                ],
+            ),
+            "c2": _agent_result(case_id="c2", answer="", error="CLI crashed"),
+        }
+    )
+
+    run = harness.run_evaluation(
+        [_case("c1"), _case("c2")],
+        runtime,
+        rubrics_dir=REPO_RUBRICS_DIR,
+        prompts_dir=REPO_PROMPTS_DIR,
+        models_config_path=REPO_MODELS_CONFIG,
+        correct_answer_score=0.5,
+    )
+
+    first, second = run.case_scores
+    assert first.trajectory is not None
+    assert first.trajectory.final_correctness == 0.2
+    assert first.trajectory.argument_correctness == 1.0
+    assert first.failure_class == "reasoning"
+    assert second.failure_class == "runtime_error"
+    assert second.failure_reason == "CLI crashed"
+    assert run.aggregate["failure_reasoning_count"] == 1.0
+    assert run.aggregate["failure_runtime_error_count"] == 1.0
+    assert run.aggregate["failure_classified_cases"] == 2.0
+
+
+@pytest.mark.unit
+def test_the_breakdown_scores_retrieval_on_labelled_cases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    monkeypatch.setattr(
+        scoring.faithfulness,
+        "judge_faithfulness",
+        lambda *a, **k: scoring.faithfulness.FaithfulnessResult(score=None),
+    )
+    search = ToolCall(
+        tool="search_knowledge", arguments={"query": "q"}, status="ok", elapsed_ms=1
+    )
+    runtime = _FakeRuntime({"c1": _agent_result(case_id="c1", tool_calls=[search])})
+
+    rubrics = {
+        "answer_correctness": Rubric(
+            dimension="answer_correctness", version=1, weight=1.0, assertions=[]
+        )
+    }
+
+    score, _ = scoring.score_case(
+        _case("c1"),
+        runtime,
+        rubrics,
+        passages=lambda query, top_k, company_id: [{"chunk_id": "a"}],
+        retrieval_labels={"c1": ["a", "b"]},
+        correct_answer_score=0.5,
+    )
+
+    assert score.trajectory is not None
+    assert score.trajectory.retrieval_quality is not None
+    assert score.trajectory.retrieval_quality.recall == 0.5
+    assert score.failure_class == "none"

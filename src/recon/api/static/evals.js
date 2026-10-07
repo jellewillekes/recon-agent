@@ -20,6 +20,23 @@ const METRIC_LABELS = {
   elapsed_ms_mean: "Time per case",
 };
 
+// Aggregate markers of cases a run didn't measure (#123), as in eval/gate.py.
+const INCOMPLETE_KEYS = {
+  cases_skipped_at_cost_cap: "case(s) not run at the cost cap",
+  cases_skipped_at_session_limit: "case(s) cut short or not run at the session limit",
+  cases_judge_failed: "case(s) the judge couldn't score",
+};
+
+// Failure classes (#116, ADR 0031), in the order they're checked.
+const FAILURE_LABELS = {
+  budget: "Budget",
+  runtime_error: "Runtime error",
+  tool_use: "Tool use",
+  retrieval: "Retrieval",
+  reasoning: "Reasoning",
+  none: "Correct",
+};
+
 function number(value, digits = 3) {
   return value === null || value === undefined ? "—" : Number(value).toFixed(digits);
 }
@@ -79,12 +96,33 @@ function renderEvalTable(runs) {
       run.rubric_version,
       String(run.case_count),
       percent(run.task_completion_rate),
-      number(run.answer_score_mean),
+      run.incomplete.length ? incompleteMean(run) : number(run.answer_score_mean),
       formatCost(run.total_cost_eur),
       run.cost_per_correct_answer_eur == null ? "—" : formatCost(run.cost_per_correct_answer_eur),
     ]));
   }
   evalTable.replaceChildren(head, body);
+}
+
+// A run that didn't score every case: its mean includes placeholder zeros.
+function incompleteMean(run) {
+  const cell = element("span", "", number(run.answer_score_mean) + " ");
+  const flag = element("span", "failure", "incomplete");
+  flag.dataset.failure = "runtime_error";
+  flag.title = run.incomplete.join("; ");
+  cell.append(flag);
+  return cell;
+}
+
+function incompleteWarning(aggregate) {
+  const reasons = Object.entries(INCOMPLETE_KEYS)
+    .filter(([key]) => aggregate[key])
+    .map(([key, text]) => aggregate[key] + " " + text);
+  if (!reasons.length) return null;
+  const box = element("div", "result-warning");
+  box.append(element("strong", "", "Not every case was scored. "));
+  box.append(document.createTextNode("The means include placeholder zeros, and the gate won't compare this run: " + reasons.join("; ") + "."));
+  return box;
 }
 
 // Defaults to the newest routing-off and routing-on multi runs, the
@@ -162,6 +200,39 @@ function renderComparison(result) {
   compareResult.replaceChildren(...parts);
 }
 
+function failureCell(score) {
+  if (!score.failure_class) return score.failure_reason ?? "—";
+  const cell = element("span");
+  const badge = element("span", "failure", FAILURE_LABELS[score.failure_class] ?? score.failure_class);
+  badge.dataset.failure = score.failure_class;
+  cell.append(badge);
+  if (score.failure_reason) cell.append(element("small", "failure-reason", score.failure_reason));
+  return cell;
+}
+
+// The run path in one line: each step's score, "—" where it doesn't apply.
+function trajectorySummary(path) {
+  if (!path) return "—";
+  const parts = [
+    ["tools", path.tool_selection],
+    ["args", path.argument_correctness],
+    ["recovery", path.recovery],
+    ["no repeats", path.efficiency],
+    ["evidence", path.evidence_sufficiency],
+  ];
+  if (path.retrieval_quality) parts.push(["retrieval recall", path.retrieval_quality.recall]);
+  return parts.map(([label, value]) => label + " " + number(value, 2)).join(" · ");
+}
+
+function renderFailureCounts(aggregate) {
+  const classified = aggregate.failure_classified_cases;
+  if (!classified) return null;
+  const counts = Object.keys(FAILURE_LABELS)
+    .filter((name) => aggregate["failure_" + name + "_count"])
+    .map((name) => FAILURE_LABELS[name] + " " + aggregate["failure_" + name + "_count"]);
+  return element("p", "compare-note", "Failure classes over " + classified + " case(s): " + counts.join(" · "));
+}
+
 async function loadEvalDetail(runId) {
   evalDetail.replaceChildren(element("p", "no-data", "Loading " + runId + "…"));
   try {
@@ -190,14 +261,15 @@ function renderEvalDetail(run) {
     run.run_id + " · " + run.runtime + " / " + run.mode + " · routing " + (run.routing ? "on" : "off") + " · rubric " + run.rubric_version + " · " + run.dataset,
   );
   const head = element("thead");
-  head.append(tableRow(["Case", "Completed", "Answer score", "Tool-call acc.", "Citation precision", "Cost", "Time", "Notes"], "th"));
+  head.append(tableRow(["Case", "Completed", "Answer score", "Failure", "Run path", "Citation precision", "Cost", "Time", "Notes"], "th"));
   const body = element("tbody");
   for (const score of run.case_scores) {
     const row = tableRow([
       score.case_id.replace("finance-agent-bench:", ""),
       score.task_completion ? "yes" : "no",
-      number(score.answer_score, 2),
-      number(score.tool_call_accuracy, 2),
+      score.judge_failed ? "unscored" : number(score.answer_score, 2),
+      failureCell(score),
+      trajectorySummary(score.trajectory),
       number(score.citation_precision, 2),
       formatCost(score.cost_eur),
       formatDuration(score.elapsed_ms),
@@ -210,7 +282,9 @@ function renderEvalDetail(run) {
   table.append(head, body);
   const scroll = element("div", "table-scroll");
   scroll.append(table);
-  evalDetail.replaceChildren(meta, summary, scroll);
+  const failures = renderFailureCounts(run.aggregate);
+  const warning = incompleteWarning(run.aggregate);
+  evalDetail.replaceChildren(...[meta, warning, summary, failures, scroll].filter(Boolean));
 }
 
 compareForm.addEventListener("submit", compareRuns);

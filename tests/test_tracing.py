@@ -19,7 +19,7 @@ from opentelemetry.trace import StatusCode
 
 from recon import tracing
 from recon.contracts import AgentResult, Case, ToolCall
-from recon.eval import harness
+from recon.eval import harness, scoring
 from recon.eval.judge import JudgeResult
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -97,7 +97,7 @@ def _run_one_case(monkeypatch: pytest.MonkeyPatch, result: AgentResult) -> None:
             num_turns=2,
         )
 
-    monkeypatch.setattr(harness, "judge_case", fake_judge)
+    monkeypatch.setattr(scoring, "judge_case", fake_judge)
     harness.run_evaluation(
         [_case()],
         _Runtime(result),

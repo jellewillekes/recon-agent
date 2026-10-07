@@ -614,6 +614,27 @@ def test_precision_and_recall_at_k() -> None:
     assert retrieval.recall_at_k(retrieved, set()) == 1.0
 
 
+def test_reciprocal_rank_is_one_over_the_first_relevant_rank_in_the_top_k() -> None:
+    """#116: MRR@k averages this over the labelled cases."""
+    assert retrieval.reciprocal_rank_at_k(["x", "a", "b"], {"a", "b"}) == 0.5
+    assert retrieval.reciprocal_rank_at_k(["a"], {"a"}) == 1.0
+    assert retrieval.reciprocal_rank_at_k(["x"] * 5 + ["a"], {"a"}) == 0.0
+    assert retrieval.reciprocal_rank_at_k([], {"a"}) == 0.0
+
+
+def test_ndcg_rewards_relevant_chunks_ranked_higher() -> None:
+    """Binary relevance, normalised by the best ranking the labels allow."""
+    relevant = {"a", "b"}
+    best = retrieval.ndcg_at_k(["a", "b", "x"], relevant)
+    worse = retrieval.ndcg_at_k(["x", "a", "b"], relevant)
+    assert best == pytest.approx(1.0)
+    assert 0.0 < worse < best
+    # One of two relevant chunks, at rank 1: 1 / (1 + 1/log2(3)).
+    assert retrieval.ndcg_at_k(["a", "x"], relevant) == pytest.approx(0.6131, abs=1e-4)
+    assert retrieval.ndcg_at_k(["x"], relevant) == 0.0
+    assert retrieval.ndcg_at_k(["x"], set()) == 1.0
+
+
 def _case(case_id: str, question: str) -> Case:
     return Case(
         case_id=case_id,
@@ -645,6 +666,8 @@ def test_retrieval_metrics_cover_only_labelled_cases(tmp_path: Path) -> None:
         "retrieval_labelled_cases": 1.0,
         "retrieval_precision_at_5": pytest.approx(0.2),
         "retrieval_recall_at_5": pytest.approx(0.5),
+        "retrieval_mrr_at_5": pytest.approx(1.0),
+        "retrieval_ndcg_at_5": pytest.approx(0.6131, abs=1e-4),
     }
     assert retrieval.load_labels(tmp_path / "missing.yaml") == {}
     assert retrieval.retrieval_metrics({}, cases, search) == {}

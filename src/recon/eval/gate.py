@@ -15,6 +15,46 @@ from recon.eval.thresholds import GateThresholds
 # case. Such a run didn't measure its whole case set, so the gate refuses it
 # as a candidate and as a baseline.
 SKIPPED_AT_COST_CAP = "cases_skipped_at_cost_cap"
+# Cases the subscription's session limit cut short or kept from running (#123).
+# Refused the same way as a capped run.
+SKIPPED_AT_SESSION_LIMIT = "cases_skipped_at_session_limit"
+# Cases whose rubric judge call failed (#123). Their answer_score is a
+# placeholder 0.0, not a measurement, so the run is refused the same way.
+CASES_JUDGE_FAILED = "cases_judge_failed"
+
+# Aggregate key -> how a run with that many cases unmeasured is described.
+_INCOMPLETE_RUN = {
+    SKIPPED_AT_COST_CAP: "stopped at its cost cap with {n} case(s) not run",
+    SKIPPED_AT_SESSION_LIMIT: (
+        "stopped at the session limit with {n} case(s) cut short or not run"
+    ),
+    CASES_JUDGE_FAILED: "has {n} case(s) the judge couldn't score",
+}
+
+
+def incomplete_reasons(run: EvalRun) -> list[str]:
+    """What `run` left unmeasured, one line per marker in its aggregate.
+    Empty for a complete run."""
+    return [
+        template.format(n=f"{count:.0f}")
+        for key, template in _INCOMPLETE_RUN.items()
+        if (count := run.aggregate.get(key))
+    ]
+
+
+def incomplete_run_failures(run: EvalRun, side: str) -> list[str]:
+    """Why `run` didn't measure its whole case set, as gate failures naming
+    `side` ("baseline" or "candidate"). Empty for a complete run."""
+    rerun = (
+        "Regenerate the baseline through an explicit PR."
+        if side == "baseline"
+        else "Rerun it once the cause is gone: a higher --max-cost-eur, fewer "
+        "cases, or after the session limit resets."
+    )
+    return [
+        f"the {side} run {reason}, so it didn't measure its whole case set. {rerun}"
+        for reason in incomplete_reasons(run)
+    ]
 
 
 def comparability_failures(
@@ -54,12 +94,7 @@ def comparability_failures(
             f"candidate {tool_data_snapshot!r}. Use the baseline's snapshot, or "
             "regenerate the baseline through an explicit PR."
         )
-    skipped = baseline.aggregate.get(SKIPPED_AT_COST_CAP)
-    if skipped:
-        failures.append(
-            f"the baseline run stopped at its cost cap with {skipped:.0f} case(s) "
-            f"not run, so it didn't measure its whole case set. {regenerate}"
-        )
+    failures.extend(incomplete_run_failures(baseline, "baseline"))
     baseline_ids = {s.case_id for s in baseline.case_scores}
     if set(case_ids) != baseline_ids:
         missing, extra = baseline_ids - set(case_ids), set(case_ids) - baseline_ids
@@ -89,12 +124,7 @@ def check_gate(
     )
     # The baseline side is in comparability_failures, so the CLI refuses a
     # capped baseline before running. A candidate is only known afterwards.
-    skipped = candidate.aggregate.get(SKIPPED_AT_COST_CAP)
-    if skipped:
-        failures.append(
-            f"the candidate run stopped at its cost cap with {skipped:.0f} case(s) "
-            "not run. Rerun it with a higher --max-cost-eur or fewer cases."
-        )
+    failures.extend(incomplete_run_failures(candidate, "candidate"))
     if failures:
         return failures
 
