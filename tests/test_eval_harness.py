@@ -460,3 +460,63 @@ def test_run_evaluation_reports_each_case_as_it_finishes(
     ]
     assert "completed" in lines[0]
     assert "€0.01" in lines[0]
+
+
+def _cited(verified: bool) -> dict[str, object]:
+    return {
+        "claims": [{"text": "c", "importance": "key", "evidence_refs": ["Ea"]}],
+        "evidence_items": [
+            {
+                "ref": "Ea",
+                "verified": verified,
+                "source_type": "filing_text" if verified else "unknown",
+            }
+        ],
+    }
+
+
+@pytest.mark.unit
+def test_score_case_records_the_citation_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR 0030: deterministic, next to the judge's evidence_grounding."""
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    runtime = _FakeRuntime({"c1": _agent_result(case_id="c1", **_cited(False))})
+
+    score, _ = harness.score_case(_case("c1"), runtime, {})
+
+    assert score.claim_support_rate == 0.0
+    assert score.citation_precision == 0.0
+
+
+@pytest.mark.unit
+def test_run_aggregates_citation_metrics_over_the_cases_that_have_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    runtime = _FakeRuntime(
+        {
+            "c1": _agent_result(case_id="c1", **_cited(True)),
+            "c2": _agent_result(case_id="c2", **_cited(False)),
+            "c3": _agent_result(case_id="c3"),
+        }
+    )
+
+    run = harness.run_evaluation(
+        [_case("c1"), _case("c2"), _case("c3")],
+        runtime,
+        rubrics_dir=REPO_RUBRICS_DIR,
+        prompts_dir=REPO_PROMPTS_DIR,
+        models_config_path=REPO_MODELS_CONFIG,
+        tool_data_snapshot="20260928",
+    )
+
+    assert run.aggregate["claim_support_rate_mean"] == pytest.approx(0.5)
+    assert run.aggregate["citation_precision_mean"] == pytest.approx(0.5)
+    assert run.aggregate["citation_scored_cases"] == 2.0
+
+
+@pytest.mark.unit
+def test_the_rubric_version_is_4_for_claims() -> None:
+    """ADR 0030: the judges see resolved evidence, so version 3 scores aren't comparable."""
+    assert harness.RUBRIC_VERSION == "4"

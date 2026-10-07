@@ -21,7 +21,9 @@ from recon.tracing import record_agent_result, record_judge_call, span
 # "2": answer_score became the weighted mean across dimensions (docs/adr/0014).
 # "3": the judge runs on Haiku 4.5 instead of Sonnet 5 (docs/adr/0021). A
 # different grader scores the same answer differently.
-RUBRIC_VERSION = "3"
+# "4": answers are claims citing row refs, and the judges see the resolved
+# evidence instead of the model's own strings (docs/adr/0030).
+RUBRIC_VERSION = "4"
 
 JUDGED_DESPITE_ERROR_NOTE = "answer judged despite runtime error"
 
@@ -146,6 +148,8 @@ def _score_case(
         elapsed_ms=agent_result.elapsed_ms,
         notes="; ".join(notes_parts),
         tool_names=[call.tool for call in agent_result.tool_calls],
+        claim_support_rate=metrics.claim_support_rate(agent_result),
+        citation_precision=metrics.citation_precision(agent_result),
     )
     return score, agent_result
 
@@ -206,6 +210,8 @@ def _aggregate(
             s.tool_path_equivalent for s in applicable
         ) / len(applicable)
 
+    aggregate.update(_citation_aggregate(case_scores))
+
     dimension_names = {d for s in case_scores for d in s.rubric_scores}
     for dimension in dimension_names:
         values = [
@@ -218,6 +224,19 @@ def _aggregate(
             # Scored only on cases that searched, so the mean may rest on few.
             aggregate["faithfulness_scored_cases"] = float(len(values))
 
+    return aggregate
+
+
+def _citation_aggregate(case_scores: list[CaseScore]) -> dict[str, float]:
+    """Means of the citation metrics over the cases that have them (ADR 0030)."""
+    aggregate: dict[str, float] = {}
+    for name in ("claim_support_rate", "citation_precision"):
+        values = [v for s in case_scores if (v := getattr(s, name)) is not None]
+        if values:
+            aggregate[f"{name}_mean"] = sum(values) / len(values)
+    scored = [s for s in case_scores if s.citation_precision is not None]
+    if scored:
+        aggregate["citation_scored_cases"] = float(len(scored))
     return aggregate
 
 

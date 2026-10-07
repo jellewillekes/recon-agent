@@ -76,6 +76,33 @@ def tool_call_accuracy(agent_result: AgentResult) -> float:
     return usable / len(agent_result.tool_calls)
 
 
+def _verified_refs(agent_result: AgentResult) -> set[str]:
+    return {item.ref for item in agent_result.evidence_items if item.verified}
+
+
+def claim_support_rate(agent_result: AgentResult) -> float | None:
+    """Share of key claims with at least one verified ref (ADR 0030).
+
+    None without key claims: an older result, a runtime that doesn't produce
+    claims, or an answer with nothing to claim has nothing to score.
+    """
+    key = [claim for claim in agent_result.claims if claim.importance == "key"]
+    if not key:
+        return None
+    verified = _verified_refs(agent_result)
+    supported = sum(1 for claim in key if verified & set(claim.evidence_refs))
+    return supported / len(key)
+
+
+def citation_precision(agent_result: AgentResult) -> float | None:
+    """Share of the distinct refs the claims cite that a tool returned in the
+    run (ADR 0030). None when nothing is cited."""
+    cited = {ref for claim in agent_result.claims for ref in claim.evidence_refs}
+    if not cited:
+        return None
+    return len(cited & _verified_refs(agent_result)) / len(cited)
+
+
 def weighted_answer_score(
     rubric_scores: dict[str, float], rubrics: dict[str, Rubric]
 ) -> float:

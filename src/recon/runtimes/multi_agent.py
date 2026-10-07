@@ -34,9 +34,10 @@ from recon.runtimes.agent_sdk import (
     _PartialRun,
     _QueryResult,
     _run_query,
-    _validate_answer,
 )
+from recon.runtimes.answer import Answer, validate_answer
 from recon.runtimes.api_key import without_api_keys
+from recon.runtimes.evidence import RowIndex, evidence_for, evidence_line
 from recon.runtimes.providers import local_provider, routes
 
 DEFAULT_ROLES_CONFIG_PATH = Path("config/roles.yaml")
@@ -88,9 +89,10 @@ _WORKER_SCHEMA: dict[str, Any] = {
         "type": "object",
         "properties": {
             "findings": {"type": "string"},
-            "evidence": {"type": "array", "items": {"type": "string"}},
+            # Refs of the rows the findings rest on (ADR 0030).
+            "evidence_refs": {"type": "array", "items": {"type": "string"}},
         },
-        "required": ["findings", "evidence"],
+        "required": ["findings", "evidence_refs"],
         "additionalProperties": False,
     },
 }
@@ -171,7 +173,14 @@ def _validate_decomposition(structured: dict[str, Any]) -> list[tuple[str, str]]
 
 
 def _validate_worker(structured: dict[str, Any]) -> tuple[str, list[str]]:
-    return structured["findings"], list(structured["evidence"])
+    return structured["findings"], [str(ref) for ref in structured["evidence_refs"]]
+
+
+def _worker_report(worker: str, findings: str, refs: list[str], rows: RowIndex) -> str:
+    """A worker's findings for the synthesis, with each cited ref resolved, so
+    the supervisor cites refs it can see the content of."""
+    lines = [evidence_line(evidence_for(ref, rows)) for ref in dict.fromkeys(refs)]
+    return f"[{worker}] findings: {findings}\nevidence:\n" + "\n".join(lines)
 
 
 def _validate_critic(structured: dict[str, Any]) -> tuple[bool, str]:
@@ -211,9 +220,7 @@ async def run_multi_async(
 
     def _accumulate(
         result: _QueryResult,
-        *,
-        answer: str = "",
-        evidence: list[str] | None = None,
+        answer: Answer | None = None,
         confidence: _Confidence = "low",
     ) -> None:
         """Adds `result`'s usage (including its `tool_calls` - every call can
@@ -221,7 +228,7 @@ async def run_multi_async(
         as one, not just workers') to the running totals; raises
         `_BudgetExceeded` if that pushes the run over `budget.max_tokens`.
 
-        `answer`/`evidence`/`confidence`, when passed, are already validated
+        `answer`/`confidence`, when passed, are already validated
         from `result` itself (the supervisor-synthesis or critic call) — a
         breach here means that step's own tokens tipped the budget, but its
         output is already a complete, valid answer and must survive the
@@ -239,9 +246,11 @@ async def run_multi_async(
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cost_eur=cost_eur,
-                answer=answer,
-                evidence=evidence,
+                answer=answer.answer if answer else "",
+                evidence=answer.evidence if answer else None,
                 confidence=confidence,
+                claims=answer.claims if answer else None,
+                evidence_items=answer.evidence_items if answer else None,
             )
 
     async def _run(prompt: str, options: ClaudeAgentOptions) -> _QueryResult:
@@ -289,16 +298,16 @@ async def run_multi_async(
     subtasks = _validate_decomposition(decompose_result.structured)
 
     findings: list[str] = []
+    rows = RowIndex()
     for worker, instruction in subtasks:
         worker_options = _build_role_options(
             worker, roles_config[worker], prompts_dir, _WORKER_SCHEMA
         )
         worker_result = await _run(instruction, worker_options)
         _accumulate(worker_result)
-        worker_findings, worker_evidence = _validate_worker(worker_result.structured)
-        findings.append(
-            f"[{worker}] findings: {worker_findings}\nevidence: {worker_evidence}"
-        )
+        rows.merge(worker_result.rows)
+        worker_findings, worker_refs = _validate_worker(worker_result.structured)
+        findings.append(_worker_report(worker, worker_findings, worker_refs, rows))
 
     synthesize_options = _build_role_options(
         "supervisor", roles_config["supervisor"], prompts_dir, _ANSWER_SCHEMA
@@ -310,28 +319,48 @@ async def run_multi_async(
         "Synthesize a final answer from these findings only."
     )
     synthesis_result = await _run(synthesis_prompt, synthesize_options)
-    answer, evidence, confidence = _validate_answer(synthesis_result.structured)
-    _accumulate(
-        synthesis_result, answer=answer, evidence=evidence, confidence=confidence
-    )
+    # The supervisor has the flag tool, so its own rows count too.
+    rows.merge(synthesis_result.rows)
+    answer = validate_answer(synthesis_result.structured, rows)
+    confidence = answer.confidence
+    _accumulate(synthesis_result, answer, confidence)
 
     critic_options = _build_role_options(
         "critic", roles_config["critic"], prompts_dir, _CRITIC_SCHEMA
     )
     critic_prompt = (
-        f"Question: {case.question}\n\nProposed answer: {answer}\n\n"
-        f"Cited evidence: {evidence}\n\nDoes the evidence support the answer?"
+        f"Question: {case.question}\n\nProposed answer: {answer.answer}\n\n"
+        "Cited evidence:\n" + "\n".join(answer.evidence) + "\n\n"
+        "Does the evidence support the answer?"
     )
-    critic_result = await _run(critic_prompt, critic_options)
+    try:
+        critic_result = await _run(critic_prompt, critic_options)
+    except _PartialRun as exc:
+        # The synthesis is complete; only its check failed (#120). Keep the
+        # answer, at "low" because nothing checked it.
+        raise type(exc)(
+            exc.reason,
+            tool_calls=exc.tool_calls,
+            tokens_in=exc.tokens_in,
+            tokens_out=exc.tokens_out,
+            cost_eur=exc.cost_eur,
+            answer=answer.answer,
+            evidence=answer.evidence,
+            confidence="low",
+            claims=answer.claims,
+            evidence_items=answer.evidence_items,
+        ) from exc
     accepted, _reason = _validate_critic(critic_result.structured)
     if not accepted:
         confidence = "low"
-    _accumulate(critic_result, answer=answer, evidence=evidence, confidence=confidence)
+    _accumulate(critic_result, answer, confidence)
 
     return _Outcome(
-        answer=answer,
-        evidence=evidence,
+        answer=answer.answer,
+        evidence=answer.evidence,
         confidence=confidence,
+        claims=answer.claims,
+        evidence_items=answer.evidence_items,
         tool_calls=tool_calls,
         tokens_in=tokens_in,
         tokens_out=tokens_out,

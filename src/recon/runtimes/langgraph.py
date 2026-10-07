@@ -67,8 +67,10 @@ DEFAULT_PROMPT_PATH = Path("prompts/investigator.md")
 
 
 class AnswerResponse(BaseModel):
-    """Mirrors `agent_sdk._ANSWER_SCHEMA`'s shape - passed as `create_react_agent`'s
-    `response_format` to get the same validated final structure.
+    """The answer as evidence strings, passed as `create_react_agent`'s
+    `response_format`. The Agent SDK runtime answers with claims citing row
+    refs instead (ADR 0030); LangGraph's results keep `claims` empty until it
+    does too.
 
     `flag_reason` is multi mode's own extension (issue #14 part 2): the
     supervisor's synthesize call uses this same schema (`langgraph_multi.py`),

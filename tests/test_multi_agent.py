@@ -7,6 +7,7 @@ canned response for whichever role/call is asking (supervisor's decompose
 vs. synthesize calls share a prompt *file* but not prompt *text*).
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ from claude_agent_sdk import (
 
 from recon.contracts import Case
 from recon.runtimes import agent_sdk, multi_agent
+from recon.tools.refs import row_ref
 
 
 @pytest.fixture
@@ -121,7 +123,7 @@ def _accepting_critic_query(
             yield _result_message(
                 structured_output={
                     "answer": "Industrials",
-                    "evidence": ["FIRM-001 is in Industrials"],
+                    "claims": [],
                     "confidence": "high",
                 }
             )
@@ -152,7 +154,7 @@ def _accepting_critic_query(
             yield _result_message(
                 structured_output={
                     "findings": "FIRM-001 is in Industrials",
-                    "evidence": ["FIRM-001 sector=Industrials"],
+                    "evidence_refs": [],
                 }
             )
 
@@ -221,7 +223,7 @@ def _flagging_supervisor_query(
             yield _result_message(
                 structured_output={
                     "answer": "Industrials",
-                    "evidence": ["FIRM-001 is in Industrials"],
+                    "claims": [],
                     "confidence": "high",
                 }
             )
@@ -233,7 +235,7 @@ def _flagging_supervisor_query(
             yield _result_message(
                 structured_output={
                     "findings": "FIRM-001 is in Industrials",
-                    "evidence": ["FIRM-001 sector=Industrials"],
+                    "evidence_refs": [],
                 }
             )
 
@@ -292,7 +294,7 @@ async def test_run_multi_routes_to_both_workers_in_one_case(
                 yield _result_message(
                     structured_output={
                         "answer": "Industrials, revenue reported",
-                        "evidence": ["FIRM-001 sector", "FIRM-001 revenue"],
+                        "claims": [],
                         "confidence": "high",
                     }
                 )
@@ -303,7 +305,10 @@ async def test_run_multi_routes_to_both_workers_in_one_case(
             else:
                 worker_prompts.append(prompt)
                 yield _result_message(
-                    structured_output={"findings": f"found: {prompt}", "evidence": []}
+                    structured_output={
+                        "findings": f"found: {prompt}",
+                        "evidence_refs": [],
+                    }
                 )
 
         return gen()
@@ -341,7 +346,7 @@ async def test_critic_rejection_forces_confidence_low(
                 yield _result_message(
                     structured_output={
                         "answer": "Industrials",
-                        "evidence": ["a guess"],
+                        "claims": [],
                         "confidence": "high",
                     }
                 )
@@ -354,7 +359,7 @@ async def test_critic_rejection_forces_confidence_low(
                 )
             else:
                 yield _result_message(
-                    structured_output={"findings": "nothing found", "evidence": []}
+                    structured_output={"findings": "nothing found", "evidence_refs": []}
                 )
 
         return gen()
@@ -646,3 +651,178 @@ async def test_local_tokens_dont_count_as_claude_tokens(
 
     # Worker, synthesis and critic: 10 in and 5 out each, from _result_message.
     assert (routed.tokens_in, routed.tokens_out) == (30, 15)
+
+
+_SECTOR_ROW = {
+    "company_id": "FIRM-001",
+    "name": "Aurora Robotics Corp",
+    "sector": "Industrials",
+}
+_SECTOR_REF = row_ref("list_companies", _SECTOR_ROW)
+
+
+def _citing_query(prompts: list[str]) -> Any:
+    """A worker returns a row with a ref and cites it; synthesis cites it too."""
+
+    def query(*, prompt: str, options: ClaudeAgentOptions | None = None) -> Any:
+        prompts.append(prompt)
+
+        async def gen() -> Any:
+            if "Decompose this question" in prompt:
+                yield _result_message(
+                    structured_output={
+                        "subtasks": [
+                            {"worker": "worker_lookup", "instruction": "sector"}
+                        ]
+                    }
+                )
+            elif "Synthesize a final answer" in prompt:
+                claim = {
+                    "text": "FIRM-001 is in Industrials.",
+                    "importance": "key",
+                    "evidence_refs": [_SECTOR_REF, "Eeeeeeeeeeeee"],
+                }
+                yield _result_message(
+                    structured_output={
+                        "answer": "Industrials",
+                        "claims": [claim],
+                        "confidence": "high",
+                    }
+                )
+            elif "Does the evidence support" in prompt:
+                yield _result_message(
+                    structured_output={"accepted": True, "reason": "supported"}
+                )
+            else:
+                yield AssistantMessage(
+                    content=[
+                        ToolUseBlock(
+                            id="tu1",
+                            name="mcp__recon-tools__list_companies_tool",
+                            input={"query": "FIRM-001"},
+                        )
+                    ],
+                    model="claude-sonnet-5",
+                )
+                payload = {
+                    "status": "ok",
+                    "data": [{**_SECTOR_ROW, "ref": _SECTOR_REF}],
+                    "row_count": 1,
+                    "message": "1",
+                    "elapsed_ms": 5,
+                }
+                yield UserMessage(
+                    content=[
+                        ToolResultBlock(tool_use_id="tu1", content=json.dumps(payload))
+                    ]
+                )
+                yield _result_message(
+                    structured_output={
+                        "findings": "FIRM-001 is in Industrials",
+                        "evidence_refs": [_SECTOR_REF],
+                    }
+                )
+
+        return gen()
+
+    return query
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_multi_mode_resolves_the_refs_its_workers_returned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR 0030: rows from any worker verify the synthesis's citations, and
+    the synthesis and critic see the resolved evidence, not model strings."""
+    _patch_roles_and_models(monkeypatch)
+    prompts: list[str] = []
+    monkeypatch.setattr(agent_sdk, "query", _citing_query(prompts))
+
+    result = await multi_agent.run_multi_async(
+        CASE, roles_config_path=Path("unused"), prompts_dir=Path("prompts")
+    )
+
+    assert [item.verified for item in result.evidence_items] == [True, False]
+    assert (
+        result.evidence_items[0].excerpt
+        == "FIRM-001: Aurora Robotics Corp (Industrials)"
+    )
+    assert result.claims[0].evidence_refs == [_SECTOR_REF, "Eeeeeeeeeeeee"]
+    synthesis = next(p for p in prompts if "Synthesize a final answer" in p)
+    assert f"[{_SECTOR_REF}] company (FIRM-001)" in synthesis
+    critic = next(p for p in prompts if "Does the evidence support" in p)
+    assert f"[{_SECTOR_REF}] company (FIRM-001)" in critic
+    assert "[Eeeeeeeeeeeee] unverified" in critic
+
+
+def _failing_critic_query(critic: Any) -> Any:
+    """`_citing_query`, but the critic call's stream comes from `critic`."""
+    citing = _citing_query([])
+
+    def query(*, prompt: str, options: ClaudeAgentOptions | None = None) -> Any:
+        if "Does the evidence support" in prompt:
+            return critic()
+        return citing(prompt=prompt, options=options)
+
+    return query
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_a_critic_that_fails_keeps_the_synthesized_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#120: the critic call failed, and the case was recorded with an empty
+    answer although the synthesis had produced a complete one."""
+    _patch_roles_and_models(monkeypatch)
+
+    async def critic() -> Any:
+        yield _result_message(
+            is_error=True,
+            subtype="error_max_turns",
+            total_cost_usd=0.05,
+            structured_output=None,
+        )
+        raise ResultError(
+            "Claude Code returned an error result: Reached maximum number of turns (3)",
+            data={"subtype": "error_max_turns"},
+            exit_code=1,
+        )
+
+    monkeypatch.setattr(agent_sdk, "query", _failing_critic_query(critic))
+
+    result = await agent_sdk.AgentSdkRuntime(mode="multi").run_async(CASE)
+
+    assert result.answer == "Industrials"
+    assert result.claims[0].evidence_refs == [_SECTOR_REF, "Eeeeeeeeeeeee"]
+    assert [item.verified for item in result.evidence_items] == [True, False]
+    assert result.confidence == "low"
+    assert result.error is not None and "maximum number of turns" in result.error
+    # Decompose, worker and synthesis at 0.001 each, plus the critic's 0.05.
+    assert result.cost_eur == pytest.approx((0.003 + 0.05) * 0.9)
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_a_wall_clock_breach_during_the_critic_keeps_the_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_roles_and_models(monkeypatch)
+
+    async def critic() -> Any:
+        monkeypatch.setattr(agent_sdk._BudgetTracker, "elapsed_s", lambda self: 1e9)
+        yield AssistantMessage(content=[], model="claude-sonnet-5")
+        yield _result_message(
+            structured_output={"accepted": True, "reason": "supported"}
+        )
+
+    monkeypatch.setattr(agent_sdk, "query", _failing_critic_query(critic))
+
+    result = await agent_sdk.AgentSdkRuntime(mode="multi").run_async(CASE)
+
+    assert result.answer == "Industrials"
+    assert result.claims[0].text == "FIRM-001 is in Industrials."
+    assert result.evidence_items[0].verified
+    assert result.confidence == "low"
+    assert result.error is not None and "wall-clock budget" in result.error

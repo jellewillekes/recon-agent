@@ -175,3 +175,16 @@ textarea:focus { border-color: #64a78d; box-shadow: 0 0 0 3px rgba(8, 123, 91, .
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Claims and sources (ADR 0030) */
+.claim-list { margin: 0 0 18px; padding-left: 20px; display: grid; gap: 12px; }
+.claim-item[data-importance="supporting"] .claim-text { color: var(--muted); }
+.claim-text { margin: 0 0 6px; line-height: 1.5; }
+.source-item { margin: 4px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--white); }
+.source-item summary { display: flex; gap: 8px; align-items: center; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+.source-badge { padding: 1px 7px; border-radius: 999px; font: 600 11px var(--mono); }
+.source-badge[data-verified="true"] { color: var(--green-dark); background: var(--green-soft); }
+.source-badge[data-verified="false"] { color: var(--red); background: #f8ebe9; }
+.source-label { color: var(--ink); }
+.source-excerpt { margin: 0 10px 8px; padding-left: 10px; border-left: 3px solid var(--green-soft); white-space: pre-wrap; font-size: 13px; line-height: 1.5; }
+.source-meta { margin: 0 10px 8px; color: var(--muted); font: 12px var(--mono); }

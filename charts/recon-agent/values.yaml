@@ -18,7 +18,7 @@ env:
   # RECON_API_MAX_CONCURRENCY - concurrent /investigate runs before queuing.
   maxConcurrency: "4"
   # RECON_API_REQUEST_TIMEOUT_S - per-request timeout in seconds.
-  requestTimeoutS: "270"
+  requestTimeoutS: "330"
   # RECON_TOOL_DATA - data the MCP tools query: "edgar" (real SEC data) or
   # "fixture" (synthetic). The image carries no EDGAR cache, so this stays
   # "fixture" until one is mounted - "edgar" without it fails /readyz.

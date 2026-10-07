@@ -28,7 +28,8 @@ expected, not a sign you used them wrong — report it plainly.
 
 - Use tools before reporting findings. Findings with no tool calls behind
   them are only acceptable when the instruction needs no lookup at all.
-- `evidence` cites what a tool actually returned. Never cite something you
-  didn't retrieve.
+- `evidence_refs` lists the `ref` of every row your findings rest on,
+  copied exactly from the tool output. Every row a tool returns has one,
+  such as `E3f9a1c2b7d40`. Never list a ref you didn't retrieve.
 - Always report findings, even when the honest finding is that nothing
   matched.

@@ -29,6 +29,7 @@ from claude_agent_sdk import (
 
 from recon.contracts import Case
 from recon.runtimes import agent_sdk
+from recon.tools.refs import row_ref
 
 CASE = Case(
     case_id="finance-agent-bench:abc123",
@@ -47,10 +48,18 @@ CASE = Case(
 )
 
 
+COMPANY_ROW = {
+    "company_id": "FIRM-001",
+    "name": "Aurora Robotics Corp",
+    "sector": "Industrials",
+}
+COMPANY_REF = row_ref("list_companies", COMPANY_ROW)
+
+
 def _tool_result_message(tool_use_id: str, status: str, elapsed_ms: int) -> UserMessage:
     payload = {
         "status": status,
-        "data": [{"company_id": "FIRM-001"}] if status == "ok" else [],
+        "data": [{**COMPANY_ROW, "ref": COMPANY_REF}] if status == "ok" else [],
         "row_count": 1 if status == "ok" else 0,
         "message": "ok",
         "elapsed_ms": elapsed_ms,
@@ -72,7 +81,13 @@ def _result_message(**overrides: Any) -> ResultMessage:
         "usage": {"input_tokens": 100, "output_tokens": 50},
         "structured_output": {
             "answer": "Industrials",
-            "evidence": ["FIRM-001"],
+            "claims": [
+                {
+                    "text": "FIRM-001 is in Industrials.",
+                    "importance": "key",
+                    "evidence_refs": [COMPANY_REF],
+                }
+            ],
             "confidence": "high",
         },
     }
@@ -135,7 +150,15 @@ def test_run_success_parses_tool_calls_and_cost(
 
     assert result.error is None
     assert result.answer == "Industrials"
-    assert result.evidence == ["FIRM-001"]
+    assert result.claims[0].evidence_refs == [COMPANY_REF]
+    assert result.evidence_items[0].verified
+    assert (
+        result.evidence_items[0].excerpt
+        == "FIRM-001: Aurora Robotics Corp (Industrials)"
+    )
+    assert result.evidence == [
+        f"[{COMPANY_REF}] company (FIRM-001): FIRM-001: Aurora Robotics Corp (Industrials)"
+    ]
     assert result.confidence == "high"
     assert result.runtime == "agent_sdk"
     assert result.mode == "single"
@@ -350,7 +373,7 @@ def test_run_recovers_status_from_offloaded_result(
         json.dumps(
             {
                 "status": "truncated",
-                "data": [{"company_id": "FIRM-001"}],
+                "data": [{**COMPANY_ROW, "ref": COMPANY_REF}],
                 "row_count": 500,
                 "message": "500 companies match, showing the first 500.",
                 "elapsed_ms": 42,
@@ -387,6 +410,8 @@ def test_run_recovers_status_from_offloaded_result(
     assert result.error is None
     assert result.tool_calls[0].status == "truncated"
     assert result.tool_calls[0].elapsed_ms == 42
+    # The recovered rows verify citations too (ADR 0030).
+    assert [item.verified for item in result.evidence_items] == [True]
 
 
 @pytest.mark.unit
@@ -738,3 +763,58 @@ def test_a_crash_with_nothing_reported_still_records_zero(
 
     assert result.error is not None and "CLI not found" in result.error
     assert result.cost_eur == 0.0
+
+
+@pytest.mark.unit
+def test_a_cited_ref_no_tool_returned_is_unverified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR 0030: a made-up citation stays visible, marked unverified."""
+    _patch_options(monkeypatch)
+    claims = [
+        {"text": "Made up.", "importance": "key", "evidence_refs": ["Eaaaaaaaaaaaa"]}
+    ]
+    _patch_query(
+        monkeypatch,
+        [
+            _result_message(
+                structured_output={"answer": "x", "claims": claims, "confidence": "low"}
+            )
+        ],
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is None
+    assert [item.verified for item in result.evidence_items] == [False]
+    assert result.evidence_items[0].source_type == "unknown"
+
+
+@pytest.mark.unit
+def test_an_answer_without_claims_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_options(monkeypatch)
+    _patch_query(
+        monkeypatch,
+        [
+            _result_message(
+                structured_output={"answer": "x", "claims": [], "confidence": "low"}
+            )
+        ],
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert (result.error, result.answer, result.claims, result.evidence) == (
+        None,
+        "x",
+        [],
+        [],
+    )
+
+
+@pytest.mark.unit
+def test_the_answer_schema_asks_for_claims_with_refs() -> None:
+    schema = agent_sdk._ANSWER_SCHEMA["schema"]
+    assert schema["required"] == ["answer", "claims", "confidence"]
+    claim = schema["properties"]["claims"]["items"]
+    assert claim["required"] == ["text", "importance", "evidence_refs"]

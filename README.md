@@ -47,31 +47,41 @@ New to a term? See the [glossary](docs/glossary.md).
 
 The baseline ([`evals/baseline.json`](evals/baseline.json)) is recorded on 7 cases that need
 filing text ([`evals/text-cases.txt`](evals/text-cases.txt)), with `search_knowledge` granted.
+It's on rubric version 4: the agent cites the tool rows its claims rest on, and the server
+checks each citation against what the tools returned (ADR 0030).
 
-| Runtime | Mode | Task completion | Answer score | Tool-call accuracy | Total cost (€) | Cases |
-|---|---|---|---|---|---|---|
-| sdk | single | 0.857 | 0.660 | 1.000 | 1.33 | 7 (text cases) |
-| sdk | multi | 0.857 | 0.433 | 0.897 | 1.43¹ | 7 (text cases) |
-| langgraph | single | not run | not run | not run | not run | — |
-| langgraph | multi | not run | not run | not run | not run | — |
+| Runtime | Mode | Task completion | Answer score | Cited rows returned | Key claims citing a returned row | Total cost (€) | Cases |
+|---|---|---|---|---|---|---|---|
+| sdk | single | 1.000 | 0.772 | 1.000 | 0.786 | 1.42 | 7 (text cases) |
+| sdk | multi | not run on rubric 4 | | | | | — |
+| langgraph | single | not run | | | | | — |
+| langgraph | multi | not run | | | | | — |
 
-The sdk single row is the baseline, run `eval-20261007T081821Z`, judged on Haiku 4.5, with
-a 450k-token and 150 s budget per case. Its one incomplete case used 483k tokens and was
-still judged. The sdk multi row is run `eval-20261007T084001Z`, a record, not a baseline,
-with a 240 s budget. Its one incomplete case hit a worker's 8-turn limit. ¹That case
-recorded €0.00, because a run that errored reported no cost then, so multi's real cost is
-higher. Runs recorded after #110's fix keep what a failed run spent.
-The same case cost €0.50 in single mode. The single row's tool-call accuracy is 1.000 by
-default, since none of these cases has an expected tool path to check.
+The sdk single row is the baseline, run `eval-20261007T175852Z`, judged on Haiku 4.5, with
+a 450k-token and 150 s budget per case. All 7 cases completed, in 58 s per case on average.
+Task completion means a non-empty answer without a runtime error, not a right one. The answer
+score blends answer correctness (mean 0.659) with tool efficiency and evidence grounding.
+The cost is €0.81 for the agent and €0.62 for the judges. That's €0.20 per case scoring at
+least 0.5 on the answer score, judge cost included; all 7 cases reached it.
+
+The two citation columns are checked by the server, not by a model. "Cited rows returned"
+is the share of cited refs that a tool really returned in that run. "Key claims citing a
+returned row" is the share of key claims with at least one such ref. Neither checks that the
+row supports the claim. Case `731403050270` shows the gap: it scored 0.944, and the grounding
+judge rated its evidence 1.0, but none of its key claims cites a returned row, and its
+filing-text faithfulness is 0.0. Faithfulness was scored on the 5 cases that made a
+filing-text claim: 4 at 1.0 and this one at 0.0. The single row's tool-call accuracy is 1.000
+by default, since none of these cases has an expected tool path to check.
+
+Multi mode and the routing comparison (#113) aren't measured on rubric 4 yet. The rubric-3
+records (single `eval-20261007T081821Z`: 0.857 completion, 0.660 answer score; multi
+`eval-20261007T084001Z`: 0.857, 0.433) scored different prompts on a different rubric, so
+they aren't comparable with the row above, and the gate refuses to compare them.
 
 The [gate](docs/glossary.md#promotion-gate) treats a change of up to 0.10 in the answer
 score, or one case in task completion, as noise ([run-to-run noise](docs/eval-noise.md),
-ADR 0028). Against the single baseline it rates multi mode worse on the answer score,
-beyond the band even without the case multi didn't finish. That compares two modes and
-model configs on the same cases. It also rates cost the same, but multi's cost is
-understated (¹). Earlier baselines ran with other prompts, budgets or tool
-data, so their scores aren't comparable with these rows. LangGraph isn't run: it needs a
-metered API key, and this project runs on the Claude subscription only (ADR 0027).
+ADR 0028). LangGraph isn't run: it needs a metered API key, and this project runs on the
+Claude subscription only (ADR 0027).
 
 ## Quickstart
 

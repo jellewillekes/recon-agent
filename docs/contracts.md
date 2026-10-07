@@ -65,6 +65,8 @@ class ToolResult(BaseModel):
 | `invalid_input` | Schema or range error | `[]` | which field, and what is valid |
 | `unavailable` | Source down, timeout, circuit open | `[]` | whether a retry is worthwhile |
 
+Every row in `data` from the five read tools carries a `ref`: `"E"` plus the first 12 hex characters of the sha256 of the tool name, the company the call asked about (for the tools that take `company_id`) and the row's canonical JSON (ADR 0030). The same row always gets the same ref, so the model can cite it and the runtime can check the citation.
+
 `MAX_ROWS = 500` per call. `TIMEOUT_S = 30`. `search_knowledge` returns at most `top_k` (up to 20) passages, so it never reports `truncated`.
 
 `empty` is explicitly not an error. The agent must be able to conclude that nothing is there — for some cases that is the correct answer.
@@ -80,10 +82,30 @@ class ToolCall(BaseModel):
     status: str                        # mirrors ToolResult.status
     elapsed_ms: int
 
+class Evidence(BaseModel):
+    ref: str                           # the row's ref, as the tool returned it
+    verified: bool                     # ref matches a row a tool returned in this run
+    source_type: Literal["filing_text", "financial_fact", "filing", "company", "concept", "unknown"]
+    tool: str | None                   # the rest come from the row, None when unverified
+    company_id: str | None
+    form: str | None
+    filed: str | None
+    accession: str | None
+    section: str | None
+    locator: str | None                # chunk id, or concept and period for a fact
+    excerpt: str                       # the passage or the fact, rendered from the row
+    retrieval_score: float | None      # search_knowledge's rerank score
+    content_hash: str | None           # sha256 of the row
+
+class Claim(BaseModel):
+    text: str
+    importance: Literal["key", "supporting"]
+    evidence_refs: list[str]           # Evidence.ref values
+
 class AgentResult(BaseModel):
     case_id: str
     answer: str
-    evidence: list[str]                # references to tool output or source
+    evidence: list[str]                # one line per cited source; filled from evidence_items when claims exist
     confidence: Literal["high", "medium", "low"]
     tool_calls: list[ToolCall]         # in call order
     runtime: str                       # which runtime produced this
@@ -93,7 +115,11 @@ class AgentResult(BaseModel):
     cost_eur: float
     elapsed_ms: int
     error: str | None
+    claims: list[Claim]                # empty on older results, or when the model gave none
+    evidence_items: list[Evidence]     # every ref the claims cite, resolved by the server
 ```
+
+Claims and evidence are ADR 0030. Every row a read tool returns carries a `ref` (section 3). The model cites refs; the runtime resolves each one against the rows its tools returned in that run. A resolved ref is `verified`, and its source details and excerpt come from the row. A ref that matches nothing stays, unverified, so a made-up citation is visible instead of silently dropped.
 
 Empty `evidence` on a non-trivial answer is a signal, not an error — the critic and the rubric judge that.
 
@@ -112,10 +138,22 @@ POST /investigate
   504:      run exceeded the per-request timeout
   headers:  X-Request-ID echoed back on every response
 
+GET /capabilities            runtimes and modes this deployment runs, the data source, whether runs are saved
+GET /runs?limit=&offset=     saved runs, newest first (limit 1-100, default 20)
+GET /runs/{run_id}           one saved run: question, settings, AgentResult, feedback
+GET /runs/{run_id}/export    the same, as a JSON file to download
+POST /runs/{run_id}/feedback body {rating: "up" | "down", note?: str}; replaces earlier feedback
+  404:      no saved run with that id
+  503:      run history is off: DATABASE_URL isn't set
+
 GET /healthz   liveness  — process is up, no dependency checks
 GET /readyz    readiness — MCP server reachable AND Postgres reachable
 GET /metrics   Prometheus text format
 ```
+
+`mode` is `single` or `multi`; `runtime` is `agent_sdk`. LangGraph is listed in `/capabilities` as unsupported: it needs a metered API key (ADR 0027).
+
+Every answered `/investigate` is saved in Postgres (`research_runs`, ADR 0030) under its request ID, which is also `AgentResult.case_id`. A failed save is logged and the answer is still returned. No response carries environment values, keys or the database URL.
 
 `/healthz` must never check dependencies. A liveness probe that fails on a database blip restarts a healthy pod.
 
@@ -180,6 +218,8 @@ class CaseScore(BaseModel):
     elapsed_ms: int
     notes: str
     tool_names: list[str] = []         # the agent's tool calls by name, in call order; empty before this field existed
+    claim_support_rate: float | None   # key claims with a verified ref (ADR 0030); None when nothing to score
+    citation_precision: float | None   # cited refs that are verified (ADR 0030); None when nothing is cited
 
 class EvalRun(BaseModel):
     run_id: str

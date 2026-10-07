@@ -57,7 +57,7 @@ Do not change this layout without asking.
 Two stores, deliberately. Do not consolidate them.
 
 - **DuckDB** — read-only analytical queries over Parquet and CSV. Used by tools. In-process, no server.
-- **Postgres** — transactional state: LangGraph checkpoints, the review-flag table, pgvector embeddings. Concurrent writers, unique constraints, transactions.
+- **Postgres** — transactional state: LangGraph checkpoints, the review-flag table, saved research runs, pgvector embeddings. Concurrent writers, unique constraints, transactions.
 
 DuckDB has a single writer per file and breaks under concurrent runs. Postgres is not a query engine for columnar analytics. Use each for what it is.
 

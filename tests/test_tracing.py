@@ -209,7 +209,7 @@ def test_an_api_request_is_traced_with_its_request_id(
 ) -> None:
     from recon.api import main as api_main
 
-    monkeypatch.setattr(api_main, "_runtime", _Runtime(_result(TOOLS[:1])))
+    monkeypatch.setitem(api_main._runtimes, "single", _Runtime(_result(TOOLS[:1])))
     response = TestClient(api_main.app).post(
         "/investigate", json={"question": "q"}, headers={"X-Request-ID": "req-42"}
     )
