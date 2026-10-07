@@ -333,7 +333,23 @@ async def run_multi_async(
         "Cited evidence:\n" + "\n".join(answer.evidence) + "\n\n"
         "Does the evidence support the answer?"
     )
-    critic_result = await _run(critic_prompt, critic_options)
+    try:
+        critic_result = await _run(critic_prompt, critic_options)
+    except _PartialRun as exc:
+        # The synthesis is complete; only its check failed (#120). Keep the
+        # answer, at "low" because nothing checked it.
+        raise type(exc)(
+            exc.reason,
+            tool_calls=exc.tool_calls,
+            tokens_in=exc.tokens_in,
+            tokens_out=exc.tokens_out,
+            cost_eur=exc.cost_eur,
+            answer=answer.answer,
+            evidence=answer.evidence,
+            confidence="low",
+            claims=answer.claims,
+            evidence_items=answer.evidence_items,
+        ) from exc
     accepted, _reason = _validate_critic(critic_result.structured)
     if not accepted:
         confidence = "low"

@@ -754,3 +754,75 @@ async def test_multi_mode_resolves_the_refs_its_workers_returned(
     critic = next(p for p in prompts if "Does the evidence support" in p)
     assert f"[{_SECTOR_REF}] company (FIRM-001)" in critic
     assert "[Eeeeeeeeeeeee] unverified" in critic
+
+
+def _failing_critic_query(critic: Any) -> Any:
+    """`_citing_query`, but the critic call's stream comes from `critic`."""
+    citing = _citing_query([])
+
+    def query(*, prompt: str, options: ClaudeAgentOptions | None = None) -> Any:
+        if "Does the evidence support" in prompt:
+            return critic()
+        return citing(prompt=prompt, options=options)
+
+    return query
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_a_critic_that_fails_keeps_the_synthesized_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#120: the critic call failed, and the case was recorded with an empty
+    answer although the synthesis had produced a complete one."""
+    _patch_roles_and_models(monkeypatch)
+
+    async def critic() -> Any:
+        yield _result_message(
+            is_error=True,
+            subtype="error_max_turns",
+            total_cost_usd=0.05,
+            structured_output=None,
+        )
+        raise ResultError(
+            "Claude Code returned an error result: Reached maximum number of turns (3)",
+            data={"subtype": "error_max_turns"},
+            exit_code=1,
+        )
+
+    monkeypatch.setattr(agent_sdk, "query", _failing_critic_query(critic))
+
+    result = await agent_sdk.AgentSdkRuntime(mode="multi").run_async(CASE)
+
+    assert result.answer == "Industrials"
+    assert result.claims[0].evidence_refs == [_SECTOR_REF, "Eeeeeeeeeeeee"]
+    assert [item.verified for item in result.evidence_items] == [True, False]
+    assert result.confidence == "low"
+    assert result.error is not None and "maximum number of turns" in result.error
+    # Decompose, worker and synthesis at 0.001 each, plus the critic's 0.05.
+    assert result.cost_eur == pytest.approx((0.003 + 0.05) * 0.9)
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_a_wall_clock_breach_during_the_critic_keeps_the_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_roles_and_models(monkeypatch)
+
+    async def critic() -> Any:
+        monkeypatch.setattr(agent_sdk._BudgetTracker, "elapsed_s", lambda self: 1e9)
+        yield AssistantMessage(content=[], model="claude-sonnet-5")
+        yield _result_message(
+            structured_output={"accepted": True, "reason": "supported"}
+        )
+
+    monkeypatch.setattr(agent_sdk, "query", _failing_critic_query(critic))
+
+    result = await agent_sdk.AgentSdkRuntime(mode="multi").run_async(CASE)
+
+    assert result.answer == "Industrials"
+    assert result.claims[0].text == "FIRM-001 is in Industrials."
+    assert result.evidence_items[0].verified
+    assert result.confidence == "low"
+    assert result.error is not None and "wall-clock budget" in result.error
