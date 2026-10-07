@@ -18,6 +18,14 @@ function setHistoryEnabled(enabled) {
   }
 }
 
+// /capabilities couldn't be read, so whether history is on is unknown. Try
+// /runs anyway: the saved runs are the demo's fallback, and an error there
+// says why instead of leaving the list silently empty.
+function loadHistoryWithoutCapabilities() {
+  runHistory = true;
+  loadHistory();
+}
+
 async function loadHistory() {
   if (!runHistory) return;
   try {

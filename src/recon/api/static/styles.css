@@ -249,6 +249,10 @@ textarea:focus { border-color: #64a78d; box-shadow: 0 0 0 3px rgba(8, 123, 91, .
 .verdict[data-verdict="better"] { color: var(--green-dark); background: var(--green-soft); }
 .verdict[data-verdict="same"] { color: #5c6a64; background: #eef1ef; }
 .verdict[data-verdict="worse"] { color: var(--red); background: #f8ebe9; }
+.failure { white-space: nowrap; padding: 2px 8px; border-radius: 999px; font: 600 10px var(--mono); color: #5c6a64; background: #eef1ef; }
+.failure[data-failure="none"] { color: var(--green-dark); background: var(--green-soft); }
+.failure[data-failure="budget"], .failure[data-failure="runtime_error"] { color: var(--red); background: #f8ebe9; }
+.failure-reason { display: block; margin-top: 4px; color: #5c6a64; font-size: 11px; }
 .metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
 .metric-tile { display: grid; gap: 4px; padding: 11px 12px; border: 1px solid #e8ece9; border-radius: 9px; background: #fbfcfb; }
 .metric-label { color: #849189; font: 9px var(--mono); text-transform: uppercase; letter-spacing: .05em; }

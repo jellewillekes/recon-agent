@@ -47,7 +47,11 @@ def _run(run_id: str, **overrides: object) -> EvalRun:
                 notes="",
             )
         ],
-        "aggregate": {"task_completion_rate": 1.0, "answer_score_mean": 0.6},
+        "aggregate": {
+            "task_completion_rate": 1.0,
+            "answer_score_mean": 0.6,
+            "cost_per_correct_answer_eur": 1.0,
+        },
         "total_cost_eur": 1.0,
         "tool_data_snapshot": "snap",
     }
@@ -82,6 +86,11 @@ async def test_evals_lists_runs_newest_first(results: Path) -> None:
     runs = resp.json()["runs"]
     assert [r["run_id"] for r in runs] == ["eval-on", "eval-off", "eval-old"]
     assert runs[0]["routing"] is True and runs[0]["case_count"] == 1
+    # The summary reads each figure from the right aggregate key (#122 review).
+    assert runs[0]["task_completion_rate"] == 1.0
+    assert runs[0]["answer_score_mean"] == 0.6
+    assert runs[0]["total_cost_eur"] == 1.0
+    assert runs[0]["cost_per_correct_answer_eur"] == 1.0
 
 
 async def test_an_eval_run_comes_back_with_its_case_scores(results: Path) -> None:

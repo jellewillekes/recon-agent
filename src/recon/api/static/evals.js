@@ -20,6 +20,16 @@ const METRIC_LABELS = {
   elapsed_ms_mean: "Time per case",
 };
 
+// Failure classes (#116, ADR 0031), in the order they're checked.
+const FAILURE_LABELS = {
+  budget: "Budget",
+  runtime_error: "Runtime error",
+  tool_use: "Tool use",
+  retrieval: "Retrieval",
+  reasoning: "Reasoning",
+  none: "Correct",
+};
+
 function number(value, digits = 3) {
   return value === null || value === undefined ? "—" : Number(value).toFixed(digits);
 }
@@ -162,6 +172,39 @@ function renderComparison(result) {
   compareResult.replaceChildren(...parts);
 }
 
+function failureCell(score) {
+  if (!score.failure_class) return score.failure_reason ?? "—";
+  const cell = element("span");
+  const badge = element("span", "failure", FAILURE_LABELS[score.failure_class] ?? score.failure_class);
+  badge.dataset.failure = score.failure_class;
+  cell.append(badge);
+  if (score.failure_reason) cell.append(element("small", "failure-reason", score.failure_reason));
+  return cell;
+}
+
+// The run path in one line: each step's score, "—" where it doesn't apply.
+function trajectorySummary(path) {
+  if (!path) return "—";
+  const parts = [
+    ["tools", path.tool_selection],
+    ["args", path.argument_correctness],
+    ["recovery", path.recovery],
+    ["no repeats", path.efficiency],
+    ["evidence", path.evidence_sufficiency],
+  ];
+  if (path.retrieval_quality) parts.push(["retrieval recall", path.retrieval_quality.recall]);
+  return parts.map(([label, value]) => label + " " + number(value, 2)).join(" · ");
+}
+
+function renderFailureCounts(aggregate) {
+  const classified = aggregate.failure_classified_cases;
+  if (!classified) return null;
+  const counts = Object.keys(FAILURE_LABELS)
+    .filter((name) => aggregate["failure_" + name + "_count"])
+    .map((name) => FAILURE_LABELS[name] + " " + aggregate["failure_" + name + "_count"]);
+  return element("p", "compare-note", "Failure classes over " + classified + " case(s): " + counts.join(" · "));
+}
+
 async function loadEvalDetail(runId) {
   evalDetail.replaceChildren(element("p", "no-data", "Loading " + runId + "…"));
   try {
@@ -190,14 +233,15 @@ function renderEvalDetail(run) {
     run.run_id + " · " + run.runtime + " / " + run.mode + " · routing " + (run.routing ? "on" : "off") + " · rubric " + run.rubric_version + " · " + run.dataset,
   );
   const head = element("thead");
-  head.append(tableRow(["Case", "Completed", "Answer score", "Tool-call acc.", "Citation precision", "Cost", "Time", "Notes"], "th"));
+  head.append(tableRow(["Case", "Completed", "Answer score", "Failure", "Run path", "Citation precision", "Cost", "Time", "Notes"], "th"));
   const body = element("tbody");
   for (const score of run.case_scores) {
     const row = tableRow([
       score.case_id.replace("finance-agent-bench:", ""),
       score.task_completion ? "yes" : "no",
-      number(score.answer_score, 2),
-      number(score.tool_call_accuracy, 2),
+      score.judge_failed ? "unscored" : number(score.answer_score, 2),
+      failureCell(score),
+      trajectorySummary(score.trajectory),
       number(score.citation_precision, 2),
       formatCost(score.cost_eur),
       formatDuration(score.elapsed_ms),
@@ -210,7 +254,8 @@ function renderEvalDetail(run) {
   table.append(head, body);
   const scroll = element("div", "table-scroll");
   scroll.append(table);
-  evalDetail.replaceChildren(meta, summary, scroll);
+  const failures = renderFailureCounts(run.aggregate);
+  evalDetail.replaceChildren(...[meta, summary, failures, scroll].filter(Boolean));
 }
 
 compareForm.addEventListener("submit", compareRuns);

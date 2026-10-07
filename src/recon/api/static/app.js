@@ -267,6 +267,7 @@ async function loadCapabilities() {
   } catch {
     label.textContent = "Data source unknown";
     note.textContent = "Couldn't reach /capabilities. Check that the API is running.";
+    if (typeof loadHistoryWithoutCapabilities === "function") loadHistoryWithoutCapabilities();
   }
 }
 
