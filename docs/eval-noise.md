@@ -53,7 +53,9 @@ dimensions counted with the judge's own variance.
 
 ## Not done here
 
-- The gate still compares means without a noise band. #77 says the band is a
-  threshold change, so it's the user's decision, in its own PR.
+- The gate now treats a drop of up to 0.10 in the answer score, or one case in task
+  completion, as noise (ADR 0028). Both values are the user's. The two runs above used
+  the earlier 300k-token budget, so the band isn't remeasured for the
+  current baseline's config.
 - Two runs give one difference per metric. A real band needs more runs, which cost
   about €1.30 each on these cases.

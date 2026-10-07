@@ -193,7 +193,7 @@ async def run_multi_async(
     roles_config = _load_roles_config(roles_config_path)
     model_config = _load_model_config(models_config_path)
     usd_to_eur_rate = float(model_config["usd_to_eur_rate"])
-    budget = _load_run_budget(model_config)
+    budget = _load_run_budget(model_config, "multi")
     # Shared across all (up to seven) calls below - a case run's tool-call
     # and wall-clock budget, not one call's (agent_sdk.RunBudget's docstring).
     tracker = _BudgetTracker(budget)

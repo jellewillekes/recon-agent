@@ -44,17 +44,20 @@ def _run(**overrides: object) -> EvalRun:
 
 
 def test_the_repo_thresholds_keep_the_gate_limits() -> None:
-    """Moved unchanged from gate.py. Lowering one is the user's call (AGENTS.md)."""
+    """Changing one is the user's call (AGENTS.md). The noise band and the
+    one-case completion drop were set by the user on 2026-10-07 (#77)."""
     thresholds = load_thresholds(ROOT / "config" / "thresholds.yaml")
     assert thresholds.gate == GateThresholds(
-        answer_score_max_relative_drop=0.02, cost_max_relative_rise=0.20
+        answer_score_noise_band=0.10,
+        task_completion_max_case_drop=1,
+        cost_max_relative_rise=0.20,
     )
 
 
 def test_a_misspelled_key_is_an_error(tmp_path: Path) -> None:
     path = tmp_path / "thresholds.yaml"
     path.write_text(
-        "gate: {answer_score_max_relative_drop: 0.02, cost_max_relative_rise: 0.2}\n"
+        "gate: {answer_score_noise_band: 0.1, task_completion_max_case_drop: 1, cost_max_relative_rise: 0.2}\n"
         "baseline_minimum: {answer_score_mean: 0.5}\n"
     )
     with pytest.raises(ValidationError, match="baseline_minimum"):
@@ -64,12 +67,18 @@ def test_a_misspelled_key_is_an_error(tmp_path: Path) -> None:
 def test_the_gate_uses_the_limits_it_is_given() -> None:
     baseline = _run(aggregate={"task_completion_rate": 1.0, "answer_score_mean": 0.5})
     candidate = _run(aggregate={"task_completion_rate": 1.0, "answer_score_mean": 0.45})
-    loose = GateThresholds(answer_score_max_relative_drop=0.2, cost_max_relative_rise=1)
+    loose = GateThresholds(
+        answer_score_noise_band=0.1,
+        task_completion_max_case_drop=1,
+        cost_max_relative_rise=1,
+    )
     strict = GateThresholds(
-        answer_score_max_relative_drop=0.02, cost_max_relative_rise=1
+        answer_score_noise_band=0.02,
+        task_completion_max_case_drop=1,
+        cost_max_relative_rise=1,
     )
     assert check_gate(candidate, baseline, loose) == []
-    assert "dropped more than 2%" in check_gate(candidate, baseline, strict)[0]
+    assert "noise band (0.02)" in check_gate(candidate, baseline, strict)[0]
 
 
 def test_cost_per_correct_answer_counts_cases_at_the_cutoff() -> None:
@@ -91,7 +100,7 @@ def test_the_metric_is_added_only_with_a_cutoff() -> None:
 def _check(tmp_path: Path, baseline: EvalRun | None, minimums: str = "{}") -> str:
     thresholds = tmp_path / "thresholds.yaml"
     thresholds.write_text(
-        "gate: {answer_score_max_relative_drop: 0.02, cost_max_relative_rise: 0.2}\n"
+        "gate: {answer_score_noise_band: 0.1, task_completion_max_case_drop: 1, cost_max_relative_rise: 0.2}\n"
         f"correct_answer_score: null\nbaseline_minimums: {minimums}\n"
     )
     path = tmp_path / "baseline.json"

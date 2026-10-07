@@ -32,6 +32,7 @@ from claude_agent_sdk.types import McpStdioServerConfig
 
 from recon.contracts import AgentResult, Case, ToolCall
 from recon.runtimes.api_key import without_api_keys
+from recon.runtimes.run_budget import budget_section
 
 RUNTIME_NAME = "agent_sdk"
 
@@ -93,7 +94,7 @@ class _Outcome:
 @dataclass
 class RunBudget:
     """Per-run ceilings, read from `config/models.yaml`'s `run_budget:`
-    section. "Per run" means the whole case, not one `query()` call — single
+    section, with `run_budget_multi:` over it in multi mode (run_budget.py). "Per run" means the whole case, not one `query()` call — single
     mode makes one call so the distinction doesn't show, but multi mode's up
     to seven calls (decompose, up to four workers, synthesis, critic —
     `runtimes/multi_agent.py`) share one budget.
@@ -173,8 +174,8 @@ def _load_model_config(path: Path) -> dict[str, Any]:
     return config
 
 
-def _load_run_budget(config: dict[str, Any]) -> RunBudget:
-    section = config["run_budget"]
+def _load_run_budget(config: dict[str, Any], mode: str = "single") -> RunBudget:
+    section = budget_section(config, mode)
     return RunBudget(
         max_tool_calls=int(section["max_tool_calls"]),
         max_tokens=int(section["max_tokens"]),

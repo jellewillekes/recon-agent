@@ -15,7 +15,10 @@ class GateThresholds(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    answer_score_max_relative_drop: float = Field(ge=0)
+    # Absolute drop in answer_score_mean still counted as noise (#77).
+    answer_score_noise_band: float = Field(ge=0)
+    # Cases whose completion may drop before the gate fails (#77).
+    task_completion_max_case_drop: int = Field(ge=0)
     cost_max_relative_rise: float = Field(ge=0)
 
 

@@ -96,8 +96,8 @@ and pgvector embeddings.
 One investigator gets four read tools (`list_companies`, `list_financial_concepts`,
 `get_financial_fact`, `search_filings`) plus `flag_case_for_review`, and answers with a
 structured `answer`, `evidence` and `confidence`. [Budgets](glossary.md#run-budget) in
-[`config/models.yaml`](../config/models.yaml) cap each run at 30 tool calls, 300k tokens
-and 150 seconds. A breach ends the run with a partial `AgentResult` instead of an
+[`config/models.yaml`](../config/models.yaml) cap each run at 30 tool calls, 450k tokens
+and 150 seconds (240 in multi mode). A breach ends the run with a partial `AgentResult` instead of an
 exception ([ADR 0009](adr/0009-tool-reliability-and-run-budgets.md)).
 
 ### Multi mode
@@ -175,7 +175,7 @@ flowchart TB
     CAP -- all cases done --> AGG
 
     AGG[EvalRun<br/>aggregates, rubric version,<br/>prompt + model config hashes,<br/>tool data snapshot] --> FILE[(evals/results/*.json + .md)]
-    AGG --> THR{"Gate, with --baseline:<br/>task completion not lower<br/>answer_score drop ≤ 2%<br/>cost rise ≤ 20% unless completion rose"}
+    AGG --> THR{"Gate, with --baseline:<br/>task completion drop ≤ 1 case<br/>answer_score drop ≤ 0.10<br/>cost rise ≤ 20% unless completion rose"}
     THR -- pass --> PROMO([promotable])
     THR -- fail --> REG([regression, exit ≠ 0])
 ```
