@@ -4,10 +4,37 @@ score is not reproducible and the promotion gate cannot work."
 """
 
 import hashlib
+from collections.abc import Iterable
 from pathlib import Path
 
 DEFAULT_PROMPTS_DIR = Path("prompts")
 DEFAULT_MODELS_CONFIG_PATH = Path("config/models.yaml")
+
+
+# Prompts the judges read on every run, whatever the runtime.
+JUDGE_PROMPTS = frozenset({"judge_faithfulness"})
+
+
+def prompts_read(
+    runtime: str, mode: str, roles: Iterable[str]
+) -> frozenset[str] | None:
+    """The prompts (by role name) a run of `runtime`/`mode` reads, given the
+    roles in config/roles.yaml. None for a runtime this doesn't know, so the
+    caller can fall back to every prompt (ADR 0032).
+
+    Single mode reads the investigator. Multi mode reads one prompt per role,
+    and LangGraph's supervisor reads `supervisor_langgraph` instead of
+    `supervisor` (`langgraph_multi._build_multi_graph`).
+    """
+    if runtime not in ("agent_sdk", "langgraph"):
+        return None
+    if mode == "single":
+        read = {"investigator"}
+    else:
+        read = set(roles)
+        if runtime == "langgraph":
+            read = (read - {"supervisor"}) | {"supervisor_langgraph"}
+    return frozenset(read) | JUDGE_PROMPTS
 
 
 def _sha256_file(path: Path) -> str:

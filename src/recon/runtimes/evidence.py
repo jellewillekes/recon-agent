@@ -190,3 +190,11 @@ def resolve_claims(
                 evidence[ref] = evidence_for(ref, index)
     items = list(evidence.values())
     return claims, items, [evidence_line(item) for item in items]
+
+
+def worker_report(worker: str, findings: str, refs: list[str], rows: RowIndex) -> str:
+    """A multi-mode worker's findings for the synthesis, with each cited ref
+    resolved, so the supervisor reads tool rows rather than the worker's
+    paraphrase of them. Shared by both runtimes' multi mode."""
+    lines = [evidence_line(evidence_for(ref, rows)) for ref in dict.fromkeys(refs)]
+    return f"[{worker}] findings: {findings}\nevidence:\n" + "\n".join(lines)

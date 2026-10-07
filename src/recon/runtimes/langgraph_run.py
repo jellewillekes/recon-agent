@@ -6,7 +6,7 @@ end in. Shared by single and multi mode (`langgraph.py`,
 import asyncio
 import contextlib
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -15,7 +15,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 
-from recon.contracts import Case, ToolCall
+from recon.contracts import Case, Claim, Evidence, ToolCall
 from recon.runtimes.langgraph_trace import _messages_telemetry
 
 _Confidence = Literal["high", "medium", "low"]
@@ -138,6 +138,27 @@ class _Outcome:
     tokens_in: int
     tokens_out: int
     cost_eur: float
+    # The answer's claims and the evidence their refs resolved to (#118).
+    claims: list[Claim] = field(default_factory=list)
+    evidence_items: list[Evidence] = field(default_factory=list)
+
+
+def _failed_outcome(
+    tool_calls: list[ToolCall] | None = None,
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+    cost_eur: float = 0.0,
+) -> _Outcome:
+    """A run that ended without an answer, keeping what it spent."""
+    return _Outcome(
+        answer="",
+        evidence=[],
+        confidence="low",
+        tool_calls=tool_calls or [],
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        cost_eur=cost_eur,
+    )
 
 
 class _Paused(Exception):

@@ -30,19 +30,26 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.prebuilt import create_react_agent
 from pydantic import BaseModel
 
-from recon.contracts import AgentResult, Case
+from recon.contracts import AgentResult, Case, ToolCall
+from recon.runtimes.answer import validate_answer
 from recon.runtimes.api_key import langgraph_api_key, without_api_keys
+from recon.runtimes.evidence import RowIndex
 from recon.runtimes.langgraph_run import (
     _budget_breach_note,
     _BudgetExceeded,
     _build_checkpointer,
     _compute_cost_eur,
-    _Confidence,
+    _failed_outcome,
     _Outcome,
     _Paused,
     _run_graph,
 )
-from recon.runtimes.langgraph_trace import _extract_tool_calls, _sum_usage
+from recon.runtimes.langgraph_trace import (
+    _extract_tool_calls,
+    _sum_usage,
+    row_index,
+    tool_row_records,
+)
 from recon.runtimes.run_budget import budget_section
 
 RUNTIME_NAME = "langgraph"
@@ -59,11 +66,19 @@ DEFAULT_MODELS_CONFIG_PATH = Path("config/models.yaml")
 DEFAULT_PROMPT_PATH = Path("prompts/investigator.md")
 
 
+class ClaimResponse(BaseModel):
+    """One claim in the answer and the refs of the rows it rests on, the
+    shape of `answer.CLAIMS_SCHEMA` (ADR 0030)."""
+
+    text: str
+    importance: Literal["key", "supporting"]
+    evidence_refs: list[str]
+
+
 class AnswerResponse(BaseModel):
-    """The answer as evidence strings, passed as `create_react_agent`'s
-    `response_format`. The Agent SDK runtime answers with claims citing row
-    refs instead (ADR 0030); LangGraph's results keep `claims` empty until it
-    does too.
+    """The answer as claims citing row refs, like the Agent SDK runtime's
+    (#118, ADR 0030), passed as `create_react_agent`'s `response_format`. The
+    refs are resolved against the rows the run's tools returned.
 
     `flag_reason` is multi mode's own extension (issue #14 part 2): the
     supervisor's synthesize call uses this same schema (`langgraph_multi.py`),
@@ -73,9 +88,34 @@ class AnswerResponse(BaseModel):
     """
 
     answer: str
-    evidence: list[str]
+    claims: list[ClaimResponse]
     confidence: Literal["high", "medium", "low"]
     flag_reason: str | None = None
+
+
+def resolved_outcome(
+    response: AnswerResponse,
+    rows: RowIndex,
+    *,
+    tool_calls: list[ToolCall],
+    tokens_in: int,
+    tokens_out: int,
+    cost_eur: float,
+) -> _Outcome:
+    """An `_Outcome` with `response`'s claims resolved against `rows`, the
+    same resolution the Agent SDK runtime uses (`answer.validate_answer`)."""
+    answer = validate_answer(response.model_dump(), rows)
+    return _Outcome(
+        answer=answer.answer,
+        evidence=answer.evidence,
+        confidence=answer.confidence,
+        tool_calls=tool_calls,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        cost_eur=cost_eur,
+        claims=answer.claims,
+        evidence_items=answer.evidence_items,
+    )
 
 
 def _load_model_config(path: Path) -> dict[str, Any]:
@@ -94,18 +134,6 @@ def _mcp_connection(env: dict[str, str] | None = None) -> StdioConnection:
         args=["-m", "recon.tools.mcp_server"],
         env=env,
     )
-
-
-def _validate_answer(response: AnswerResponse) -> tuple[str, list[str], _Confidence]:
-    """No confidence check needed here, unlike `agent_sdk._validate_answer`:
-    that one validates a raw dict against `_CONFIDENCE_VALUES` because the
-    SDK hands back unvalidated JSON. Here `response` is already a real
-    `AnswerResponse` instance - its `Literal["high","medium","low"]` field
-    means a bad value never gets this far; the model's own structured-
-    output parsing raises first (surfaces as `AgentResult.error` the same
-    way any other failure in this method does).
-    """
-    return response.answer, response.evidence, response.confidence
 
 
 async def _build_react_subgraph(
@@ -199,6 +227,26 @@ class LangGraphRuntime:
             )
         return self._checkpointer
 
+    def _agent_result(
+        self, case: Case, start: float, outcome: _Outcome, error: str | None
+    ) -> AgentResult:
+        return AgentResult(
+            case_id=case.case_id,
+            answer=outcome.answer,
+            evidence=outcome.evidence,
+            confidence=outcome.confidence,
+            tool_calls=outcome.tool_calls,
+            runtime=RUNTIME_NAME,
+            mode=self._mode,
+            tokens_in=outcome.tokens_in,
+            tokens_out=outcome.tokens_out,
+            cost_eur=outcome.cost_eur,
+            elapsed_ms=int((time.monotonic() - start) * 1000),
+            error=error,
+            claims=outcome.claims,
+            evidence_items=outcome.evidence_items,
+        )
+
     def run(self, case: Case) -> AgentResult:
         """Answer `case`. Never raises - see `AgentSdkRuntime.run`'s docstring;
         the `Runtime` contract requires every failure to surface as
@@ -255,15 +303,12 @@ class LangGraphRuntime:
                         "langgraph run produced no structured answer "
                         f"(got {type(structured)!r})."
                     )
-                answer, evidence, confidence = _validate_answer(structured)
                 messages = result["messages"]
-                tool_calls = _extract_tool_calls(messages)
                 tokens_in, tokens_out = _sum_usage(messages)
-                outcome = _Outcome(
-                    answer=answer,
-                    evidence=evidence,
-                    confidence=confidence,
-                    tool_calls=tool_calls,
+                outcome = resolved_outcome(
+                    structured,
+                    row_index(tool_row_records(messages)),
+                    tool_calls=_extract_tool_calls(messages),
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
                     cost_eur=_compute_cost_eur(
@@ -271,40 +316,15 @@ class LangGraphRuntime:
                     ),
                 )
 
-            return AgentResult(
-                case_id=case.case_id,
-                answer=outcome.answer,
-                evidence=outcome.evidence,
-                confidence=outcome.confidence,
-                tool_calls=outcome.tool_calls,
-                runtime=RUNTIME_NAME,
-                mode=self._mode,
-                tokens_in=outcome.tokens_in,
-                tokens_out=outcome.tokens_out,
-                cost_eur=outcome.cost_eur,
-                elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=_budget_breach_note(
-                    outcome.tokens_in, outcome.tokens_out, max_tokens
-                ),
+            note = _budget_breach_note(
+                outcome.tokens_in, outcome.tokens_out, max_tokens
             )
+            return self._agent_result(case, start, outcome, note)
         except _Paused as exc:
             # Not a failure - decompose, workers, synthesize, and critic
             # already produced a real, complete answer; only the review-flag
             # write is pending a human decision. See _Paused's docstring.
-            return AgentResult(
-                case_id=case.case_id,
-                answer=exc.outcome.answer,
-                evidence=exc.outcome.evidence,
-                confidence=exc.outcome.confidence,
-                tool_calls=exc.outcome.tool_calls,
-                runtime=RUNTIME_NAME,
-                mode=self._mode,
-                tokens_in=exc.outcome.tokens_in,
-                tokens_out=exc.outcome.tokens_out,
-                cost_eur=exc.outcome.cost_eur,
-                elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=str(exc),
-            )
+            return self._agent_result(case, start, exc.outcome, str(exc))
         except _BudgetExceeded as exc:
             # Single mode computes cost here, from its one well-defined
             # model_name (unchanged from part 1) - multi mode has no single
@@ -318,35 +338,12 @@ class LangGraphRuntime:
                     model_config, model_name, exc.tokens_in, exc.tokens_out
                 )
             )
-            return AgentResult(
-                case_id=case.case_id,
-                answer="",
-                evidence=[],
-                confidence="low",
-                tool_calls=exc.tool_calls,
-                runtime=RUNTIME_NAME,
-                mode=self._mode,
-                tokens_in=exc.tokens_in,
-                tokens_out=exc.tokens_out,
-                cost_eur=cost_eur,
-                elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=exc.reason,
+            spent = _failed_outcome(
+                exc.tool_calls, exc.tokens_in, exc.tokens_out, cost_eur
             )
+            return self._agent_result(case, start, spent, exc.reason)
         except Exception as exc:  # noqa: BLE001 — boundary: see run's docstring
-            return AgentResult(
-                case_id=case.case_id,
-                answer="",
-                evidence=[],
-                confidence="low",
-                tool_calls=[],
-                runtime=RUNTIME_NAME,
-                mode=self._mode,
-                tokens_in=0,
-                tokens_out=0,
-                cost_eur=0.0,
-                elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=str(exc),
-            )
+            return self._agent_result(case, start, _failed_outcome(), str(exc))
 
     async def resume(self, case: Case, thread_id: str, approved: bool) -> AgentResult:
         """Complete a multi-mode run paused at `_confirm_flag_node`
@@ -386,49 +383,14 @@ class LangGraphRuntime:
                 roles_config_path=self._roles_config_path,
                 prompts_dir=self._prompts_dir,
             )
-            return AgentResult(
-                case_id=case.case_id,
-                answer=outcome.answer,
-                evidence=outcome.evidence,
-                confidence=outcome.confidence,
-                tool_calls=outcome.tool_calls,
-                runtime=RUNTIME_NAME,
-                mode=self._mode,
-                tokens_in=outcome.tokens_in,
-                tokens_out=outcome.tokens_out,
-                cost_eur=outcome.cost_eur,
-                elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=_budget_breach_note(
-                    outcome.tokens_in, outcome.tokens_out, max_tokens
-                ),
+            note = _budget_breach_note(
+                outcome.tokens_in, outcome.tokens_out, max_tokens
             )
+            return self._agent_result(case, start, outcome, note)
         except _BudgetExceeded as exc:
-            return AgentResult(
-                case_id=case.case_id,
-                answer="",
-                evidence=[],
-                confidence="low",
-                tool_calls=exc.tool_calls,
-                runtime=RUNTIME_NAME,
-                mode=self._mode,
-                tokens_in=exc.tokens_in,
-                tokens_out=exc.tokens_out,
-                cost_eur=exc.cost_eur,
-                elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=exc.reason,
+            spent = _failed_outcome(
+                exc.tool_calls, exc.tokens_in, exc.tokens_out, exc.cost_eur
             )
+            return self._agent_result(case, start, spent, exc.reason)
         except Exception as exc:  # noqa: BLE001 — boundary: see run's docstring
-            return AgentResult(
-                case_id=case.case_id,
-                answer="",
-                evidence=[],
-                confidence="low",
-                tool_calls=[],
-                runtime=RUNTIME_NAME,
-                mode=self._mode,
-                tokens_in=0,
-                tokens_out=0,
-                cost_eur=0.0,
-                elapsed_ms=int((time.monotonic() - start) * 1000),
-                error=str(exc),
-            )
+            return self._agent_result(case, start, _failed_outcome(), str(exc))

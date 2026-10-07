@@ -6,7 +6,7 @@ API call, no cost. Workers go through the real local MCP server subprocess
 (`tools/mcp_server.py`) via a fake tool-calling `ChatAnthropic` patched on
 `langgraph.ChatAnthropic` (since `_build_react_subgraph` lives there and
 workers reuse it unchanged from single mode); the decompose/synthesize/critic
-structured calls use a separate fake patched on `langgraph_multi.ChatAnthropic`
+structured calls use a separate fake patched on `langgraph_nodes.ChatAnthropic`
 - a distinct module-level import, patched separately.
 
 The confirm-flag/interrupt tests reuse `tests/test_review_flag.py`'s own
@@ -15,6 +15,8 @@ rather than a real Postgres - `flag_case_for_review`'s `dry_run`/unconfirmed
 calls never touch it at all; only a `confirmed=True` write does.
 """
 
+import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +30,7 @@ from pydantic import BaseModel, Field
 from recon.contracts import AgentResult, Case
 from recon.runtimes import langgraph as lg
 from recon.runtimes import langgraph_multi as lgm
+from recon.runtimes import langgraph_nodes as lgn
 from recon.safety_eval import writes_follow_confirmation_protocol
 from recon.tools import review_flag
 
@@ -111,6 +114,34 @@ def _patch_roles(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(lgm, "_load_roles_config", lambda path: ROLES_CONFIG)
 
 
+# A canned response citing FIRST_REF cites the first real row ref the fake
+# can see in its input instead (#118): the refs only exist once a tool ran.
+FIRST_REF = "<first-ref>"
+# A row ref in a tool's JSON (its quotes escaped once it's nested in a message
+# block) or at the start of a resolved evidence line.
+_REF = re.compile(r'\\*"ref\\*": ?\\*"(E[0-9a-f]{12})|\[(E[0-9a-f]{12})\] ')
+
+
+def _first_ref(messages: Any) -> str:
+    for message in messages:
+        content = message.content if hasattr(message, "content") else str(message)
+        text = content if isinstance(content, str) else json.dumps(content)
+        found = _REF.search(text)
+        if found:
+            return found.group(1) or found.group(2)
+    raise AssertionError("no row ref in the messages to cite")
+
+
+def _with_first_ref(value: Any, messages: Any) -> Any:
+    if value == FIRST_REF:
+        return _first_ref(messages)
+    if isinstance(value, list):
+        return [_with_first_ref(item, messages) for item in value]
+    if isinstance(value, dict):
+        return {key: _with_first_ref(item, messages) for key, item in value.items()}
+    return value
+
+
 class _FakeStructuredOutput:
     """What `model.with_structured_output(schema)` returns for
     `create_react_agent`'s own final-answer step (worker subgraphs reuse
@@ -128,7 +159,7 @@ class _FakeStructuredOutput:
     ) -> BaseModel:
         response = self._model.responses[self._model._idx]
         self._model._idx += 1
-        args = response.tool_calls[0]["args"]
+        args = _with_first_ref(response.tool_calls[0]["args"], messages)
         return self._schema(**args)
 
 
@@ -172,7 +203,7 @@ def _patch_worker_model(
 
 
 class _FakeStructuredCallModel:
-    """Backs `langgraph_multi.ChatAnthropic` - decompose/synthesize/critic
+    """Backs `langgraph_nodes.ChatAnthropic` - decompose/synthesize/critic
     only ever call `.with_structured_output(schema, include_raw=True)
     .ainvoke(messages)` (`_structured_call`), never tool-calling. One shared
     instance across all three roles (they run sequentially, never in
@@ -183,6 +214,7 @@ class _FakeStructuredCallModel:
     def __init__(self, responses: list[BaseModel]) -> None:
         self._responses = responses
         self._idx = 0
+        self.prompts: list[str] = []
 
     def with_structured_output(
         self, schema: type[BaseModel], *, include_raw: bool = False, **kwargs: Any
@@ -195,6 +227,10 @@ class _FakeStructuredCallModel:
     ) -> dict[str, Any]:
         response = self._responses[self._idx]
         self._idx += 1
+        self.prompts.append(str(messages[-1].content))
+        response = type(response).model_validate(
+            _with_first_ref(response.model_dump(), messages)
+        )
         return {
             "raw": AIMessage(
                 content="",
@@ -211,9 +247,20 @@ class _FakeStructuredCallModel:
 
 def _patch_supervisor_model(
     monkeypatch: pytest.MonkeyPatch, responses: list[BaseModel]
-) -> None:
+) -> "_FakeStructuredCallModel":
     fake = _FakeStructuredCallModel(responses=responses)
-    monkeypatch.setattr(lgm, "ChatAnthropic", lambda **kwargs: fake)
+    monkeypatch.setattr(lgn, "ChatAnthropic", lambda **kwargs: fake)
+    return fake
+
+
+def _claims(*refs: str) -> list[lg.ClaimResponse]:
+    return [
+        lg.ClaimResponse(
+            text="FIRM-001 is in Industrials",
+            importance="key",
+            evidence_refs=list(refs),
+        )
+    ]
 
 
 def _accepting_flow(flag_reason: str | None = None) -> list[BaseModel]:
@@ -227,7 +274,7 @@ def _accepting_flow(flag_reason: str | None = None) -> list[BaseModel]:
         ),
         lg.AnswerResponse(
             answer="Industrials",
-            evidence=["FIRM-001 is in Industrials"],
+            claims=_claims(FIRST_REF),
             confidence="high",
             flag_reason=flag_reason,
         ),
@@ -258,7 +305,7 @@ _ONE_WORKER_RESPONSES = [
                 "name": "WorkerResponse",
                 "args": {
                     "findings": "FIRM-001 is in Industrials",
-                    "evidence": ["FIRM-001 sector=Industrials"],
+                    "evidence_refs": [FIRST_REF],
                 },
                 "id": "r1",
             }
@@ -270,13 +317,22 @@ _ONE_WORKER_RESPONSES = [
 @pytest.mark.anyio
 async def test_run_multi_success_full_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_roles(monkeypatch)
-    _patch_supervisor_model(monkeypatch, _accepting_flow())
+    supervisor = _patch_supervisor_model(monkeypatch, _accepting_flow())
     _patch_worker_model(monkeypatch, _ONE_WORKER_RESPONSES)
 
     outcome = await _run_multi(InMemorySaver())
 
     assert outcome.answer == "Industrials"
-    assert outcome.evidence == ["FIRM-001 is in Industrials"]
+    # #118: the synthesis cites the worker's row, resolved to verified evidence.
+    [claim] = outcome.claims
+    [evidence] = outcome.evidence_items
+    assert evidence.ref == claim.evidence_refs[0]
+    assert evidence.verified and evidence.source_type == "company"
+    line = outcome.evidence[0]
+    assert line.startswith(f"[{evidence.ref}] company")
+    _decompose, synthesis_prompt, critic_prompt = supervisor.prompts
+    assert line in synthesis_prompt  # the worker's report, resolved
+    assert line in critic_prompt  # the critic checks the resolved evidence
     assert outcome.confidence == "high"
     assert len(outcome.tool_calls) == 1
     assert outcome.tool_calls[0].tool == "list_companies"
@@ -310,7 +366,7 @@ async def test_run_multi_routes_to_both_workers_in_one_case(
             ),
             lg.AnswerResponse(
                 answer="Industrials, revenue reported",
-                evidence=["FIRM-001 sector", "FIRM-001 revenue"],
+                claims=_claims("Enot-returned"),
                 confidence="high",
             ),
             lgm.CriticResponse(accepted=True, reason="supported"),
@@ -334,6 +390,8 @@ async def test_run_multi_routes_to_both_workers_in_one_case(
 
     assert sorted(seen_instructions) == ["find FIRM-001", "get its revenue"]
     assert outcome.answer == "Industrials, revenue reported"
+    # No worker returned that row, so the citation stays unverified.
+    assert [item.verified for item in outcome.evidence_items] == [False]
 
 
 @pytest.mark.anyio
@@ -349,9 +407,7 @@ async def test_critic_rejection_forces_confidence_low(
                     lgm._Subtask(worker="worker_lookup", instruction="look it up")
                 ]
             ),
-            lg.AnswerResponse(
-                answer="Industrials", evidence=["a guess"], confidence="high"
-            ),
+            lg.AnswerResponse(answer="Industrials", claims=[], confidence="high"),
             lgm.CriticResponse(
                 accepted=False, reason="evidence doesn't back the claim"
             ),
@@ -439,7 +495,7 @@ async def test_run_worker_task_passes_role_max_turns_as_recursion_limit(
             captured["config"] = config
             return {
                 "structured_response": lgm.WorkerResponse(
-                    findings="found it", evidence=["e1"]
+                    findings="found it", evidence_refs=[]
                 ),
                 "messages": [],
             }
@@ -447,7 +503,7 @@ async def test_run_worker_task_passes_role_max_turns_as_recursion_limit(
     async def fake_build_react_subgraph(**kwargs: Any) -> _FakeGraph:
         return _FakeGraph()
 
-    monkeypatch.setattr(lgm, "_build_react_subgraph", fake_build_react_subgraph)
+    monkeypatch.setattr(lgn, "_build_react_subgraph", fake_build_react_subgraph)
 
     await lgm._run_worker_task(
         lgm._WorkerTask(
@@ -575,6 +631,9 @@ async def test_resume_approved_writes_the_flag(
     )
 
     assert outcome.answer == "Industrials"
+    # The claims survive the checkpoint between the pause and the resume.
+    assert outcome.claims == exc_info.value.outcome.claims
+    assert outcome.claims and outcome.evidence_items[0].verified
     assert len(fake_postgres) == 1
     flag_calls = [
         call for call in outcome.tool_calls if call.tool == "flag_case_for_review"

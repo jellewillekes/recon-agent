@@ -9,6 +9,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
 from recon.contracts import ToolCall
+from recon.runtimes.evidence import RowIndex
 
 _TOOL_NAMES = (
     "list_companies_tool",
@@ -25,13 +26,11 @@ def _strip_tool_name(name: str) -> str:
     return name.removesuffix("_tool")
 
 
-def _parse_tool_message_status(content: Any) -> tuple[str, int]:
-    """Pull `status`/`elapsed_ms` back out of the JSON our own `ToolResult`/
-    `ReviewFlagResult` produced. `ToolMessage.content` from a real `ToolNode`
-    run is a list of `{"type": "text", "text": "<json>"}` blocks (confirmed
-    live against this project's own MCP server) - falls back to `("unknown",
-    0)` for anything else, same spirit as `agent_sdk._parse_tool_result`.
-    """
+def _tool_message_payload(content: Any) -> dict[str, Any] | None:
+    """The JSON our own `ToolResult`/`ReviewFlagResult` produced, from a
+    `ToolMessage`'s content. From a real `ToolNode` run that's a list of
+    `{"type": "text", "text": "<json>"}` blocks (confirmed live against this
+    project's own MCP server). None for anything else."""
     text: str | None = content if isinstance(content, str) else None
     if text is None and isinstance(content, list):
         text = next(
@@ -43,16 +42,75 @@ def _parse_tool_message_status(content: Any) -> tuple[str, int]:
             None,
         )
     if text is None:
-        return "unknown", 0
+        return None
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _parse_tool_message_status(content: Any) -> tuple[str, int]:
+    """Pull `status`/`elapsed_ms` back out of a tool's JSON, falling back to
+    `("unknown", 0)`, same spirit as `agent_sdk._parse_tool_result`."""
+    payload = _tool_message_payload(content)
+    if payload is None:
         return "unknown", 0
     status = payload.get("status")
     elapsed_ms = payload.get("elapsed_ms", 0)
     if not isinstance(status, str) or not isinstance(elapsed_ms, int):
         return "unknown", 0
     return status, elapsed_ms
+
+
+def _answered_calls(
+    messages: list[BaseMessage],
+) -> list[tuple[str, dict[str, Any], ToolMessage]]:
+    """(tool name, arguments, result message) for every call to one of our
+    real tools that got a result, in result order."""
+    pending: dict[str, tuple[str, dict[str, Any]]] = {}
+    for message in messages:
+        if isinstance(message, AIMessage):
+            for call in message.tool_calls:
+                if call["name"] in _TOOL_NAMES and call["id"] is not None:
+                    pending[call["id"]] = (call["name"], call["args"])
+    return [
+        (*pending[message.tool_call_id], message)
+        for message in messages
+        if isinstance(message, ToolMessage) and message.tool_call_id in pending
+    ]
+
+
+def tool_row_records(messages: list[BaseMessage]) -> list[dict[str, Any]]:
+    """The rows with a `ref` each tool call returned, as plain JSON records
+    (`tool`, `arguments`, `rows`), so they survive a Postgres checkpoint in
+    multi mode's graph state (#118, ADR 0030)."""
+    records: list[dict[str, Any]] = []
+    for name, arguments, message in _answered_calls(messages):
+        payload = _tool_message_payload(message.content) or {}
+        data = payload.get("data")
+        rows = [
+            row
+            for row in (data if isinstance(data, list) else [])
+            if isinstance(row, dict) and isinstance(row.get("ref"), str)
+        ]
+        if rows:
+            records.append(
+                {
+                    "tool": _strip_tool_name(name),
+                    "arguments": dict(arguments),
+                    "rows": rows,
+                }
+            )
+    return records
+
+
+def row_index(records: list[dict[str, Any]]) -> RowIndex:
+    """A `RowIndex` over `tool_row_records` output, to resolve cited refs."""
+    index = RowIndex()
+    for record in records:
+        index.add(record["tool"], record["arguments"], {"data": record["rows"]})
+    return index
 
 
 def _extract_tool_calls(messages: list[BaseMessage]) -> list[ToolCall]:
@@ -63,25 +121,17 @@ def _extract_tool_calls(messages: list[BaseMessage]) -> list[ToolCall]:
     matching that allowlist, the same "only our real tools count" principle
     as `agent_sdk._run_query`'s `mcp_prefix` filter.
     """
-    pending: dict[str, tuple[str, dict[str, Any]]] = {}
-    for message in messages:
-        if isinstance(message, AIMessage):
-            for call in message.tool_calls:
-                if call["name"] in _TOOL_NAMES and call["id"] is not None:
-                    pending[call["id"]] = (call["name"], call["args"])
     tool_calls: list[ToolCall] = []
-    for message in messages:
-        if isinstance(message, ToolMessage) and message.tool_call_id in pending:
-            name, args = pending[message.tool_call_id]
-            status, elapsed_ms = _parse_tool_message_status(message.content)
-            tool_calls.append(
-                ToolCall(
-                    tool=_strip_tool_name(name),
-                    arguments=args,
-                    status=status,
-                    elapsed_ms=elapsed_ms,
-                )
+    for name, args, message in _answered_calls(messages):
+        status, elapsed_ms = _parse_tool_message_status(message.content)
+        tool_calls.append(
+            ToolCall(
+                tool=_strip_tool_name(name),
+                arguments=args,
+                status=status,
+                elapsed_ms=elapsed_ms,
             )
+        )
     return tool_calls
 
 
