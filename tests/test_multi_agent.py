@@ -558,6 +558,7 @@ async def test_with_routing_the_local_model_decomposes(
     _patch_roles_and_models(monkeypatch)
     local = _LocalModel()
     monkeypatch.setattr(multi_agent, "local_provider", lambda config: local)
+    monkeypatch.setattr(multi_agent, "routes", lambda config, step: True)
     claude_prompts: list[str] = []
 
     def query(*, prompt: str, options: ClaudeAgentOptions | None = None) -> Any:
@@ -623,3 +624,25 @@ async def test_the_sdk_runtime_passes_routing_to_multi_mode(
     await agent_sdk.AgentSdkRuntime(mode="multi", routing=True).run_async(CASE)
 
     assert seen["routing"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_local_tokens_dont_count_as_claude_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The local model is free and has no share in Claude's token budget."""
+    _patch_roles_and_models(monkeypatch)
+    monkeypatch.setattr(multi_agent, "local_provider", lambda config: _LocalModel())
+    monkeypatch.setattr(multi_agent, "routes", lambda config, step: True)
+    monkeypatch.setattr(agent_sdk, "query", _accepting_critic_query)
+
+    routed = await multi_agent.run_multi_async(
+        CASE,
+        roles_config_path=Path("unused"),
+        prompts_dir=Path("prompts"),
+        routing=True,
+    )
+
+    # Worker, synthesis and critic: 10 in and 5 out each, from _result_message.
+    assert (routed.tokens_in, routed.tokens_out) == (30, 15)

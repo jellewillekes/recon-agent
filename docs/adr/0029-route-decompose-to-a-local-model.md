@@ -33,6 +33,10 @@ Only decompose is a plain structured reply without tools.
 
 ## Consequences
 
+- The local model's tokens aren't counted in the run's tokens or its token budget. They
+  are free and use no Claude capacity, so on against off compares Claude tokens only.
+- `recon.cli compare` shows two runs side by side with the gate's verdicts. That's the
+  report of cost and task completion for both settings that step 14 asks for.
 - The routed decompose can't call `flag_case_for_review`. The supervisor keeps it in
   synthesis.
 - The saving is one short Claude call per case. What routing puts at risk is the quality

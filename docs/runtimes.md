@@ -76,12 +76,18 @@ model, and everything else on Claude through the subscription (ADR 0029). It nee
 API key and costs nothing. One-time setup, outside the repo:
 
 ```bash
-brew install ollama
+brew install ollama               # 0.5 or later, for JSON-schema replies
 ollama serve                      # leave running
 ollama pull qwen2.5:7b-instruct   # about 4.7 GB
 ```
 
-`eval` checks that Ollama answers and has the model before it spends any credit.
+`eval` checks that Ollama answers, is 0.5 or later and has the model before it spends
+any credit. Compare a routed run with an unrouted one, side by side with the gate's
+verdicts:
+
+```bash
+uv run python -m recon.cli compare evals/results/<off>.json evals/results/<on>.json
+```
 
 ## See also
 

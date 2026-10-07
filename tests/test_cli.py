@@ -967,3 +967,35 @@ def test_cmd_eval_records_routing_on_the_run(
     assert runtimes[0]._routing is True
     written = json.loads((tmp_path / "evals/results/eval-fixed.json").read_text())
     assert written["routing"] is True
+
+
+@pytest.mark.unit
+def test_compare_shows_two_runs_side_by_side_with_the_gate_verdicts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Step 14: report cost and task completion for both routing settings."""
+    off = _eval_run(
+        mode="multi",
+        aggregate={"task_completion_rate": 1.0, "answer_score_mean": 0.6},
+        total_cost_eur=1.40,
+    )
+    on = _eval_run(
+        run_id="eval-routed",
+        mode="multi",
+        routing=True,
+        aggregate={"task_completion_rate": 1.0, "answer_score_mean": 0.58},
+        total_cost_eur=1.10,
+    )
+    (tmp_path / "off.json").write_text(off.model_dump_json())
+    (tmp_path / "on.json").write_text(on.model_dump_json())
+
+    args = build_parser().parse_args(
+        ["compare", str(tmp_path / "off.json"), str(tmp_path / "on.json")]
+    )
+    args.func(args)
+
+    out = capsys.readouterr().out
+    assert "| routing | off | on |" in out
+    assert "| total_cost_eur | 1.400 | 1.100 | better |" in out
+    assert "| answer_score_mean | 0.600 | 0.580 | same |" in out
+    assert "| task_completion_rate | 1.000 | 1.000 | same |" in out

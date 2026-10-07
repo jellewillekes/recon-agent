@@ -82,10 +82,10 @@ class OllamaProvider:
                 f"Ollama answered {response.status_code} for {self.model}: "
                 f"{response.text[:200]}. Check `ollama ps` and the model name."
             )
-        payload = response.json()
         try:
+            payload = response.json()
             structured = json.loads(payload["message"]["content"])
-        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        except (KeyError, TypeError, ValueError) as exc:
             raise ProviderError(
                 f"{self.model} didn't reply with JSON. Try a model that follows "
                 "JSON schemas more reliably, or route fewer steps."
@@ -110,11 +110,19 @@ class OllamaProvider:
             with httpx.Client(
                 base_url=self.base_url, timeout=5, transport=transport
             ) as client:
-                response = client.get("/api/tags")
-                response.raise_for_status()
-        except httpx.HTTPError as exc:
+                version = client.get("/api/version").raise_for_status().json()
+                tags = client.get("/api/tags").raise_for_status().json()
+        except (httpx.HTTPError, ValueError) as exc:
             return self._unreachable(exc)
-        names = {model.get("name") for model in response.json().get("models", [])}
+        # A JSON-schema `format` needs Ollama 0.5. Older versions ignore it, so
+        # every reply would fail validation and look like a worse model.
+        if _version(str(version.get("version", "0"))) < (0, 5):
+            return (
+                f"Ollama {version.get('version')} at {self.base_url} is too old: "
+                "routing needs 0.5 or later for JSON-schema replies. Upgrade it "
+                "with `brew upgrade ollama`."
+            )
+        names = {model.get("name") for model in tags.get("models", [])}
         if self.model not in names and f"{self.model}:latest" not in names:
             return (
                 f"Ollama at {self.base_url} doesn't have {self.model}. "
@@ -165,3 +173,16 @@ def routing_problem(runtime: str, mode: str, config: dict[str, Any]) -> str | No
             "call, so nothing in it is routed."
         )
     return local_provider(config).readiness_problem()
+
+
+def routes(config: dict[str, Any], step: str) -> bool:
+    """Whether `config/models.yaml` routes `step` to the local model."""
+    return step in config.get("routing", {}).get("steps", [])
+
+
+def _version(text: str) -> tuple[int, ...]:
+    parts = []
+    for part in text.split(".")[:2]:
+        digits = "".join(ch for ch in part if ch.isdigit())
+        parts.append(int(digits or 0))
+    return tuple(parts)

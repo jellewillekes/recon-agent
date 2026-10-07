@@ -70,7 +70,7 @@ run_budget_multi:
 # mode sends these steps to a local model instead of Claude. It runs on this
 # machine, so it costs nothing and needs no API key. Only decompose is
 # routable: workers call tools, and synthesis and the critic stay on the
-# strong model. Setup: `brew install ollama`, `ollama serve`, then
+# strong model. Needs Ollama 0.5 or later. Setup: `brew install ollama`, `ollama serve`, then
 # `ollama pull qwen2.5:7b-instruct` (docs/runtimes.md).
 routing:
   provider: ollama

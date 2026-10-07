@@ -37,7 +37,7 @@ from recon.runtimes.agent_sdk import (
     _validate_answer,
 )
 from recon.runtimes.api_key import without_api_keys
-from recon.runtimes.providers import local_provider
+from recon.runtimes.providers import local_provider, routes
 
 DEFAULT_ROLES_CONFIG_PATH = Path("config/roles.yaml")
 DEFAULT_PROMPTS_DIR = Path("prompts")
@@ -265,17 +265,19 @@ async def run_multi_async(
         f"Case ID: {case.case_id}\n\n"
         f"Decompose this question into subtasks for your workers: {case.question}"
     )
-    if routing:
+    if routing and routes(model_config, "decompose"):
         reply = await local_provider(model_config).complete(
             (prompts_dir / "supervisor.md").read_text(encoding="utf-8"),
             decompose_prompt,
             _DECOMPOSE_SCHEMA["schema"],
         )
+        # The local model's tokens are free and outside Claude's token
+        # budget, so they aren't counted with Claude's (ADR 0029).
         decompose_result = _QueryResult(
             structured=reply.structured,
             tool_calls=[],
-            tokens_in=reply.tokens_in,
-            tokens_out=reply.tokens_out,
+            tokens_in=0,
+            tokens_out=0,
             cost_eur=reply.cost_eur,
         )
     else:

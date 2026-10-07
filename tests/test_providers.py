@@ -92,11 +92,7 @@ async def test_a_server_error_fails_the_call() -> None:
 async def test_the_readiness_check_finds_the_pulled_model(
     models: list[str], problem: str | None
 ) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/tags"
-        return httpx.Response(200, json={"models": [{"name": n} for n in models]})
-
-    result = _provider(handler).readiness_problem()
+    result = _provider(_ready_server("0.6.0", models)).readiness_problem()
     if problem is None:
         assert result is None
     else:
@@ -146,3 +142,55 @@ def test_the_repo_routes_decompose_to_a_local_ollama_model() -> None:
 def test_routing_config_refuses_what_isnt_built(routing: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         providers.local_provider({"routing": routing})
+
+
+def _ready_server(version: str, models: list[str]) -> Any:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/version":
+            return httpx.Response(200, json={"version": version})
+        return httpx.Response(200, json={"models": [{"name": n} for n in models]})
+
+    return handler
+
+
+@pytest.mark.parametrize(
+    ("version", "ready"), [("0.5.0", True), ("0.12.3", True), ("0.4.7", False)]
+)
+def test_the_readiness_check_needs_ollama_0_5_for_json_schemas(
+    version: str, ready: bool
+) -> None:
+    """Older Ollama ignores a JSON-schema `format`, so every decompose would
+    fail validation and look like a quality regression."""
+    problem = _provider(_ready_server(version, ["local-model"])).readiness_problem()
+    assert (problem is None) is ready
+    if not ready:
+        assert problem is not None and "0.5" in problem
+
+
+async def test_a_reply_body_that_isnt_json_fails_the_call() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>not ollama</html>")
+
+    with pytest.raises(providers.ProviderError):
+        await _provider(handler).complete("system", "q", SCHEMA)
+
+
+def test_a_server_that_isnt_ollama_is_reported_not_raised() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"<html>not ollama</html>")
+
+    assert _provider(handler).readiness_problem() is not None
+
+
+@pytest.mark.parametrize(("steps", "routed"), [(["decompose"], True), ([], False)])
+def test_only_the_configured_steps_are_routed(steps: list[str], routed: bool) -> None:
+    config = {
+        "routing": {
+            "provider": "ollama",
+            "base_url": "x",
+            "model": "m",
+            "timeout_s": 5,
+            "steps": steps,
+        }
+    }
+    assert providers.routes(config, "decompose") is routed

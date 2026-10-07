@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from recon import cli_edgar, cli_retrieval
+from recon import cli_compare, cli_edgar, cli_retrieval
 from recon.adapters import sec_edgar, sec_edgar_tickers
 from recon.adapters.finance_agent_bench import (
     DATASET_ID,
@@ -374,6 +374,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     cli_edgar.add_edgar_parser(subparsers, DEFAULT_DATASET_PATH)
     cli_retrieval.add_retrieval_parser(subparsers, DEFAULT_DATASET_PATH)
+    cli_compare.add_compare_parser(subparsers)
     return parser
 
 
