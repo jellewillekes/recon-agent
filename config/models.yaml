@@ -49,11 +49,19 @@ run_budget:
   # each) but well short of a genuine retry/routing loop.
   max_tool_calls: 30
   # Well above a typical run's usage; catches a runaway loop, not normal cost.
-  max_tokens: 300000
-  # Under api/main.py's own RECON_API_REQUEST_TIMEOUT_S default (170s), so on
+  # 450k, up from 300k: a single-mode case used 349k on the text cases.
+  max_tokens: 450000
+  # Under api/main.py's own RECON_API_REQUEST_TIMEOUT_S default (270s), so on
   # a breach the run still ends with this budget's graceful partial
   # AgentResult instead of the API's blunter 504 with no body. CLI/eval
   # callers have no other wall-clock bound at all, so this is their only one.
   # 150, up from 100 (#99): with filing-text search, three of the seven text
   # cases took 87-100s, and one ran out.
   max_wall_clock_s: 150
+
+# Multi mode's values over run_budget's (runtimes/run_budget.py). It runs a
+# supervisor, workers and a critic per case: 109 s per case on average on the
+# text cases, against single's 58 s, and 2 of 7 hit 150 s. Still under the
+# API's 270 s request timeout.
+run_budget_multi:
+  max_wall_clock_s: 240

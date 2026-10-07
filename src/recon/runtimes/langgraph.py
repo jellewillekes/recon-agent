@@ -41,6 +41,7 @@ from pydantic import BaseModel
 
 from recon.contracts import AgentResult, Case, ToolCall
 from recon.runtimes.api_key import langgraph_api_key, without_api_keys
+from recon.runtimes.run_budget import budget_section
 
 RUNTIME_NAME = "langgraph"
 
@@ -551,7 +552,7 @@ class LangGraphRuntime:
         model_name = ""
         try:
             model_config = _load_model_config(self._models_config_path)
-            run_budget = model_config["run_budget"]
+            run_budget = budget_section(model_config, self._mode)
             max_tool_calls = int(run_budget["max_tool_calls"])
             max_tokens = int(run_budget["max_tokens"])
             max_wall_clock_s = float(run_budget["max_wall_clock_s"])
@@ -706,7 +707,7 @@ class LangGraphRuntime:
                     "mode='multi' - single mode never pauses."
                 )
             model_config = _load_model_config(self._models_config_path)
-            run_budget = model_config["run_budget"]
+            run_budget = budget_section(model_config, self._mode)
             max_tool_calls = int(run_budget["max_tool_calls"])
             max_tokens = int(run_budget["max_tokens"])
             max_wall_clock_s = float(run_budget["max_wall_clock_s"])

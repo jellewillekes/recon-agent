@@ -16,6 +16,7 @@ from httpx import ASGITransport, AsyncClient
 
 from recon.api import main as api_main
 from recon.contracts import AgentResult, Case
+from recon.runtimes.run_budget import budget_section
 
 pytestmark = [pytest.mark.unit, pytest.mark.anyio]
 
@@ -267,8 +268,12 @@ def test_the_run_budget_ends_before_every_api_request_timeout() -> None:
     """A run that hits its wall-clock budget returns a partial AgentResult. If
     the API's request timeout came first, the caller would get a bare 504."""
     root = Path(__file__).resolve().parent.parent
-    budget = yaml.safe_load((root / "config" / "models.yaml").read_text())
-    wall_clock = float(budget["run_budget"]["max_wall_clock_s"])
+    models = yaml.safe_load((root / "config" / "models.yaml").read_text())
+    # Every mode's budget, so a slower mode can't outlast the request.
+    wall_clock = max(
+        float(budget_section(models, mode)["max_wall_clock_s"])
+        for mode in ("single", "multi")
+    )
     chart = yaml.safe_load((root / "charts/recon-agent/values.yaml").read_text())
     compose = yaml.safe_load((root / "docker/compose.yaml").read_text())
     timeouts = {

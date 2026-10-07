@@ -250,7 +250,7 @@ its estimate is higher, and stops before a case that could go over.
 
 ### Run budget
 
-Per-run limits on the agent: 30 tool calls, 300,000 tokens and 150 seconds. A run that
+Per-run limits on the agent: 30 tool calls, 450,000 tokens and 150 seconds (240 in multi mode). A run that
 hits one ends with a partial answer instead of looping forever
 ([ADR 0009](adr/0009-tool-reliability-and-run-budgets.md)).
 
