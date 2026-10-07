@@ -161,11 +161,13 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     if key_problem is not None:
         raise SystemExit(key_problem)
     routing = args.routing == "on"
+    routes_decompose = False
     if routing:
         config = yaml.safe_load(DEFAULT_MODELS_CONFIG_PATH.read_text(encoding="utf-8"))
         routing_problem = providers.routing_problem(args.runtime, args.mode, config)
         if routing_problem is not None:
             raise SystemExit(routing_problem)
+        routes_decompose = providers.routes(config, "decompose")
     cases = _select_cases(args)
     _refuse_over_cap(len(cases), args.max_cost_eur)
     # Read now, so a broken thresholds file fails before credit is spent.
@@ -206,7 +208,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     finally:
         shutdown_tracing()
     run = with_cost_per_correct_answer(run, thresholds.correct_answer_score)
-    if routing:
+    if routes_decompose:
         run = run.model_copy(update={"routing": True})
     if search_index is not None:
         run = cli_retrieval.with_retrieval_metrics(run, cases, search_index)

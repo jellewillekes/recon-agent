@@ -970,6 +970,40 @@ def test_cmd_eval_records_routing_on_the_run(
 
 
 @pytest.mark.unit
+def test_cmd_eval_does_not_record_routing_when_steps_is_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """routing.steps: [] is a valid way to route nothing (PR #114). The
+    readiness check still passes and every case decomposes on Claude as
+    usual, so the recorded run must not claim decompose was routed."""
+    models_config = tmp_path / "models.yaml"
+    models_config.write_text(
+        "routing:\n"
+        "  provider: ollama\n"
+        "  base_url: http://localhost:11434\n"
+        "  model: qwen2.5:7b-instruct\n"
+        "  timeout_s: 60\n"
+        "  steps: []\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "DEFAULT_MODELS_CONFIG_PATH", models_config)
+    monkeypatch.setattr(
+        cli.providers.OllamaProvider, "readiness_problem", lambda self: None
+    )
+    _patch_dataset_loading(monkeypatch)
+    monkeypatch.setattr(cli, "run_evaluation", lambda *a, **k: _eval_run())
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(
+        ["eval", "--limit", "1", "--mode", "multi", "--routing", "on"]
+    )
+    args.func(args)
+
+    written = json.loads((tmp_path / "evals/results/eval-fixed.json").read_text())
+    assert written["routing"] is False
+
+
+@pytest.mark.unit
 def test_compare_shows_two_runs_side_by_side_with_the_gate_verdicts(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
