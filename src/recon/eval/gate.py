@@ -152,7 +152,8 @@ def verdicts(
     A change within the measured run-to-run noise is "same": the answer score
     within `answer_score_noise_band`, task completion within
     `task_completion_max_case_drop` cases, and cost within
-    `cost_max_relative_rise` of the baseline's.
+    `cost_max_relative_rise` of the baseline's. A "worse" cost still passes
+    `check_gate` when task completion rose: more cases answered may cost more.
     """
     cases = len(baseline.case_scores) or int(baseline.aggregate.get("case_count", 0))
     completion_band = limits.task_completion_max_case_drop / cases if cases else 0.0
