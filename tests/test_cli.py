@@ -872,3 +872,16 @@ def test_cmd_eval_refuses_an_exported_sdk_api_key_before_running(
     args = build_parser().parse_args(["eval", "--limit", "1"])
     with pytest.raises(SystemExit, match="RECON_ANTHROPIC_API_KEY"):
         args.func(args)
+
+
+@pytest.mark.unit
+def test_cmd_run_refuses_an_exported_sdk_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`run` spends credit too, so it gets the same guard as `eval`."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "would-bill-the-api")
+    monkeypatch.setattr(cli, "fetch_csv", lambda path: pytest.fail("ran anyway"))
+
+    args = build_parser().parse_args(["run", "--case-id", "any"])
+    with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
+        args.func(args)

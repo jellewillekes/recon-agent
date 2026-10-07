@@ -6,6 +6,7 @@ awaits) and the two `health.py` checks are monkeypatched, so nothing here
 calls a model or a network service.
 """
 
+import asyncio
 import re
 from pathlib import Path
 
@@ -279,3 +280,18 @@ def test_the_run_budget_ends_before_every_api_request_timeout() -> None:
     }
     for where, timeout in timeouts.items():
         assert wall_clock < timeout, where
+
+
+@pytest.mark.unit
+def test_the_service_refuses_to_start_with_an_exported_sdk_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every request would bill the API instead of the subscription."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "would-bill-the-api")
+
+    async def start() -> None:
+        async with api_main._lifespan(api_main.app):
+            pass
+
+    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+        asyncio.run(start())

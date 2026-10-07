@@ -34,18 +34,26 @@ def without_api_keys(env: Mapping[str, str]) -> dict[str, str]:
     return {k: v for k, v in env.items() if k not in (KEY_ENV, SDK_KEY_ENV)}
 
 
-def eval_key_problem(runtime: str) -> str | None:
-    """Why an eval with these keys would bill the wrong account, or None.
-
-    Every eval judges on the Agent SDK, so `ANTHROPIC_API_KEY` must be unset
-    for any runtime. A LangGraph eval needs its own key.
-    """
+def sdk_key_problem() -> str | None:
+    """Why the Agent SDK would bill the API instead of the subscription, or None."""
     if os.environ.get(SDK_KEY_ENV):
         return (
-            f"{SDK_KEY_ENV} is set, so the Agent SDK runs and the judge would bill "
-            f"the API instead of the subscription. Unset it, and pass the LangGraph "
-            f"key as {KEY_ENV} for the one command (docs/runtimes.md)."
+            f"{SDK_KEY_ENV} is set, so the Agent SDK would bill the API instead of "
+            f"the subscription. Unset it. A LangGraph key goes in {KEY_ENV}, for one "
+            "command only (docs/runtimes.md)."
         )
+    return None
+
+
+def eval_key_problem(runtime: str) -> str | None:
+    """Why a run with these keys would bill the wrong account, or None.
+
+    Every eval judges on the Agent SDK, so `ANTHROPIC_API_KEY` must be unset
+    for any runtime. A LangGraph run needs its own key.
+    """
+    problem = sdk_key_problem()
+    if problem is not None:
+        return problem
     if runtime == "langgraph" and not os.environ.get(KEY_ENV):
         return (
             f"--runtime langgraph needs {KEY_ENV}, the metered API key. Pass it "

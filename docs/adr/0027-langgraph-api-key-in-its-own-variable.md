@@ -17,8 +17,11 @@ judge's cost, and any SDK run's, to the API.
 - The LangGraph runtimes read the key from `RECON_ANTHROPIC_API_KEY` and pass it to
   `ChatAnthropic(api_key=...)`. Nothing reads it from `ANTHROPIC_API_KEY`
   (`runtimes/api_key.py`).
-- `recon.cli eval` refuses to start when `ANTHROPIC_API_KEY` is set, for any runtime, and
-  refuses a LangGraph eval without `RECON_ANTHROPIC_API_KEY`.
+- `recon.cli eval` and `recon.cli run` refuse to start when `ANTHROPIC_API_KEY` is set,
+  for any runtime, and refuse a LangGraph run without `RECON_ANTHROPIC_API_KEY`. The API
+  service refuses to start with `ANTHROPIC_API_KEY` set, since it runs the Agent SDK.
+- The user runs only on the Claude subscription and buys no API credits. So the LangGraph
+  runtimes, which can't use a subscription, aren't evaluated for now.
 - No tool server, nor the health probe's, gets either key. They call no model.
 - The key isn't kept in a file. The user keeps it in the macOS Keychain and sets it for
   one command (docs/runtimes.md).

@@ -31,6 +31,7 @@ from recon.api.metrics import (
 )
 from recon.api.schemas import InvestigateRequest
 from recon.contracts import Case
+from recon.runtimes import api_key
 from recon.runtimes.agent_sdk import AgentSdkRuntime
 from recon.tracing import (
     configure_tracing,
@@ -62,6 +63,11 @@ _semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # The service runs the Agent SDK on the subscription. With the API key
+    # exported, every request would bill the API instead (ADR 0027).
+    key_problem = api_key.sdk_key_problem()
+    if key_problem is not None:
+        raise RuntimeError(key_problem)
     # Started here, not at import: tests import this module without starting it.
     configure_tracing("recon-api")
     yield

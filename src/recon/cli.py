@@ -89,6 +89,9 @@ def _build_runtime(runtime: str, mode: str) -> Runtime:
 
 
 def _cmd_run(args: argparse.Namespace) -> None:
+    key_problem = api_key.eval_key_problem(args.runtime)
+    if key_problem is not None:
+        raise SystemExit(key_problem)
     csv_path = fetch_csv(args.path)
     case = _find_case(load_cases(csv_path), args.case_id)
     result = _build_runtime(args.runtime, args.mode).run(case)
