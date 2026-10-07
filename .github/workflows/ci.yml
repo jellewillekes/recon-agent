@@ -110,6 +110,54 @@ jobs:
       - name: Run tests (excluding llm marker)
         run: uv run pytest -q -m "not llm"
 
+  web:
+    name: Web front end
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: hygiene
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install (locked)
+        run: npm ci --no-audit --no-fund
+
+      # web/openapi.json is checked against the API by tests/test_api_web.py.
+      # These are the types generated from it: stale types fail here.
+      - name: API types match web/openapi.json
+        run: |
+          npm run api:types
+          git diff --exit-code -- src/api/schema.d.ts
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests (Vitest)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke tests (Playwright)
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
+
   image:
     name: Image build and scan
     runs-on: ubuntu-latest

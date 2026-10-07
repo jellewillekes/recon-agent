@@ -1,0 +1,29 @@
+{
+  "runtimes": [
+    {
+      "name": "agent_sdk",
+      "modes": [
+        "single",
+        "multi"
+      ],
+      "supported": true,
+      "reason": null
+    },
+    {
+      "name": "langgraph",
+      "modes": [
+        "single",
+        "multi"
+      ],
+      "supported": false,
+      "reason": "needs a metered API key"
+    }
+  ],
+  "default_runtime": "agent_sdk",
+  "default_mode": "single",
+  "data_source": {
+    "kind": "fixture",
+    "snapshot": "fixture-abc123"
+  },
+  "run_history": true
+}

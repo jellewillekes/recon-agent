@@ -12,6 +12,17 @@
 # inside its own wheel. langgraph/langchain-anthropic ship too: `recon.cli`
 # needs them, this API image doesn't. See the ADR above for how that was measured.
 
+# The web front end (#121, ADR 0033), built here so the runtime image has no
+# Node in it. Writes ../src/recon/api/static, copied into the builder below.
+FROM node:22-bookworm-slim AS web
+
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npm run build
+
+
 FROM python:3.12-slim-bookworm AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /usr/local/bin/
@@ -29,6 +40,7 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY src/ src/
+COPY --from=web /app/src/recon/api/static/ src/recon/api/static/
 # --no-editable: an editable install's .pth redirect back to src/ is a dev
 # convenience, not what belongs in an immutable image.
 RUN uv sync --frozen --no-dev --no-editable

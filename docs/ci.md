@@ -21,6 +21,7 @@ committed baseline, and that the baseline is usable and clears the minimums in
 | --- | --- | --- |
 | `ci.yml` | Hygiene | a generated or ignored path is tracked |
 | `ci.yml` | Lint, Typecheck, Unit Tests | `make check` would fail |
+| `ci.yml` | Web front end | lint, types, Vitest, the build or the Playwright smoke tests fail, or `web/src/api/schema.d.ts` is stale against `web/openapi.json` |
 | `ci.yml` | Image build and scan | the image doesn't build, or Trivy finds a HIGH or CRITICAL vulnerability with a fix available |
 | `ci.yml` | Helm lint | `helm lint charts/recon-agent` fails |
 | `gitleaks.yml` | Secret Scan | a secret is committed |

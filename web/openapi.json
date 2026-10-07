@@ -1,0 +1,1784 @@
+{
+  "components": {
+    "schemas": {
+      "AgentResult": {
+        "description": "What every runtime produces, regardless of which one ran the case.",
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "claims": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Claim"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "cost_eur": {
+            "title": "Cost Eur",
+            "type": "number"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "title": "Evidence Items",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "single",
+              "multi"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "runtime": {
+            "title": "Runtime",
+            "type": "string"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            },
+            "title": "Tool Calls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "case_id",
+          "answer",
+          "evidence",
+          "confidence",
+          "tool_calls",
+          "runtime",
+          "mode",
+          "tokens_in",
+          "tokens_out",
+          "cost_eur",
+          "elapsed_ms",
+          "error"
+        ],
+        "title": "AgentResult",
+        "type": "object"
+      },
+      "Capabilities": {
+        "description": "Body of `GET /capabilities`.",
+        "properties": {
+          "data_source": {
+            "$ref": "#/components/schemas/DataSource"
+          },
+          "default_mode": {
+            "title": "Default Mode",
+            "type": "string"
+          },
+          "default_runtime": {
+            "title": "Default Runtime",
+            "type": "string"
+          },
+          "run_history": {
+            "title": "Run History",
+            "type": "boolean"
+          },
+          "runtimes": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeCapability"
+            },
+            "title": "Runtimes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runtimes",
+          "default_runtime",
+          "default_mode",
+          "data_source",
+          "run_history"
+        ],
+        "title": "Capabilities",
+        "type": "object"
+      },
+      "CaseScore": {
+        "description": "Per-case evaluation result.",
+        "properties": {
+          "answer_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Answer Score",
+            "type": "number"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "citation_precision": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citation Precision"
+          },
+          "claim_support_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Support Rate"
+          },
+          "cost_eur": {
+            "title": "Cost Eur",
+            "type": "number"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "failure_class": {
+            "anyOf": [
+              {
+                "enum": [
+                  "retrieval",
+                  "reasoning",
+                  "tool_use",
+                  "budget",
+                  "runtime_error",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Class"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "judge_failed": {
+            "default": false,
+            "title": "Judge Failed",
+            "type": "boolean"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "rubric_scores": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Rubric Scores",
+            "type": "object"
+          },
+          "task_completion": {
+            "title": "Task Completion",
+            "type": "boolean"
+          },
+          "tool_call_accuracy": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Tool Call Accuracy",
+            "type": "number"
+          },
+          "tool_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tool Names",
+            "type": "array"
+          },
+          "tool_path_equivalent": {
+            "title": "Tool Path Equivalent",
+            "type": "boolean"
+          },
+          "tool_path_exact": {
+            "title": "Tool Path Exact",
+            "type": "boolean"
+          },
+          "trajectory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrajectoryScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "case_id",
+          "task_completion",
+          "answer_score",
+          "tool_path_exact",
+          "tool_path_equivalent",
+          "tool_call_accuracy",
+          "rubric_scores",
+          "cost_eur",
+          "elapsed_ms",
+          "notes"
+        ],
+        "title": "CaseScore",
+        "type": "object"
+      },
+      "Claim": {
+        "description": "A statement in the answer and the evidence refs it rests on.",
+        "properties": {
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "importance": {
+            "enum": [
+              "key",
+              "supporting"
+            ],
+            "title": "Importance",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "importance",
+          "evidence_refs"
+        ],
+        "title": "Claim",
+        "type": "object"
+      },
+      "Comparison": {
+        "description": "`candidate` judged against `baseline`.",
+        "properties": {
+          "baseline": {
+            "title": "Baseline",
+            "type": "string"
+          },
+          "candidate": {
+            "title": "Candidate",
+            "type": "string"
+          },
+          "comparable": {
+            "title": "Comparable",
+            "type": "boolean"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricRow"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "settings": {
+            "items": {
+              "$ref": "#/components/schemas/SettingRow"
+            },
+            "title": "Settings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "baseline",
+          "candidate",
+          "comparable",
+          "reasons",
+          "settings",
+          "metrics"
+        ],
+        "title": "Comparison",
+        "type": "object"
+      },
+      "DataSource": {
+        "description": "Where the tools' data comes from: SEC EDGAR or synthetic fixtures.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "edgar",
+              "fixture"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "snapshot": {
+            "title": "Snapshot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "snapshot"
+        ],
+        "title": "DataSource",
+        "type": "object"
+      },
+      "EvalList": {
+        "description": "Body of `GET /evals`, newest first.",
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/EvalSummary"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "EvalList",
+        "type": "object"
+      },
+      "EvalRun": {
+        "description": "A full evaluation run, written to evals/results/<run_id>.json.",
+        "properties": {
+          "aggregate": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Aggregate",
+            "type": "object"
+          },
+          "case_scores": {
+            "items": {
+              "$ref": "#/components/schemas/CaseScore"
+            },
+            "title": "Case Scores",
+            "type": "array"
+          },
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "dataset_attribution": {
+            "title": "Dataset Attribution",
+            "type": "string"
+          },
+          "dataset_license": {
+            "title": "Dataset License",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "model_config_hash": {
+            "title": "Model Config Hash",
+            "type": "string"
+          },
+          "prompt_hashes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Prompt Hashes",
+            "type": "object"
+          },
+          "retrieval_labels_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Labels Hash"
+          },
+          "routing": {
+            "default": false,
+            "title": "Routing",
+            "type": "boolean"
+          },
+          "rubric_version": {
+            "title": "Rubric Version",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "runtime": {
+            "title": "Runtime",
+            "type": "string"
+          },
+          "timestamp_utc": {
+            "format": "date-time",
+            "title": "Timestamp Utc",
+            "type": "string"
+          },
+          "tool_data_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Data Snapshot"
+          },
+          "total_cost_eur": {
+            "title": "Total Cost Eur",
+            "type": "number"
+          }
+        },
+        "required": [
+          "run_id",
+          "timestamp_utc",
+          "dataset",
+          "dataset_license",
+          "dataset_attribution",
+          "runtime",
+          "mode",
+          "model_config_hash",
+          "prompt_hashes",
+          "rubric_version",
+          "case_scores",
+          "aggregate",
+          "total_cost_eur"
+        ],
+        "title": "EvalRun",
+        "type": "object"
+      },
+      "EvalSummary": {
+        "description": "One row of `GET /evals`: an eval run from `evals/results/`.",
+        "properties": {
+          "answer_score_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Score Mean"
+          },
+          "case_count": {
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "cost_per_correct_answer_eur": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Per Correct Answer Eur"
+          },
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "incomplete": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Incomplete",
+            "type": "array"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "routing": {
+            "title": "Routing",
+            "type": "boolean"
+          },
+          "rubric_version": {
+            "title": "Rubric Version",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "runtime": {
+            "title": "Runtime",
+            "type": "string"
+          },
+          "task_completion_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Completion Rate"
+          },
+          "timestamp_utc": {
+            "format": "date-time",
+            "title": "Timestamp Utc",
+            "type": "string"
+          },
+          "total_cost_eur": {
+            "title": "Total Cost Eur",
+            "type": "number"
+          }
+        },
+        "required": [
+          "run_id",
+          "timestamp_utc",
+          "runtime",
+          "mode",
+          "routing",
+          "rubric_version",
+          "dataset",
+          "case_count",
+          "task_completion_rate",
+          "answer_score_mean",
+          "total_cost_eur",
+          "cost_per_correct_answer_eur"
+        ],
+        "title": "EvalSummary",
+        "type": "object"
+      },
+      "Evidence": {
+        "description": "One tool row an answer cites, resolved by the server (ADR 0030).\n\nThe model cites a row by its `ref`. `verified` is true only when that ref\nmatches a row a tool returned in the same run; the source details and\n`excerpt` then come from that row, never from the model. An unverified\nref keeps only `ref`, with `source_type=\"unknown\"`.",
+        "properties": {
+          "accession": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accession"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash"
+          },
+          "excerpt": {
+            "default": "",
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "filed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filed"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "retrieval_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Score"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "source_type": {
+            "enum": [
+              "filing_text",
+              "financial_fact",
+              "filing",
+              "company",
+              "concept",
+              "unknown"
+            ],
+            "title": "Source Type",
+            "type": "string"
+          },
+          "tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref",
+          "verified",
+          "source_type"
+        ],
+        "title": "Evidence",
+        "type": "object"
+      },
+      "Feedback": {
+        "description": "Body of `POST /runs/{run_id}/feedback`: a human label on an answer,\nthe start of the judge-calibration set (#115).",
+        "properties": {
+          "note": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Note",
+            "type": "string"
+          },
+          "rating": {
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rating"
+        ],
+        "title": "Feedback",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InvestigateRequest": {
+        "description": "Body of `POST /investigate`.\n\n`mode`/`runtime` are left as plain strings, not a `Literal`, so an\nunsupported value reaches the endpoint's own check and comes back as a 422\nnaming what's unsupported, rather than FastAPI's schema-level 400.",
+        "properties": {
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "InvestigateRequest",
+        "type": "object"
+      },
+      "MetricRow": {
+        "description": "One metric of both runs. `verdict` is \"same\", \"better\" or \"worse\" for a\ngated metric of comparable runs, and None otherwise.",
+        "properties": {
+          "band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline"
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "name",
+          "baseline",
+          "candidate"
+        ],
+        "title": "MetricRow",
+        "type": "object"
+      },
+      "ResearchRun": {
+        "description": "One finished `POST /investigate`, as the run store keeps it.",
+        "properties": {
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "data_source": {
+            "title": "Data Source",
+            "type": "string"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoredFeedback"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/AgentResult"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "runtime": {
+            "title": "Runtime",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "created_at",
+          "question",
+          "context",
+          "runtime",
+          "mode",
+          "data_source",
+          "result"
+        ],
+        "title": "ResearchRun",
+        "type": "object"
+      },
+      "RetrievalQuality": {
+        "description": "How well the agent's own searches found the passages labelled relevant\nfor its case (#116). Its searches are replayed in first-seen order;\n`recall` counts everything retrieved, the rest the first five.",
+        "properties": {
+          "mrr_at_5": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Mrr At 5",
+            "type": "number"
+          },
+          "ndcg_at_5": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Ndcg At 5",
+            "type": "number"
+          },
+          "precision_at_5": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Precision At 5",
+            "type": "number"
+          },
+          "recall": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Recall",
+            "type": "number"
+          },
+          "retrieved_count": {
+            "minimum": 0.0,
+            "title": "Retrieved Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "recall",
+          "precision_at_5",
+          "mrr_at_5",
+          "ndcg_at_5",
+          "retrieved_count"
+        ],
+        "title": "RetrievalQuality",
+        "type": "object"
+      },
+      "RunList": {
+        "description": "Body of `GET /runs`, newest first.",
+        "properties": {
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunSummary"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs",
+          "limit",
+          "offset"
+        ],
+        "title": "RunList",
+        "type": "object"
+      },
+      "RunSummary": {
+        "description": "One row of `GET /runs`.",
+        "properties": {
+          "claim_count": {
+            "title": "Claim Count",
+            "type": "integer"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "string"
+          },
+          "cost_eur": {
+            "title": "Cost Eur",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "boolean"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "enum": [
+                  "up",
+                  "down"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "verified_evidence_count": {
+            "title": "Verified Evidence Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "created_at",
+          "question",
+          "mode",
+          "confidence",
+          "cost_eur",
+          "elapsed_ms",
+          "failed",
+          "claim_count",
+          "verified_evidence_count",
+          "feedback"
+        ],
+        "title": "RunSummary",
+        "type": "object"
+      },
+      "RuntimeCapability": {
+        "description": "A runtime and whether this deployment can run it.",
+        "properties": {
+          "modes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Modes",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "modes",
+          "supported"
+        ],
+        "title": "RuntimeCapability",
+        "type": "object"
+      },
+      "SettingRow": {
+        "description": "One setting of both runs.",
+        "properties": {
+          "baseline": {
+            "title": "Baseline",
+            "type": "string"
+          },
+          "candidate": {
+            "title": "Candidate",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "baseline",
+          "candidate"
+        ],
+        "title": "SettingRow",
+        "type": "object"
+      },
+      "StoredFeedback": {
+        "description": "Feedback as stored with its run.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Note",
+            "type": "string"
+          },
+          "rating": {
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Rating",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rating",
+          "created_at"
+        ],
+        "title": "StoredFeedback",
+        "type": "object"
+      },
+      "ToolCall": {
+        "description": "One tool invocation, in the order it was made.",
+        "properties": {
+          "arguments": {
+            "additionalProperties": true,
+            "title": "Arguments",
+            "type": "object"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "arguments",
+          "status",
+          "elapsed_ms"
+        ],
+        "title": "ToolCall",
+        "type": "object"
+      },
+      "TrajectoryScore": {
+        "description": "The run path of one case, scored step by step from its recorded trace\nwithout a model call (#116). None means not applicable or not measurable\nfor this case.",
+        "properties": {
+          "argument_correctness": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Argument Correctness"
+          },
+          "efficiency": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Efficiency"
+          },
+          "evidence_sufficiency": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Sufficiency"
+          },
+          "final_correctness": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Correctness"
+          },
+          "grounding": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grounding"
+          },
+          "recovery": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery"
+          },
+          "retrieval_quality": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetrievalQuality"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tool_selection": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Selection"
+          }
+        },
+        "title": "TrajectoryScore",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "recon-agent API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/capabilities": {
+      "get": {
+        "description": "What this deployment can run, so a client offers only that.",
+        "operationId": "capabilities_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Capabilities"
+      }
+    },
+    "/evals": {
+      "get": {
+        "description": "Eval runs, newest first.",
+        "operationId": "evals_evals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Evals"
+      }
+    },
+    "/evals/compare": {
+      "get": {
+        "description": "`candidate` judged against `baseline` by the gate. Runs it refuses come\nback with `comparable: false` and the reasons, not as an error.",
+        "operationId": "compare_evals_compare_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "baseline",
+            "required": true,
+            "schema": {
+              "title": "Baseline",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "candidate",
+            "required": true,
+            "schema": {
+              "title": "Candidate",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comparison"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare"
+      }
+    },
+    "/evals/{run_id}": {
+      "get": {
+        "description": "One eval run with its per-case scores.",
+        "operationId": "get_eval_evals__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Eval"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "description": "Liveness only. Never checks a dependency \u2014 a probe that fails on a\ndatabase blip restarts a healthy pod.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Healthz Healthz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz"
+      }
+    },
+    "/investigate": {
+      "post": {
+        "operationId": "investigate_investigate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Investigate"
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics"
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Readyz Readyz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz"
+      }
+    },
+    "/runs": {
+      "get": {
+        "description": "Saved runs, newest first.",
+        "operationId": "runs_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Runs"
+      }
+    },
+    "/runs/{run_id}": {
+      "get": {
+        "description": "One saved run: the question, settings, answer, claims, evidence and\ntool calls.",
+        "operationId": "get_run_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run"
+      }
+    },
+    "/runs/{run_id}/export": {
+      "get": {
+        "description": "A saved run as a JSON file to download.",
+        "operationId": "export_run_runs__run_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Run"
+      }
+    },
+    "/runs/{run_id}/feedback": {
+      "post": {
+        "description": "A \ud83d\udc4d/\ud83d\udc4e and an optional note on a saved run, replacing any earlier one.",
+        "operationId": "run_feedback_runs__run_id__feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Feedback"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Feedback"
+      }
+    }
+  }
+}

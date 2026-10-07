@@ -1,0 +1,29 @@
+{
+  "baseline": "eval-off",
+  "candidate": "eval-on",
+  "comparable": true,
+  "reasons": [],
+  "settings": [
+    {
+      "name": "model_config_hash",
+      "baseline": "0123456789abcdef",
+      "candidate": "0123456789abcdef"
+    }
+  ],
+  "metrics": [
+    {
+      "name": "answer_score_mean",
+      "baseline": 0.6,
+      "candidate": 0.62,
+      "verdict": "same",
+      "band": "\u00b10.10"
+    },
+    {
+      "name": "total_cost_eur",
+      "baseline": 0.5,
+      "candidate": 0.4,
+      "verdict": "better",
+      "band": "\u00b120%"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "run_id": "eval-on",
+  "timestamp_utc": "2026-10-07T12:00:00Z",
+  "dataset": "finance-agent-bench@pin",
+  "dataset_license": "MIT",
+  "dataset_attribution": "synthetic",
+  "runtime": "agent_sdk",
+  "mode": "multi",
+  "model_config_hash": "0123456789abcdef",
+  "prompt_hashes": {
+    "supervisor": "abc"
+  },
+  "rubric_version": "4",
+  "case_scores": [
+    {
+      "case_id": "finance-agent-bench:c1",
+      "task_completion": true,
+      "answer_score": 0.8,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 1.0,
+      "rubric_scores": {},
+      "cost_eur": 0.2,
+      "elapsed_ms": 30000,
+      "notes": "",
+      "tool_names": [],
+      "claim_support_rate": 1.0,
+      "citation_precision": 1.0,
+      "judge_failed": false,
+      "faithfulness_judge_failed": false,
+      "trajectory": {
+        "tool_selection": null,
+        "argument_correctness": 1.0,
+        "retrieval_quality": null,
+        "evidence_sufficiency": 1.0,
+        "recovery": null,
+        "efficiency": 1.0,
+        "grounding": null,
+        "final_correctness": 0.8
+      },
+      "failure_class": "none",
+      "failure_reason": null
+    },
+    {
+      "case_id": "finance-agent-bench:c2",
+      "task_completion": false,
+      "answer_score": 0.0,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 1.0,
+      "rubric_scores": {},
+      "cost_eur": 0.2,
+      "elapsed_ms": 30000,
+      "notes": "judge failed: API Error: overloaded",
+      "tool_names": [],
+      "claim_support_rate": 1.0,
+      "citation_precision": 1.0,
+      "judge_failed": true,
+      "faithfulness_judge_failed": false,
+      "trajectory": {
+        "tool_selection": null,
+        "argument_correctness": 1.0,
+        "retrieval_quality": null,
+        "evidence_sufficiency": 1.0,
+        "recovery": null,
+        "efficiency": 1.0,
+        "grounding": null,
+        "final_correctness": 0.8
+      },
+      "failure_class": null,
+      "failure_reason": "the judge couldn't score this case"
+    }
+  ],
+  "aggregate": {
+    "task_completion_rate": 0.5,
+    "answer_score_mean": 0.4,
+    "cases_judge_failed": 1.0,
+    "failure_none_count": 1.0,
+    "failure_classified_cases": 1.0
+  },
+  "total_cost_eur": 0.4,
+  "tool_data_snapshot": "fixture-abc123",
+  "retrieval_labels_hash": null,
+  "routing": true
+}
