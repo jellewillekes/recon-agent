@@ -50,23 +50,23 @@ filing text ([`evals/text-cases.txt`](evals/text-cases.txt)), with `search_knowl
 
 | Runtime | Mode | Task completion | Answer score | Tool-call accuracy | Total cost (€) | Cases |
 |---|---|---|---|---|---|---|
-| sdk | single | 1.000 | 0.652 | 1.000 | 1.34 | 7 (text cases) |
-| sdk | multi | 0.571 | 0.367 | 1.000 | 1.28 | 7 (text cases) |
+| sdk | single | 0.857 | 0.660 | 1.000 | 1.33 | 7 (text cases) |
+| sdk | multi | 0.857 | 0.433 | 1.000 | 1.43 | 7 (text cases) |
 | langgraph | single | not run | not run | not run | not run | — |
 | langgraph | multi | not run | not run | not run | not run | — |
 
-The sdk single row is run `eval-20261006T204756Z`, judged on Haiku 4.5. The same run
-repeated scored 0.696, and single cases moved by up to 0.47, so treat a change in the
-answer score under about 0.1 as noise ([run-to-run noise](docs/eval-noise.md)). The earlier
-baselines are `eval-20261006T103610Z` (text cases, before the company filter, 0.518) and
-`eval-20261001T085035Z` (the 7-case [smoke set](docs/glossary.md#smoke-set) without filing
-text, 0.566). Their prompts, model config and tool data differ from this row's, so their
-scores aren't comparable with it. Tool-call accuracy is 1.000 by default: none of these
-cases has an expected tool path to check. The sdk multi row is run `eval-20261007T072634Z`, a record, not a baseline. Of
-its three incomplete cases, two hit the 150 s budget (multi mode averaged 109 s per case,
-single 58 s), and one failed because the machine went to sleep mid-run. LangGraph isn't
-run: it needs a metered API key, and this project runs on the Claude subscription only
-(ADR 0027).
+The sdk single row is the baseline, run `eval-20261007T081821Z`, judged on Haiku 4.5, with
+a 450k-token and 150 s budget per case. Its one incomplete case used 483k tokens and was
+still judged. The sdk multi row is run `eval-20261007T084001Z`, a record, not a baseline,
+with a 240 s budget. Its one incomplete case hit a worker's 8-turn limit. Tool-call
+accuracy is 1.000 by default: none of these cases has an expected tool path to check.
+
+The [gate](docs/glossary.md#promotion-gate) treats a change of up to 0.10 in the answer
+score, or one case in task completion, as noise ([run-to-run noise](docs/eval-noise.md),
+ADR 0028). Against the single baseline it rates multi mode worse on the answer score, and
+the same on completion and cost. Earlier baselines ran with other prompts, budgets or tool
+data, so their scores aren't comparable with these rows. LangGraph isn't run: it needs a
+metered API key, and this project runs on the Claude subscription only (ADR 0027).
 
 ## Quickstart
 
