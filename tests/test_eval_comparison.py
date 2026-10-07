@@ -67,6 +67,11 @@ def test_comparable_runs_get_a_verdict_per_gated_metric() -> None:
     assert verdicts["total_cost_eur"] == "better"
     assert verdicts["answer_score_mean"] == "same"
     assert verdicts["citation_precision_mean"] is None
+    bands = {m.name: m.band for m in result.metrics}
+    assert bands["answer_score_mean"] == "±0.10"
+    assert bands["task_completion_rate"] == "±1 case"
+    assert bands["total_cost_eur"] == "±20%"
+    assert bands["citation_precision_mean"] is None
     routing = next(s for s in result.settings if s.name == "routing")
     assert (routing.baseline, routing.candidate) == ("off", "on")
 

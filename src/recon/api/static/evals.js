@@ -138,11 +138,11 @@ function renderComparison(result) {
   }
   const table = element("table", "data-table compare-table");
   const head = element("thead");
-  head.append(tableRow(["", result.baseline, result.candidate, "Verdict"], "th"));
+  head.append(tableRow(["", result.baseline, result.candidate, "Verdict", "Noise band"], "th"));
   const body = element("tbody");
   const short = (name, value) => (name === "model_config_hash" ? value.slice(0, 12) + "…" : value);
   for (const setting of result.settings) {
-    const row = tableRow([setting.name, short(setting.name, setting.baseline), short(setting.name, setting.candidate), ""]);
+    const row = tableRow([setting.name, short(setting.name, setting.baseline), short(setting.name, setting.candidate), "", ""]);
     row.className = "setting-row";
     body.append(row);
   }
@@ -152,6 +152,7 @@ function renderComparison(result) {
       metricValue(metric.name, metric.baseline),
       metricValue(metric.name, metric.candidate),
       verdictBadge(metric.verdict),
+      metric.band ?? "",
     ]));
   }
   table.append(head, body);

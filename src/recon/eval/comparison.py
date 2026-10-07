@@ -40,6 +40,8 @@ class MetricRow(BaseModel):
     baseline: float | None
     candidate: float | None
     verdict: str | None = None
+    # How far the metric may move and still count as "same", for gated metrics.
+    band: str | None = None
 
 
 class Comparison(BaseModel):
@@ -66,6 +68,14 @@ def _metric(run: EvalRun, name: str) -> float | None:
     return run.aggregate.get(name)
 
 
+def _bands(limits: GateThresholds) -> dict[str, str]:
+    return {
+        "answer_score_mean": f"±{limits.answer_score_noise_band:.2f}",
+        "task_completion_rate": f"±{limits.task_completion_max_case_drop} case",
+        "total_cost_eur": f"±{limits.cost_max_relative_rise:.0%}",
+    }
+
+
 def compare_runs(
     baseline: EvalRun, candidate: EvalRun, limits: GateThresholds
 ) -> Comparison:
@@ -79,12 +89,14 @@ def compare_runs(
         baseline=baseline,
     )
     judged = {} if reasons else verdicts(candidate, baseline, limits)
+    bands = _bands(limits)
     metrics = [
         MetricRow(
             name=name,
             baseline=_metric(baseline, name),
             candidate=_metric(candidate, name),
             verdict=judged.get(name),
+            band=bands.get(name),
         )
         for name in [*_GATED, *_REPORTED]
     ]
