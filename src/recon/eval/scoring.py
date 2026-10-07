@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from recon.contracts import AgentResult, Case, CaseScore
-from recon.eval import faithfulness, metrics
+from recon.eval import faithfulness, metrics, trajectory
 from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH, judge_case
 from recon.eval.judge_failures import (
     JUDGE_ERRORS,
@@ -36,11 +36,15 @@ def score_case(
     *,
     models_config_path: Path = DEFAULT_MODELS_CONFIG_PATH,
     passages: faithfulness.Passages | None = None,
+    retrieval_labels: dict[str, list[str]] | None = None,
+    correct_answer_score: float | None = None,
 ) -> tuple[CaseScore, AgentResult]:
     """Run, judge and score one case, under an `eval.case` trace span.
 
     With `passages`, an answer that used filing-text search is also scored
-    for faithfulness to what the search returned.
+    for faithfulness to what the search returned, and on cases in
+    `retrieval_labels` its retrieval is scored too. `correct_answer_score` is
+    the cutoff the failure class judges the answer by (#116).
 
     Raises `SessionLimitReached`, carrying the scored case, when the case ran
     into the subscription's session limit (#123)."""
@@ -51,6 +55,14 @@ def score_case(
             rubrics,
             models_config_path=models_config_path,
             passages=passages,
+        )
+        score = _with_diagnosis(
+            score,
+            case,
+            agent_result,
+            passages=passages,
+            relevant=(retrieval_labels or {}).get(case.case_id),
+            correct_answer_score=correct_answer_score,
         )
         case_span.set_attributes(
             {
@@ -146,6 +158,35 @@ def _score_case(
     )
     session_limit = judged.session_limit or is_session_limit(agent_result.error)
     return score, agent_result, session_limit
+
+
+def _with_diagnosis(
+    score: CaseScore,
+    case: Case,
+    agent_result: AgentResult,
+    *,
+    passages: faithfulness.Passages | None,
+    relevant: list[str] | None,
+    correct_answer_score: float | None,
+) -> CaseScore:
+    """`score` with its run-path breakdown and failure class (#116)."""
+    path = trajectory.trajectory_score(
+        case, agent_result, score.rubric_scores, passages=passages, relevant=relevant
+    )
+    failure_class, reason = trajectory.classify_failure(
+        agent_result,
+        path,
+        answer_score=score.answer_score,
+        judge_failed=score.judge_failed,
+        correct_answer_score=correct_answer_score,
+    )
+    return score.model_copy(
+        update={
+            "trajectory": path,
+            "failure_class": failure_class,
+            "failure_reason": reason,
+        }
+    )
 
 
 def _judge_answer(

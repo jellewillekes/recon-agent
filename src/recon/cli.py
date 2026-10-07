@@ -16,7 +16,7 @@ from recon.adapters.finance_agent_bench import (
     load_cases,
 )
 from recon.contracts import Case, EvalRun
-from recon.eval import case_selection
+from recon.eval import case_selection, retrieval
 from recon.eval.gate import (
     CASES_JUDGE_FAILED,
     SKIPPED_AT_COST_CAP,
@@ -206,6 +206,10 @@ def _cmd_eval(args: argparse.Namespace) -> None:
                 if search_index is not None
                 else None
             ),
+            retrieval_labels=(
+                retrieval.load_labels() if search_index is not None else None
+            ),
+            correct_answer_score=thresholds.correct_answer_score,
         )
     finally:
         shutdown_tracing()

@@ -73,6 +73,12 @@ def run_evaluation(
     # tool_data_snapshot, so the harness depends on no tool module. None skips
     # faithfulness.
     passages: faithfulness.Passages | None = None,
+    # Relevant chunk ids per case, for each case's retrieval score (#116).
+    # Used only with `passages`, which replays the agent's searches.
+    retrieval_labels: dict[str, list[str]] | None = None,
+    # The answer_score a correct answer reaches, from config/thresholds.yaml.
+    # None leaves judged cases without a failure class.
+    correct_answer_score: float | None = None,
 ) -> EvalRun:
     if limit is not None:
         cases = cases[:limit]
@@ -89,6 +95,8 @@ def run_evaluation(
             tool_data_snapshot=tool_data_snapshot,
             max_cost_eur=max_cost_eur,
             passages=passages,
+            retrieval_labels=retrieval_labels,
+            correct_answer_score=correct_answer_score,
         )
         run_span.set_attributes(
             {
@@ -110,6 +118,8 @@ def _run_cases(
     models_config_path: Path,
     max_cost_eur: float | None,
     passages: faithfulness.Passages | None,
+    retrieval_labels: dict[str, list[str]] | None,
+    correct_answer_score: float | None,
 ) -> tuple[list[CaseScore], float, str, str, bool]:
     """Score cases until done, the cost cap is near, or the session limit is
     hit. Returns the scores, the agent's share of the cost, the runtime and
@@ -129,6 +139,8 @@ def _run_cases(
                 rubrics,
                 models_config_path=models_config_path,
                 passages=passages,
+                retrieval_labels=retrieval_labels,
+                correct_answer_score=correct_answer_score,
             )
         except SessionLimitReached as reached:
             score, agent_result = reached.score, reached.agent_result
@@ -159,6 +171,8 @@ def _evaluate(
     tool_data_snapshot: str | None,
     max_cost_eur: float | None,
     passages: faithfulness.Passages | None,
+    retrieval_labels: dict[str, list[str]] | None,
+    correct_answer_score: float | None,
 ) -> EvalRun:
     case_scores, agent_cost_eur, runtime_name, mode, session_limit = _run_cases(
         cases,
@@ -167,6 +181,8 @@ def _evaluate(
         models_config_path=models_config_path,
         max_cost_eur=max_cost_eur,
         passages=passages,
+        retrieval_labels=retrieval_labels,
+        correct_answer_score=correct_answer_score,
     )
     run_cases = cases[: len(case_scores)]
     aggregate = aggregate_scores(run_cases, case_scores, agent_cost_eur)

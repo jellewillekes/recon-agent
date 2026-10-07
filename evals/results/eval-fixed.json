@@ -1,0 +1,44 @@
+{
+  "run_id": "eval-fixed",
+  "timestamp_utc": "2026-10-07T18:56:22.352277Z",
+  "dataset": "finance-agent-bench@8ba65f81ab75",
+  "dataset_license": "MIT",
+  "dataset_attribution": "attribution",
+  "runtime": "agent_sdk",
+  "mode": "single",
+  "model_config_hash": "abc",
+  "prompt_hashes": {
+    "investigator": "abc"
+  },
+  "rubric_version": "4",
+  "case_scores": [
+    {
+      "case_id": "1",
+      "task_completion": true,
+      "answer_score": 1.0,
+      "tool_path_exact": false,
+      "tool_path_equivalent": false,
+      "tool_call_accuracy": 1.0,
+      "rubric_scores": {},
+      "cost_eur": 0.05,
+      "elapsed_ms": 1,
+      "notes": "",
+      "tool_names": [],
+      "claim_support_rate": null,
+      "citation_precision": null,
+      "judge_failed": false,
+      "trajectory": null,
+      "failure_class": null,
+      "failure_reason": null
+    }
+  ],
+  "aggregate": {
+    "task_completion_rate": 1.0,
+    "answer_score_mean": 1.0,
+    "cost_per_correct_answer_eur": 0.05
+  },
+  "total_cost_eur": 0.05,
+  "tool_data_snapshot": "fixture-804ed42c6cf6",
+  "retrieval_labels_hash": null,
+  "routing": false
+}

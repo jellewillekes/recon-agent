@@ -691,3 +691,82 @@ def test_score_case_raises_with_the_scored_case_at_a_session_limit(
 )
 def test_is_session_limit(text: str, expected: bool) -> None:
     assert judge_failures.is_session_limit(text) is expected
+
+
+# --- run-path breakdown and failure classes (#116) ---------------------------
+
+
+@pytest.mark.unit
+def test_every_scored_case_gets_a_breakdown_and_a_failure_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_judge(monkeypatch, {"answer_correctness": 0.2, "evidence_grounding": 0.2})
+    runtime = _FakeRuntime(
+        {
+            "c1": _agent_result(
+                case_id="c1",
+                tool_calls=[
+                    ToolCall(
+                        tool="list_companies", arguments={}, status="ok", elapsed_ms=1
+                    )
+                ],
+            ),
+            "c2": _agent_result(case_id="c2", answer="", error="CLI crashed"),
+        }
+    )
+
+    run = harness.run_evaluation(
+        [_case("c1"), _case("c2")],
+        runtime,
+        rubrics_dir=REPO_RUBRICS_DIR,
+        prompts_dir=REPO_PROMPTS_DIR,
+        models_config_path=REPO_MODELS_CONFIG,
+        correct_answer_score=0.5,
+    )
+
+    first, second = run.case_scores
+    assert first.trajectory is not None
+    assert first.trajectory.final_correctness == 0.2
+    assert first.trajectory.argument_correctness == 1.0
+    assert first.failure_class == "reasoning"
+    assert second.failure_class == "runtime_error"
+    assert second.failure_reason == "CLI crashed"
+    assert run.aggregate["failure_reasoning_count"] == 1.0
+    assert run.aggregate["failure_runtime_error_count"] == 1.0
+    assert run.aggregate["failure_classified_cases"] == 2.0
+
+
+@pytest.mark.unit
+def test_the_breakdown_scores_retrieval_on_labelled_cases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    monkeypatch.setattr(
+        scoring.faithfulness,
+        "judge_faithfulness",
+        lambda *a, **k: scoring.faithfulness.FaithfulnessResult(score=None),
+    )
+    search = ToolCall(
+        tool="search_knowledge", arguments={"query": "q"}, status="ok", elapsed_ms=1
+    )
+    runtime = _FakeRuntime({"c1": _agent_result(case_id="c1", tool_calls=[search])})
+
+    rubrics = {
+        "answer_correctness": Rubric(
+            dimension="answer_correctness", version=1, weight=1.0, assertions=[]
+        )
+    }
+
+    score, _ = scoring.score_case(
+        _case("c1"),
+        runtime,
+        rubrics,
+        passages=lambda query, top_k, company_id: [{"chunk_id": "a"}],
+        retrieval_labels={"c1": ["a", "b"]},
+        correct_answer_score=0.5,
+    )
+
+    assert score.trajectory is not None
+    assert score.trajectory.retrieval_quality is not None
+    assert score.trajectory.retrieval_quality.recall == 0.5
+    assert score.failure_class == "none"

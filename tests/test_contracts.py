@@ -22,10 +22,12 @@ from recon.contracts import (
     Claim,
     EvalRun,
     Evidence,
+    RetrievalQuality,
     ReviewFlag,
     ReviewFlagResult,
     ToolCall,
     ToolResult,
+    TrajectoryScore,
 )
 
 CONTRACTS_MD = Path(__file__).parent.parent / "docs" / "contracts.md"
@@ -280,6 +282,8 @@ DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "Claim": Claim,
     "ReviewFlag": ReviewFlag,
     "ReviewFlagResult": ReviewFlagResult,
+    "RetrievalQuality": RetrievalQuality,
+    "TrajectoryScore": TrajectoryScore,
     "CaseScore": CaseScore,
     "EvalRun": EvalRun,
 }

@@ -171,6 +171,38 @@ class ReviewFlagResult(BaseModel):
     preview_token: str | None
 
 
+FailureClass = Literal[
+    "retrieval", "reasoning", "tool_use", "budget", "runtime_error", "none"
+]
+
+
+class RetrievalQuality(BaseModel):
+    """How well the agent's own searches found the passages labelled relevant
+    for its case (#116). Its searches are replayed in first-seen order;
+    `recall` counts everything retrieved, the rest the first five."""
+
+    recall: float = Field(ge=0.0, le=1.0)
+    precision_at_5: float = Field(ge=0.0, le=1.0)
+    mrr_at_5: float = Field(ge=0.0, le=1.0)
+    ndcg_at_5: float = Field(ge=0.0, le=1.0)
+    retrieved_count: int = Field(ge=0)
+
+
+class TrajectoryScore(BaseModel):
+    """The run path of one case, scored step by step from its recorded trace
+    without a model call (#116). None means not applicable or not measurable
+    for this case."""
+
+    tool_selection: float | None = Field(default=None, ge=0.0, le=1.0)
+    argument_correctness: float | None = Field(default=None, ge=0.0, le=1.0)
+    retrieval_quality: RetrievalQuality | None = None
+    evidence_sufficiency: float | None = Field(default=None, ge=0.0, le=1.0)
+    recovery: float | None = Field(default=None, ge=0.0, le=1.0)
+    efficiency: float | None = Field(default=None, ge=0.0, le=1.0)
+    grounding: float | None = Field(default=None, ge=0.0, le=1.0)
+    final_correctness: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
 class CaseScore(BaseModel):
     """Per-case evaluation result."""
 
@@ -194,6 +226,11 @@ class CaseScore(BaseModel):
     # The rubric judge call failed, so answer_score and rubric_scores are
     # placeholders, not measurements (#123).
     judge_failed: bool = False
+    # #116: the run path scored step by step, and the main reason a case
+    # failed (ADR 0031). None on results recorded before these fields existed.
+    trajectory: TrajectoryScore | None = None
+    failure_class: FailureClass | None = None
+    failure_reason: str | None = None
 
 
 class EvalRun(BaseModel):

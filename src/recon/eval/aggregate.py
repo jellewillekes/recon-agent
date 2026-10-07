@@ -47,6 +47,7 @@ def aggregate_scores(
     judge_failed = sum(s.judge_failed for s in case_scores)
     if judge_failed:
         aggregate[CASES_JUDGE_FAILED] = float(judge_failed)
+    aggregate.update(_failure_counts(case_scores))
 
     dimension_names = {d for s in case_scores for d in s.rubric_scores}
     for dimension in dimension_names:
@@ -74,3 +75,15 @@ def _citation_aggregate(case_scores: list[CaseScore]) -> dict[str, float]:
     if scored:
         aggregate["citation_scored_cases"] = float(len(scored))
     return aggregate
+
+
+def _failure_counts(case_scores: list[CaseScore]) -> dict[str, float]:
+    """Cases per failure class, over the cases that have one (#116)."""
+    classified = [s.failure_class for s in case_scores if s.failure_class is not None]
+    if not classified:
+        return {}
+    counts = {
+        f"failure_{name}_count": float(classified.count(name))
+        for name in sorted(set(classified))
+    }
+    return {**counts, "failure_classified_cases": float(len(classified))}
