@@ -317,7 +317,8 @@ form.addEventListener("submit", async (event) => {
         describeError(payload, "The request failed (" + response.status + "). Try again."),
       );
     }
-    renderResult(payload, historyEnabled() ? { run_id: payload.case_id } : undefined);
+    const saved = typeof historyEnabled === "function" && historyEnabled();
+    renderResult(payload, saved ? { run_id: payload.case_id } : undefined);
     if (typeof loadHistory === "function") loadHistory();
     setState(
       payload.error ? "error" : "complete",
