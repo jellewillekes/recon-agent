@@ -187,6 +187,10 @@ class CaseScore(BaseModel):
     # The agent's tool calls by name, in call order (#101). Empty on results
     # recorded before this field existed.
     tool_names: list[str] = []
+    # ADR 0030: key claims with a verified ref, and cited refs that are
+    # verified. None when there's nothing to score, and on older results.
+    claim_support_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    citation_precision: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class EvalRun(BaseModel):

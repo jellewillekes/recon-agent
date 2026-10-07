@@ -248,3 +248,53 @@ def test_weighted_answer_score_ignores_unknown_dimensions() -> None:
 @pytest.mark.unit
 def test_weighted_answer_score_zero_when_nothing_weighted() -> None:
     assert metrics.weighted_answer_score({}, REPO_WEIGHTS) == 0.0
+
+
+def _claim(importance: str, *refs: str) -> dict[str, object]:
+    return {"text": "c", "importance": importance, "evidence_refs": list(refs)}
+
+
+def _evidence(ref: str, verified: bool) -> dict[str, object]:
+    return {
+        "ref": ref,
+        "verified": verified,
+        "source_type": "filing_text" if verified else "unknown",
+    }
+
+
+@pytest.mark.unit
+def test_claim_support_rate_counts_key_claims_with_a_verified_ref() -> None:
+    result = _agent_result(
+        claims=[
+            _claim("key", "Ea", "Eb"),
+            _claim("key", "Eb"),
+            _claim("key"),
+            _claim("supporting", "Ea"),
+        ],
+        evidence_items=[_evidence("Ea", True), _evidence("Eb", False)],
+    )
+    assert metrics.claim_support_rate(result) == pytest.approx(1 / 3)
+
+
+@pytest.mark.unit
+def test_citation_precision_is_the_share_of_cited_refs_that_are_verified() -> None:
+    result = _agent_result(
+        claims=[_claim("key", "Ea", "Eb"), _claim("supporting", "Ec")],
+        evidence_items=[
+            _evidence("Ea", True),
+            _evidence("Eb", False),
+            _evidence("Ec", True),
+        ],
+    )
+    assert metrics.citation_precision(result) == pytest.approx(2 / 3)
+
+
+@pytest.mark.unit
+def test_citation_metrics_are_none_without_anything_to_score() -> None:
+    """No key claims or no citations isn't a zero: an older result, LangGraph,
+    or an honest "not available" answer has nothing to score."""
+    assert metrics.claim_support_rate(_agent_result()) is None
+    assert metrics.citation_precision(_agent_result()) is None
+    supporting_only = _agent_result(claims=[_claim("supporting")])
+    assert metrics.claim_support_rate(supporting_only) is None
+    assert metrics.citation_precision(supporting_only) is None

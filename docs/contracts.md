@@ -206,6 +206,8 @@ class CaseScore(BaseModel):
     elapsed_ms: int
     notes: str
     tool_names: list[str] = []         # the agent's tool calls by name, in call order; empty before this field existed
+    claim_support_rate: float | None   # key claims with a verified ref (ADR 0030); None when nothing to score
+    citation_precision: float | None   # cited refs that are verified (ADR 0030); None when nothing is cited
 
 class EvalRun(BaseModel):
     run_id: str
