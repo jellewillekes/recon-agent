@@ -522,6 +522,8 @@ def test_run_missing_structured_output_populates_error_not_raise(
 
     assert result.error is not None
     assert result.answer == ""
+    # The call finished and reported its cost; only the answer is missing (#110).
+    assert result.cost_eur == pytest.approx(0.01 * 0.9)
 
 
 @pytest.mark.unit

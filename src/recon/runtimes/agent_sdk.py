@@ -473,8 +473,12 @@ async def _run_query(
 
     structured = result_message.structured_output
     if not isinstance(structured, dict):
-        raise TypeError(
-            f"agent_sdk run produced no structured answer (subtype={result_message.subtype!r})."
+        raise _RunFailed(
+            f"agent_sdk run produced no structured answer (subtype={result_message.subtype!r}).",
+            tool_calls=list(tool_calls),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_eur=cost_eur,
         )
 
     return _QueryResult(
