@@ -10,7 +10,7 @@ a model, or the real `data/` directories.
 import json
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 import pytest
 
@@ -891,3 +891,79 @@ def test_cmd_run_refuses_an_exported_sdk_api_key(
     args = build_parser().parse_args(["run", "--case-id", "any"])
     with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
         args.func(args)
+
+
+# --- routing (step 14, #19) ----------------------------------------------------
+
+
+def _ready_ollama(monkeypatch: pytest.MonkeyPatch, problem: str | None = None) -> None:
+    # These tests chdir to tmp_path; read the repo's routing config anyway.
+    repo_models = Path(__file__).resolve().parent.parent / "config" / "models.yaml"
+    monkeypatch.setattr(cli, "DEFAULT_MODELS_CONFIG_PATH", repo_models)
+    monkeypatch.setattr(
+        cli.providers.OllamaProvider, "readiness_problem", lambda self: problem
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("flags", "message"),
+    [
+        (["--routing", "on"], "needs --mode multi"),
+        (["--routing", "on", "--mode", "multi", "--runtime", "langgraph"], "Agent SDK"),
+    ],
+    ids=["single-mode", "langgraph"],
+)
+def test_cmd_eval_refuses_routing_where_nothing_is_routed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, flags: list[str], message: str
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    _ready_ollama(monkeypatch)
+    monkeypatch.setenv("RECON_ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(cli, "run_evaluation", lambda *a, **k: pytest.fail("ran"))
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(["eval", "--limit", "1", *flags])
+    with pytest.raises(SystemExit, match=message):
+        args.func(args)
+
+
+@pytest.mark.unit
+def test_cmd_eval_refuses_routing_before_running_when_ollama_isnt_ready(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    _ready_ollama(monkeypatch, "Ollama isn't reachable. Start it with `ollama serve`.")
+    monkeypatch.setattr(cli, "run_evaluation", lambda *a, **k: pytest.fail("ran"))
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(
+        ["eval", "--limit", "1", "--mode", "multi", "--routing", "on"]
+    )
+    with pytest.raises(SystemExit, match="ollama serve"):
+        args.func(args)
+
+
+@pytest.mark.unit
+def test_cmd_eval_records_routing_on_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    _ready_ollama(monkeypatch)
+    runtimes: list[Any] = []
+
+    def fake_run_evaluation(cases: Any, runtime: Any, **kwargs: Any) -> EvalRun:
+        runtimes.append(runtime)
+        return _eval_run()
+
+    monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(
+        ["eval", "--limit", "1", "--mode", "multi", "--routing", "on"]
+    )
+    args.func(args)
+
+    assert runtimes[0]._routing is True
+    written = json.loads((tmp_path / "evals/results/eval-fixed.json").read_text())
+    assert written["routing"] is True

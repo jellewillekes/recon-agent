@@ -13,6 +13,7 @@ def render_markdown(run: EvalRun) -> str:
         f"- Rubric version: {run.rubric_version}",
         f"- Tool data: {run.tool_data_snapshot or 'not recorded'}",
         f"- Retrieval labels: {run.retrieval_labels_hash or 'not scored'}",
+        f"- Routing: {'decompose on the local model' if run.routing else 'off'}",
         f"- Model config hash: {run.model_config_hash}",
         "- Prompt hashes: "
         + ", ".join(

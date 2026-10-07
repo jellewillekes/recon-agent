@@ -65,3 +65,18 @@ run_budget:
 # API's 270 s request timeout.
 run_budget_multi:
   max_wall_clock_s: 240
+
+# Model routing (step 14, #19; docs/adr/0029). With `eval --routing on`, multi
+# mode sends these steps to a local model instead of Claude. It runs on this
+# machine, so it costs nothing and needs no API key. Only decompose is
+# routable: workers call tools, and synthesis and the critic stay on the
+# strong model. Setup: `brew install ollama`, `ollama serve`, then
+# `ollama pull qwen2.5:7b-instruct` (docs/runtimes.md).
+routing:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: qwen2.5:7b-instruct
+  # A 7B model answers a decompose prompt in seconds on Apple silicon. This
+  # only stops a hung server from using up the case's wall-clock budget.
+  timeout_s: 60
+  steps: [decompose]

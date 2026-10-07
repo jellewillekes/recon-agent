@@ -521,3 +521,105 @@ async def test_a_worker_that_fails_keeps_the_runs_cost_so_far(
     assert result.error is not None and "maximum number of turns" in result.error
     assert result.cost_eur == pytest.approx((0.10 + 0.05) * 0.9)
     assert (result.tokens_in, result.tokens_out) == (1500, 150)
+
+
+# --- routing (step 14, #19) ----------------------------------------------------
+
+
+class _LocalModel:
+    """Stands in for Ollama: records the decompose call and routes to one worker."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def complete(
+        self, system_prompt: str, prompt: str, schema: dict[str, Any]
+    ) -> Any:
+        from recon.runtimes.providers import Reply
+
+        self.calls.append((system_prompt, prompt))
+        return Reply(
+            structured={
+                "subtasks": [
+                    {"worker": "worker_lookup", "instruction": "find FIRM-001's sector"}
+                ]
+            },
+            tokens_in=200,
+            tokens_out=20,
+            cost_eur=0.0,
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_with_routing_the_local_model_decomposes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_roles_and_models(monkeypatch)
+    local = _LocalModel()
+    monkeypatch.setattr(multi_agent, "local_provider", lambda config: local)
+    claude_prompts: list[str] = []
+
+    def query(*, prompt: str, options: ClaudeAgentOptions | None = None) -> Any:
+        claude_prompts.append(prompt)
+        return _accepting_critic_query(prompt=prompt, options=options)
+
+    monkeypatch.setattr(agent_sdk, "query", query)
+
+    result = await multi_agent.run_multi_async(
+        CASE,
+        roles_config_path=Path("unused"),
+        prompts_dir=Path("prompts"),
+        routing=True,
+    )
+
+    assert result.answer == "Industrials"
+    assert len(local.calls) == 1
+    system_prompt, prompt = local.calls[0]
+    assert system_prompt == Path("prompts/supervisor.md").read_text(encoding="utf-8")
+    assert CASE.question in prompt
+    # Workers, synthesis and critic stay on Claude; decompose doesn't.
+    assert not any("Decompose this question" in p for p in claude_prompts)
+    assert len(claude_prompts) == 3
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_without_routing_claude_decomposes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_roles_and_models(monkeypatch)
+    monkeypatch.setattr(
+        multi_agent, "local_provider", lambda config: pytest.fail("routed anyway")
+    )
+    claude_prompts: list[str] = []
+
+    def query(*, prompt: str, options: ClaudeAgentOptions | None = None) -> Any:
+        claude_prompts.append(prompt)
+        return _accepting_critic_query(prompt=prompt, options=options)
+
+    monkeypatch.setattr(agent_sdk, "query", query)
+
+    await multi_agent.run_multi_async(
+        CASE, roles_config_path=Path("unused"), prompts_dir=Path("prompts")
+    )
+
+    assert any("Decompose this question" in p for p in claude_prompts)
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_the_sdk_runtime_passes_routing_to_multi_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    async def run_multi_async(case: Any, **kwargs: Any) -> Any:
+        seen.update(kwargs)
+        raise RuntimeError("stop after reading the arguments")
+
+    monkeypatch.setattr(multi_agent, "run_multi_async", run_multi_async)
+
+    await agent_sdk.AgentSdkRuntime(mode="multi", routing=True).run_async(CASE)
+
+    assert seen["routing"] is True

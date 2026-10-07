@@ -519,10 +519,13 @@ class AgentSdkRuntime:
         prompt_path: Path = DEFAULT_PROMPT_PATH,
         roles_config_path: Path | None = None,
         prompts_dir: Path | None = None,
+        routing: bool = False,
     ) -> None:
         self._mode = mode
         self._models_config_path = models_config_path
         self._prompt_path = prompt_path
+        # Multi mode only: decompose on the local model (step 14, ADR 0029).
+        self._routing = routing
         # Only meaningful for mode="multi"; None means "use multi_agent's own
         # defaults" (applied in run(), which is the only place that needs
         # runtimes.multi_agent - imported there, not at module level, since
@@ -560,6 +563,7 @@ class AgentSdkRuntime:
                     case,
                     roles_config_path=self._roles_config_path,
                     prompts_dir=self._prompts_dir,
+                    routing=self._routing,
                 )
             else:
                 options, usd_to_eur_rate, budget = _build_options(
