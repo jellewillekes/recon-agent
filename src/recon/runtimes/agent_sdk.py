@@ -14,9 +14,9 @@ import re
 import sys
 import time
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast, get_args
+from typing import Any, Literal, cast
 
 import yaml
 from claude_agent_sdk import (
@@ -31,8 +31,10 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import McpStdioServerConfig
 
-from recon.contracts import AgentResult, Case, ToolCall
+from recon.contracts import AgentResult, Case, Claim, Evidence, ToolCall
+from recon.runtimes.answer import ANSWER_SCHEMA, Confidence, validate_answer
 from recon.runtimes.api_key import without_api_keys
+from recon.runtimes.evidence import RowIndex
 from recon.runtimes.run_budget import budget_section
 
 RUNTIME_NAME = "agent_sdk"
@@ -60,23 +62,10 @@ _CREATED_BY = f"{RUNTIME_NAME}:single"
 DEFAULT_MODELS_CONFIG_PATH = Path("config/models.yaml")
 DEFAULT_PROMPT_PATH = Path("prompts/investigator.md")
 
-_ANSWER_SCHEMA: dict[str, Any] = {
-    "type": "json_schema",
-    "schema": {
-        "type": "object",
-        "properties": {
-            "answer": {"type": "string"},
-            "evidence": {"type": "array", "items": {"type": "string"}},
-            "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
-        },
-        "required": ["answer", "evidence", "confidence"],
-        "additionalProperties": False,
-    },
-}
-
-
-_Confidence = Literal["high", "medium", "low"]
-_CONFIDENCE_VALUES = set(get_args(_Confidence))
+# Claims citing row refs (ADR 0030). Kept under this name for the callers
+# and tests that pass it as an `output_format`.
+_ANSWER_SCHEMA = ANSWER_SCHEMA
+_Confidence = Confidence
 
 
 @dataclass
@@ -90,6 +79,8 @@ class _Outcome:
     tokens_in: int
     tokens_out: int
     cost_eur: float
+    claims: list[Claim] = field(default_factory=list)
+    evidence_items: list[Evidence] = field(default_factory=list)
 
 
 @dataclass
@@ -155,6 +146,8 @@ class _PartialRun(Exception):
         answer: str = "",
         evidence: list[str] | None = None,
         confidence: _Confidence = "low",
+        claims: list[Claim] | None = None,
+        evidence_items: list[Evidence] | None = None,
     ) -> None:
         super().__init__(reason)
         self.reason = reason
@@ -165,6 +158,8 @@ class _PartialRun(Exception):
         self.answer = answer
         self.evidence = evidence or []
         self.confidence = confidence
+        self.claims = claims or []
+        self.evidence_items = evidence_items or []
 
 
 class _BudgetExceeded(_PartialRun):
@@ -307,19 +302,13 @@ def _parse_offloaded_result(text: str) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def _parse_tool_result(content: str | list[dict[str, Any]] | None) -> tuple[str, int]:
-    """Pull `status`/`elapsed_ms` back out of the JSON our own `ToolResult` produced.
+def _tool_payload(content: str | list[dict[str, Any]] | None) -> dict[str, Any] | None:
+    """The JSON our own `ToolResult` produced, from a `ToolResultBlock`.
 
     Recognizes two shapes: the JSON directly, or (when the result was too
     large to inline) the CLI's offload notice, in which case the real payload
-    is recovered from disk via `_parse_offloaded_result`. Falls back to
-    `("unknown", 0)` for anything else — genuinely undeterminable, which is a
-    different claim than `ToolResult`'s own `"unavailable"` ("source down,
-    timeout, circuit open" per `docs/contracts.md`).
-
-    `elapsed_ms` is optional in the payload: `ToolResult` always has it, but
-    `ReviewFlagResult` (a write, not a timed read) doesn't, and a missing
-    timing shouldn't erase a real `status`.
+    is recovered from disk via `_parse_offloaded_result`. `None` for anything
+    else.
     """
     text: str | None = content if isinstance(content, str) else None
     if text is None and isinstance(content, list):
@@ -332,13 +321,29 @@ def _parse_tool_result(content: str | list[dict[str, Any]] | None) -> tuple[str,
             None,
         )
     if text is None:
-        return "unknown", 0
+        return None
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        payload = _parse_offloaded_result(text)
-        if payload is None:
-            return "unknown", 0
+        return _parse_offloaded_result(text)
+    return payload if isinstance(payload, dict) else None
+
+
+def _parse_tool_result(content: str | list[dict[str, Any]] | None) -> tuple[str, int]:
+    """Pull `status`/`elapsed_ms` back out of the JSON our own `ToolResult` produced.
+
+    Falls back to `("unknown", 0)` when there's no payload to read -
+    genuinely undeterminable, which is a different claim than `ToolResult`'s
+    own `"unavailable"` ("source down, timeout, circuit open" per
+    `docs/contracts.md`).
+
+    `elapsed_ms` is optional in the payload: `ToolResult` always has it, but
+    `ReviewFlagResult` (a write, not a timed read) doesn't, and a missing
+    timing shouldn't erase a real `status`.
+    """
+    payload = _tool_payload(content)
+    if payload is None:
+        return "unknown", 0
     status, elapsed_ms = payload.get("status"), payload.get("elapsed_ms", 0)
     if not isinstance(status, str) or not isinstance(elapsed_ms, int):
         return "unknown", 0
@@ -358,6 +363,8 @@ class _QueryResult:
     tokens_in: int
     tokens_out: int
     cost_eur: float
+    # Every row with a ref the call's tools returned (ADR 0030).
+    rows: RowIndex = field(default_factory=RowIndex)
 
 
 async def _run_query(
@@ -381,6 +388,7 @@ async def _run_query(
     that lands on the very message carrying that answer doesn't discard it.
     """
     tool_calls: list[ToolCall] = []
+    rows = RowIndex()
     pending: dict[str, tuple[str, dict[str, Any]]] = {}
     result_message: ResultMessage | None = None
 
@@ -419,6 +427,9 @@ async def _run_query(
                         ):
                             tool_name, arguments = pending.pop(block.tool_use_id)
                             status, elapsed_ms = _parse_tool_result(block.content)
+                            payload = _tool_payload(block.content)
+                            if payload is not None:
+                                rows.add(tool_name, arguments, payload)
                             tool_calls.append(
                                 ToolCall(
                                     tool=tool_name,
@@ -487,25 +498,8 @@ async def _run_query(
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         cost_eur=cost_eur,
+        rows=rows,
     )
-
-
-def _validate_answer(structured: dict[str, Any]) -> tuple[str, list[str], _Confidence]:
-    """`_ANSWER_SCHEMA`'s own validation, split out of `_run_query` so it's
-    reusable wherever an `answer`/`evidence`/`confidence` schema is used
-    (single mode here; multi mode's supervisor-synthesis call in
-    `runtimes/multi_agent.py`).
-    """
-    answer, evidence, confidence = (
-        structured["answer"],
-        list(structured["evidence"]),
-        structured["confidence"],
-    )
-    if confidence not in _CONFIDENCE_VALUES:
-        raise RuntimeError(
-            f"agent_sdk run returned an invalid confidence: {confidence!r}."
-        )
-    return answer, evidence, cast(_Confidence, confidence)
 
 
 class AgentSdkRuntime:
@@ -573,15 +567,17 @@ class AgentSdkRuntime:
                 result = await _run_query(
                     case.question, options, usd_to_eur_rate, tracker=tracker
                 )
-                answer, evidence, confidence = _validate_answer(result.structured)
+                parsed = validate_answer(result.structured, result.rows)
                 outcome = _Outcome(
-                    answer=answer,
-                    evidence=evidence,
-                    confidence=confidence,
+                    answer=parsed.answer,
+                    evidence=parsed.evidence,
+                    confidence=parsed.confidence,
                     tool_calls=result.tool_calls,
                     tokens_in=result.tokens_in,
                     tokens_out=result.tokens_out,
                     cost_eur=result.cost_eur,
+                    claims=parsed.claims,
+                    evidence_items=parsed.evidence_items,
                 )
                 # Single mode makes exactly one query() call, so there's no
                 # "next call" to skip the way multi mode's _accumulate can -
@@ -609,6 +605,8 @@ class AgentSdkRuntime:
                 cost_eur=outcome.cost_eur,
                 elapsed_ms=int((time.monotonic() - start) * 1000),
                 error=token_budget_note,
+                claims=outcome.claims,
+                evidence_items=outcome.evidence_items,
             )
         except _PartialRun as exc:
             return AgentResult(
@@ -624,6 +622,8 @@ class AgentSdkRuntime:
                 cost_eur=exc.cost_eur,
                 elapsed_ms=int((time.monotonic() - start) * 1000),
                 error=exc.reason,
+                claims=exc.claims,
+                evidence_items=exc.evidence_items,
             )
         except Exception as exc:  # noqa: BLE001 — boundary: see docstring
             return AgentResult(

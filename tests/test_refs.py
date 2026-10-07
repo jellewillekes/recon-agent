@@ -79,9 +79,7 @@ async def test_the_mcp_server_returns_rows_with_refs() -> None:
         "get_financial_fact_tool",
         {"company_id": "FIRM-001", "concept": "revenue", "fiscal_year": 2024},
     )
-    payload: dict[str, Any] = (
-        structured["result"] if "result" in structured else structured
-    )
+    payload: dict[str, Any] = structured.get("result", structured)
     assert payload["status"] == "ok"
     assert all(row["ref"].startswith("E") for row in payload["data"])
     json.dumps(payload)

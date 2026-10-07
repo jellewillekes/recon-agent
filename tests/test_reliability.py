@@ -341,7 +341,7 @@ def test_single_mode_reports_a_token_budget_breach_after_the_fact(
             usage={"input_tokens": 10, "output_tokens": 5},
             structured_output={
                 "answer": "Industrials",
-                "evidence": ["FIRM-001 sector fact"],
+                "claims": [],
                 "confidence": "high",
             },
         )
@@ -388,7 +388,7 @@ def test_wall_clock_breach_on_the_message_carrying_the_answer_keeps_the_answer(
         yield _result_message(
             structured_output={
                 "answer": "Industrials",
-                "evidence": ["FIRM-001 sector fact"],
+                "claims": [],
                 "confidence": "high",
             }
         )
@@ -513,14 +513,20 @@ async def test_multi_mode_preserves_the_synthesized_answer_on_a_late_token_budge
             yield _result_message(
                 structured_output={
                     "findings": "FIRM-001 is in Industrials",
-                    "evidence": ["fact:sector=Industrials"],
+                    "evidence_refs": [],
                 }
             )
         elif "Original question" in prompt:
             yield _result_message(
                 structured_output={
                     "answer": "Industrials",
-                    "evidence": ["fact:sector=Industrials"],
+                    "claims": [
+                        {
+                            "text": "FIRM-001 is in Industrials.",
+                            "importance": "key",
+                            "evidence_refs": ["Eabc000000000"],
+                        }
+                    ],
                     "confidence": "high",
                 }
             )
@@ -537,5 +543,9 @@ async def test_multi_mode_preserves_the_synthesized_answer_on_a_late_token_budge
     assert result.error is not None
     assert "token budget" in result.error
     assert result.answer == "Industrials"
-    assert result.evidence == ["fact:sector=Industrials"]
+    assert result.claims[0].text == "FIRM-001 is in Industrials."
+    assert [item.ref for item in result.evidence_items] == ["Eabc000000000"]
+    assert result.evidence == [
+        "[Eabc000000000] unverified: no tool returned this ref in this run"
+    ]
     assert result.confidence == "high"

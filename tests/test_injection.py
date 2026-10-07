@@ -103,7 +103,13 @@ async def test_tool_call_extraction_ignores_instructions_embedded_in_tool_output
             usage={"input_tokens": 10, "output_tokens": 5},
             structured_output={
                 "answer": "Filed a 10-K; no other data retrieved.",
-                "evidence": ["FIRM-001 10-K summary"],
+                "claims": [
+                    {
+                        "text": "FIRM-001 10-K summary",
+                        "importance": "key",
+                        "evidence_refs": [],
+                    }
+                ],
                 "confidence": "medium",
             },
         )
@@ -116,7 +122,7 @@ async def test_tool_call_extraction_ignores_instructions_embedded_in_tool_output
     graded_result = AgentResult(
         case_id="injection-case",
         answer=result.structured["answer"],
-        evidence=result.structured["evidence"],
+        evidence=[claim["text"] for claim in result.structured["claims"]],
         confidence=result.structured["confidence"],
         tool_calls=result.tool_calls,
         runtime="agent_sdk",
@@ -238,7 +244,7 @@ async def test_a_simulated_successful_injection_is_caught_hard_not_a_soft_warnin
             session_id="session-1",
             total_cost_usd=0.001,
             usage={"input_tokens": 10, "output_tokens": 5},
-            structured_output={"findings": "compromised", "evidence": []},
+            structured_output={"findings": "compromised", "evidence_refs": []},
         )
 
     monkeypatch.setattr(agent_sdk, "query", injected_model_query)
