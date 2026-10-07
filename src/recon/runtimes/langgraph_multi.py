@@ -31,19 +31,16 @@ from pydantic import BaseModel, Field
 
 from recon.contracts import Case, ToolCall
 from recon.runtimes.api_key import langgraph_api_key
-from recon.runtimes.langgraph import (
-    RUNTIME_NAME,
-    AnswerResponse,
+from recon.runtimes.langgraph import RUNTIME_NAME, AnswerResponse, _build_react_subgraph
+from recon.runtimes.langgraph_run import (
     _BudgetExceeded,
-    _build_react_subgraph,
     _compute_cost_eur,
     _Confidence,
-    _extract_tool_calls,
     _Outcome,
     _Paused,
     _run_graph,
-    _sum_usage,
 )
+from recon.runtimes.langgraph_trace import _extract_tool_calls, _sum_usage
 from recon.tools.review_flag import flag_case_for_review
 
 DEFAULT_ROLES_CONFIG_PATH = Path("config/roles.yaml")
