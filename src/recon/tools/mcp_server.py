@@ -21,6 +21,7 @@ from mcp.server.fastmcp import FastMCP
 from recon.tools.data_source import knowledge_chunks_path, open_tool_data
 from recon.tools.knowledge_backend import KnowledgeBackend
 from recon.tools.knowledge_search import search_knowledge
+from recon.tools.refs import with_refs
 from recon.tools.review_flag import flag_case_for_review
 from recon.tools.server import (
     FormType,
@@ -60,7 +61,8 @@ async def _call_flag_case_for_review(
 
 
 def _register_read_tools(server: FastMCP, conn: duckdb.DuckDBPyConnection) -> None:
-    """The four read-only tools in `server.py`, bound to `conn`."""
+    """The four read-only tools in `server.py`, bound to `conn`. Every row
+    they return carries a `ref` to cite (ADR 0030)."""
 
     # Each tool's description is the full docstring of the function it wraps
     # in server.py - that's the guidance the model actually reads.
@@ -68,13 +70,16 @@ def _register_read_tools(server: FastMCP, conn: duckdb.DuckDBPyConnection) -> No
     def list_companies_tool(
         sector: str | None = None, query: str | None = None
     ) -> dict[str, Any]:
-        return list_companies(conn, sector, query).model_dump()
+        return with_refs("list_companies", list_companies(conn, sector, query))
 
     @server.tool(description=list_financial_concepts.__doc__)
     def list_financial_concepts_tool(
         company_id: str, keyword: str | None = None
     ) -> dict[str, Any]:
-        return list_financial_concepts(conn, company_id, keyword).model_dump()
+        return with_refs(
+            "list_financial_concepts",
+            list_financial_concepts(conn, company_id, keyword),
+        )
 
     @server.tool(description=get_financial_fact.__doc__)
     def get_financial_fact_tool(
@@ -83,9 +88,10 @@ def _register_read_tools(server: FastMCP, conn: duckdb.DuckDBPyConnection) -> No
         fiscal_year: int | None = None,
         fiscal_period: Literal["FY", "Q1", "Q2", "Q3", "Q4"] | None = None,
     ) -> dict[str, Any]:
-        return get_financial_fact(
-            conn, company_id, concept, fiscal_year, fiscal_period
-        ).model_dump()
+        return with_refs(
+            "get_financial_fact",
+            get_financial_fact(conn, company_id, concept, fiscal_year, fiscal_period),
+        )
 
     @server.tool(description=search_filings.__doc__)
     def search_filings_tool(
@@ -94,9 +100,10 @@ def _register_read_tools(server: FastMCP, conn: duckdb.DuckDBPyConnection) -> No
         form_type: FormType | None = None,
         fiscal_year: int | None = None,
     ) -> dict[str, Any]:
-        return search_filings(
-            conn, company_id, keyword, form_type, fiscal_year
-        ).model_dump()
+        return with_refs(
+            "search_filings",
+            search_filings(conn, company_id, keyword, form_type, fiscal_year),
+        )
 
 
 def _register_write_tool(server: FastMCP) -> None:
@@ -137,7 +144,7 @@ def _register_knowledge_tool(server: FastMCP, chunks_path: Path, warm_up: bool) 
     def search_knowledge_tool(
         query: str, top_k: int = 5, company_id: str | None = None
     ) -> dict[str, Any]:
-        return backend.search(query, top_k, company_id).model_dump()
+        return with_refs("search_knowledge", backend.search(query, top_k, company_id))
 
 
 def build_server(
