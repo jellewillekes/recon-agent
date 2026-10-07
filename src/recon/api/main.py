@@ -1,5 +1,6 @@
 """FastAPI service. `docs/contracts.md` section 5: `POST /investigate`,
-`GET /capabilities`, the saved runs under `/runs`, `GET /healthz`,
+`GET /capabilities`, the saved runs under `/runs`, the eval runs under
+`/evals` (`api/evals.py`), `GET /healthz`,
 `GET /readyz`, `GET /metrics`.
 
 Twelve-factor: every deployment-varying value is read from an environment
@@ -28,6 +29,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.staticfiles import StaticFiles
 
 from recon.api import run_store
+from recon.api.evals import router as evals_router
 from recon.api.health import check_mcp_server, check_postgres
 from recon.api.metrics import (
     INVESTIGATE_IN_FLIGHT,
@@ -128,6 +130,7 @@ class _RequestIDMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(_RequestIDMiddleware)
+app.include_router(evals_router)
 
 
 @app.exception_handler(RequestValidationError)

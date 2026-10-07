@@ -7,6 +7,8 @@
     <title>Recon — Financial research agent</title>
     <link rel="stylesheet" href="/styles.css">
     <script src="/app.js" defer></script>
+    <script src="/history.js" defer></script>
+    <script src="/evals.js" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -15,71 +17,133 @@
           <span class="brand-mark" aria-hidden="true">R</span>
           <span>recon<span class="brand-dot">.</span></span>
         </a>
+        <nav class="view-tabs" role="tablist" aria-label="Workspace views">
+          <button class="view-tab" type="button" role="tab" id="tab-research" aria-controls="research-view" aria-selected="true">Research</button>
+          <button class="view-tab" type="button" role="tab" id="tab-evaluation" aria-controls="evaluation-view" aria-selected="false">Evaluation</button>
+        </nav>
         <div class="topbar-meta">
-          <span class="local-badge"><span class="pulse-dot"></span> Local demo</span>
-          <span class="topbar-label">Financial research agent</span>
+          <span class="local-badge" id="data-source-badge" title="Where the tools' data comes from"><span class="pulse-dot"></span> <span id="data-source-label">Data source…</span></span>
         </div>
       </header>
 
       <main>
-        <section class="intro" aria-labelledby="page-title">
-          <div class="eyebrow"><span class="eyebrow-line"></span> Evidence-led company research</div>
-          <h1 id="page-title">Financial research.<br><span>Evidence you can inspect.</span></h1>
-          <p class="intro-copy">Recon retrieves company financial facts and filing summaries, then shows the evidence and tool calls behind each answer.</p>
-        </section>
+        <div id="research-view" role="tabpanel" aria-labelledby="tab-research">
+          <section class="intro" aria-labelledby="page-title">
+            <div class="eyebrow"><span class="eyebrow-line"></span> Live research · how an answer is produced</div>
+            <h1 id="page-title">Financial research.<br><span>Evidence you can inspect.</span></h1>
+            <p class="intro-copy">Recon searches company financial facts and filing text, then shows each claim with the source it rests on, checked against what the tools actually returned.</p>
+          </section>
 
-        <section class="workspace" aria-label="Research workspace">
-          <div class="question-card">
+          <section class="workspace" aria-label="Research workspace">
+            <div class="side-column">
+              <div class="question-card">
+                <div class="card-heading">
+                  <div>
+                    <span class="section-index">01 / QUESTION</span>
+                    <h2>Ask the research agent</h2>
+                  </div>
+                </div>
+
+                <form id="question-form">
+                  <label class="visually-hidden" for="question">Research question</label>
+                  <textarea id="question" name="question" rows="4" maxlength="2000" placeholder="Ask about a company's filings or financials" required></textarea>
+                  <div class="form-footer">
+                    <span id="character-count">0 / 2000</span>
+                    <label class="mode-picker" for="mode">Mode
+                      <select id="mode" name="mode"><option value="single">single</option></select>
+                    </label>
+                    <button id="submit-button" type="submit">
+                      <span class="button-label">Run research</span>
+                      <span class="button-arrow" aria-hidden="true">↗</span>
+                    </button>
+                  </div>
+                </form>
+
+                <div class="examples" id="examples">
+                  <span class="examples-label">TRY AN EXAMPLE</span>
+                </div>
+
+                <aside class="data-note" aria-label="Data source notice">
+                  <span class="note-icon" aria-hidden="true">i</span>
+                  <p id="data-note-text">Checking where the tools' data comes from…</p>
+                </aside>
+              </div>
+
+              <section class="history-card" aria-labelledby="history-heading">
+                <div class="card-heading">
+                  <div>
+                    <span class="section-index">03 / SAVED RUNS</span>
+                    <h2 id="history-heading">Reopen a run</h2>
+                  </div>
+                  <button class="link-button" type="button" id="history-refresh">Refresh</button>
+                </div>
+                <p class="history-hint">Opens instantly from the run store. No new agent call.</p>
+                <ul class="history-list" id="history-list"></ul>
+              </section>
+            </div>
+
+            <section class="answer-card" aria-labelledby="answer-heading" aria-live="polite" aria-busy="false">
+              <div class="answer-card-heading">
+                <div>
+                  <span class="section-index">02 / FINDINGS</span>
+                  <h2 id="answer-heading">Research output</h2>
+                </div>
+                <span id="run-state" class="run-state"><span class="state-dot"></span> Ready</span>
+              </div>
+
+              <div id="answer-content" class="answer-content">
+                <div class="empty-state">
+                  <div class="empty-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+                  <h3>Your research will appear here</h3>
+                  <p>Ask a question, or reopen a saved run, to see the answer, its claims and sources, and the tools the agent used.</p>
+                </div>
+              </div>
+            </section>
+          </section>
+        </div>
+
+        <div id="evaluation-view" role="tabpanel" aria-labelledby="tab-evaluation" hidden>
+          <section class="intro" aria-labelledby="eval-title">
+            <div class="eyebrow eyebrow-eval"><span class="eyebrow-line"></span> Benchmark results · not live answers</div>
+            <h1 id="eval-title">How we know it's good.<br><span>Measured, not asserted.</span></h1>
+            <p class="intro-copy">Each run scores the agent on the same fixed benchmark cases: task completion, answer score, cost, and whether its citations hold up. The gate only compares runs that measured the same thing.</p>
+          </section>
+
+          <section class="eval-card" aria-labelledby="eval-runs-heading">
             <div class="card-heading">
               <div>
-                <span class="section-index">01 / QUESTION</span>
-                <h2>Ask the research agent</h2>
-              </div>
-              <span class="input-hint">Powered by your local agent</span>
-            </div>
-
-            <form id="question-form">
-              <label class="visually-hidden" for="question">Research question</label>
-              <textarea id="question" name="question" rows="4" maxlength="2000" placeholder="For example, how has Aurora Robotics' revenue changed over the last three years?" required></textarea>
-              <div class="form-footer">
-                <span id="character-count">0 / 2000</span>
-                <button id="submit-button" type="submit">
-                  <span class="button-label">Run research</span>
-                  <span class="button-arrow" aria-hidden="true">↗</span>
-                </button>
-              </div>
-            </form>
-
-            <div class="examples">
-              <span class="examples-label">TRY AN EXAMPLE</span>
-              <button class="example-chip" type="button" data-question="How has Aurora Robotics Corp's revenue changed from 2022 to 2024?">Revenue trend <span aria-hidden="true">↗</span></button>
-              <button class="example-chip" type="button" data-question="What risks appear in Aurora Robotics Corp's recent filings?">Filing risks <span aria-hidden="true">↗</span></button>
-            </div>
-
-            <aside class="data-note" aria-label="Demo data notice">
-              <span class="note-icon" aria-hidden="true">i</span>
-              <p><strong>The bundled Docker demo uses synthetic data.</strong> Company and filing details are fictional and illustrate the research workflow. Other local configurations may use a different data source.</p>
-            </aside>
-          </div>
-
-          <section class="answer-card" aria-labelledby="answer-heading" aria-live="polite" aria-busy="false">
-            <div class="answer-card-heading">
-              <div>
-                <span class="section-index">02 / FINDINGS</span>
-                <h2 id="answer-heading">Research output</h2>
-              </div>
-              <span id="run-state" class="run-state"><span class="state-dot"></span> Ready</span>
-            </div>
-
-            <div id="answer-content" class="answer-content">
-              <div class="empty-state">
-                <div class="empty-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-                <h3>Your research will appear here</h3>
-                <p>Submit a question to see the answer, supporting evidence, and tools the agent used.</p>
+                <span class="section-index">01 / EVALUATION RUNS</span>
+                <h2 id="eval-runs-heading">Recorded runs</h2>
               </div>
             </div>
+            <div class="table-scroll"><table class="data-table" id="eval-table"></table></div>
           </section>
-        </section>
+
+          <section class="eval-card" aria-labelledby="compare-heading">
+            <div class="card-heading">
+              <div>
+                <span class="section-index">02 / COMPARE</span>
+                <h2 id="compare-heading">Baseline against candidate</h2>
+              </div>
+            </div>
+            <form id="compare-form" class="compare-form">
+              <label>Baseline <select id="compare-baseline"></select></label>
+              <label>Candidate <select id="compare-candidate"></select></label>
+              <button type="submit" class="secondary-button">Compare</button>
+            </form>
+            <div id="compare-result"></div>
+          </section>
+
+          <section class="eval-card" aria-labelledby="eval-detail-heading">
+            <div class="card-heading">
+              <div>
+                <span class="section-index">03 / RUN DETAIL</span>
+                <h2 id="eval-detail-heading">Per-case results</h2>
+              </div>
+            </div>
+            <div id="eval-detail"><p class="no-data">Pick a run above to see its cases.</p></div>
+          </section>
+        </div>
 
         <footer class="page-footer">
           <span>RECON RESEARCH AGENT</span>

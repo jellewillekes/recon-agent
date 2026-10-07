@@ -1,7 +1,7 @@
 """`recon.cli compare`: two eval runs side by side (step 14, #19).
 
-Shows each run's settings and the gated metrics, with the gate's verdict for
-the second run against the first. Used to compare routing on against off; any
+Shows each run's settings and metrics, with the gate's verdict for the second
+run against the first (`eval/comparison.py`, shared with `GET /evals/compare`). Used to compare routing on against off; any
 two comparable runs work. Reads result files only, so it costs nothing.
 """
 
@@ -9,45 +9,29 @@ import argparse
 from pathlib import Path
 
 from recon.contracts import EvalRun
-from recon.eval.gate import comparability_failures, verdicts
+from recon.eval.comparison import compare_runs
 from recon.eval.thresholds import load_thresholds
 
-_SETTINGS = ("runtime", "mode", "routing", "model_config_hash")
 
-
-def _setting(run: EvalRun, name: str) -> str:
-    value = getattr(run, name)
-    if name == "routing":
-        return "on" if value else "off"
-    return str(value)
+def _value(value: float | None) -> str:
+    return "—" if value is None else f"{value:.3f}"
 
 
 def _cmd_compare(args: argparse.Namespace) -> None:
     first = EvalRun.model_validate_json(args.first.read_text(encoding="utf-8"))
     second = EvalRun.model_validate_json(args.second.read_text(encoding="utf-8"))
-    print(f"| | {first.run_id} | {second.run_id} | verdict |")
+    result = compare_runs(first, second, load_thresholds().gate)
+    print(f"| | {result.baseline} | {result.candidate} | verdict |")
     print("|---|---|---|---|")
-    for name in _SETTINGS:
-        print(f"| {name} | {_setting(first, name)} | {_setting(second, name)} | |")
-    failures = comparability_failures(
-        rubric_version=second.rubric_version,
-        dataset=second.dataset,
-        tool_data_snapshot=second.tool_data_snapshot,
-        case_ids=[score.case_id for score in second.case_scores],
-        baseline=first,
-    )
-    judged = {} if failures else verdicts(second, first, load_thresholds().gate)
-    for metric in ("answer_score_mean", "task_completion_rate"):
+    for setting in result.settings:
+        print(f"| {setting.name} | {setting.baseline} | {setting.candidate} | |")
+    for metric in result.metrics:
         print(
-            f"| {metric} | {first.aggregate.get(metric, 0.0):.3f} | "
-            f"{second.aggregate.get(metric, 0.0):.3f} | {judged.get(metric, '')} |"
+            f"| {metric.name} | {_value(metric.baseline)} | "
+            f"{_value(metric.candidate)} | {metric.verdict or ''} |"
         )
-    print(
-        f"| total_cost_eur | {first.total_cost_eur:.3f} | {second.total_cost_eur:.3f} "
-        f"| {judged.get('total_cost_eur', '')} |"
-    )
-    for failure in failures:
-        print(f"Not comparable: {failure}")
+    for reason in result.reasons:
+        print(f"Not comparable: {reason}")
 
 
 def add_compare_parser(
