@@ -1,0 +1,73 @@
+{
+  "run_id": "eval-20261007T140923Z",
+  "timestamp_utc": "2026-10-07T14:09:23.960834Z",
+  "dataset": "finance-agent-bench@8ba65f81ab75",
+  "dataset_license": "MIT",
+  "dataset_attribution": "Data from vals-ai/finance-agent (MIT License), Copyright (c) 2025 Vals AI, Inc. https://github.com/vals-ai/finance-agent — benchmark details at https://www.vals.ai/benchmarks/finance_agent",
+  "runtime": "agent_sdk",
+  "mode": "multi",
+  "model_config_hash": "2bad15f9fe0c7a7e199c0015fb4a51bd61c2e6101eea393a63e9537de01b0df7",
+  "prompt_hashes": {
+    "critic": "3d8af43bed199f8f6ce5d412d6b4f3d63ef3c1a3bf238504c5a6d15c8a9e477c",
+    "investigator": "4c78d0e84b7eb9cb2f81bd2eaf09cf63f901af98d2e193850f62ac84546b379a",
+    "judge_faithfulness": "1a4f47d7ed4703d42435b171b7ee68db65d4f04b44bdeb49cbeed3e06f2bceb8",
+    "supervisor": "ff3b1cd886c16640ebec15616ddc4d806a801bfd510fe6e7e5e15336f820f928",
+    "supervisor_langgraph": "c5644135eaafe35ef358603e2cca428b0c1dd546142fdf279f8a8c0e9cd812a9",
+    "worker_facts": "354fc782beb5d7ecae903ebd608d30876c3f99b13c8548f851d91de830831572",
+    "worker_lookup": "a31de5324e4af1eb371a638214fc2ce08b08ff2b5448ab9f159a1f7ba9fab80b"
+  },
+  "rubric_version": "4",
+  "case_scores": [
+    {
+      "case_id": "finance-agent-bench:1167a2e783bf",
+      "task_completion": false,
+      "answer_score": 0.0,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 0.7857142857142857,
+      "rubric_scores": {
+        "answer_correctness": 0.0,
+        "evidence_grounding": 0.0,
+        "tool_efficiency": 0.0
+      },
+      "cost_eur": 0.24641280000000002,
+      "elapsed_ms": 251471,
+      "notes": "runtime error: wall-clock budget of 240.0s exceeded; N/A: no expected_tool_path for this case",
+      "tool_names": [
+        "list_companies",
+        "list_companies",
+        "search_knowledge",
+        "search_knowledge",
+        "search_knowledge",
+        "search_filings",
+        "search_knowledge",
+        "search_knowledge",
+        "search_knowledge",
+        "list_companies",
+        "list_companies",
+        "search_knowledge",
+        "search_knowledge",
+        "search_knowledge"
+      ],
+      "claim_support_rate": null,
+      "citation_precision": null
+    }
+  ],
+  "aggregate": {
+    "case_count": 1.0,
+    "task_completion_rate": 0.0,
+    "answer_score_mean": 0.0,
+    "tool_call_accuracy_mean": 0.7857142857142857,
+    "elapsed_ms_mean": 251471.0,
+    "tool_path_applicable_count": 0.0,
+    "agent_cost_eur": 0.24641280000000002,
+    "judge_cost_eur": 0.0,
+    "tool_efficiency_mean": 0.0,
+    "evidence_grounding_mean": 0.0,
+    "answer_correctness_mean": 0.0
+  },
+  "total_cost_eur": 0.24641280000000002,
+  "tool_data_snapshot": "20260928-173c57a28fbf-keb7c46d7bfe6-sb9f40bee",
+  "retrieval_labels_hash": null,
+  "routing": false
+}
