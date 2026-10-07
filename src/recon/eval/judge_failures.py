@@ -7,18 +7,25 @@ limit). A session limit stops the run before its next case instead, since
 every later call would fail the same way.
 
 The SDK has no typed field for the session limit. It reaches us as the CLI's
-own text ("You've hit your session limit · resets 6:50pm" on 2026-10-07) or as
-an HTTP 429, so this matches on both.
+own text ("You've hit your session limit · resets 6:50pm" on 2026-10-07, or
+another window's name in place of "session") or as an HTTP 429, so this
+matches on both.
 """
+
+import re
 
 from claude_agent_sdk import ProcessError, ResultError
 
 from recon.contracts import AgentResult, CaseScore
+from recon.eval.judge import JudgeOutputError
 
 # What a judge call can raise that ends only that call.
-JUDGE_ERRORS = (ProcessError,)
+JUDGE_ERRORS = (ProcessError, JudgeOutputError)
 
 _SESSION_LIMIT_MARKERS = ("session limit", "usage limit", "rate limit", "rate_limit")
+# The CLI also names the window: "You've hit your weekly limit", "hit your
+# Opus limit".
+_HIT_A_LIMIT = re.compile(r"\bhit your [\w ]{0,30}limit\b")
 _TOO_MANY_REQUESTS = 429
 
 
@@ -27,10 +34,12 @@ def is_session_limit(text: str | None) -> bool:
     if not text:
         return False
     lowered = text.lower()
-    return any(marker in lowered for marker in _SESSION_LIMIT_MARKERS)
+    return any(marker in lowered for marker in _SESSION_LIMIT_MARKERS) or bool(
+        _HIT_A_LIMIT.search(lowered)
+    )
 
 
-def error_is_session_limit(exc: ProcessError) -> bool:
+def error_is_session_limit(exc: Exception) -> bool:
     """`is_session_limit` for a raised SDK error, using its HTTP status too."""
     if isinstance(exc, ResultError) and exc.api_error_status == _TOO_MANY_REQUESTS:
         return True

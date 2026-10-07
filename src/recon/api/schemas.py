@@ -121,6 +121,9 @@ class EvalSummary(BaseModel):
     answer_score_mean: float | None
     total_cost_eur: float
     cost_per_correct_answer_eur: float | None
+    # What the run left unmeasured (#123): its answer_score_mean then includes
+    # placeholder zeros, and the gate refuses it. Empty for a complete run.
+    incomplete: list[str] = []
 
 
 class EvalList(BaseModel):

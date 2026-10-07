@@ -5,6 +5,7 @@ message stream — no real model call, no network, no cost — same pattern
 `tests/test_runtimes.py` uses for the investigator runtime.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -211,3 +212,23 @@ def test_judge_case_skips_model_call_when_no_items(tmp_path: Path) -> None:
 
     assert result.rubric_scores == {"answer_correctness": 1.0}
     assert result.cost_eur == 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "message",
+    [
+        _result_message(is_error=True, subtype="error_during_execution"),
+        _result_message(structured_output=None),
+    ],
+    ids=["error-result", "no-structured-output"],
+)
+def test_a_judge_run_without_usable_output_raises_a_judge_error(
+    monkeypatch: pytest.MonkeyPatch, message: ResultMessage
+) -> None:
+    """#123: the harness catches JudgeOutputError, so these can't crash a run."""
+    _patch_query(monkeypatch, message)
+    options = ClaudeAgentOptions()
+
+    with pytest.raises(judge.JudgeOutputError):
+        asyncio.run(judge.structured_query("prompt", options, "results"))

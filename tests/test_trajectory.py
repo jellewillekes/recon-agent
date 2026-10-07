@@ -274,3 +274,38 @@ def test_a_wrong_answer_from_usable_results_is_reasoning() -> None:
 
     assert failure == "reasoning"
     assert reason == "the tools returned data, but the answer scored 0.30, below 0.5"
+
+
+def test_a_replay_that_returns_nothing_leaves_retrieval_unscored() -> None:
+    """Only searches that returned rows are replayed, so an empty replay means
+    the index was unreachable, not that the agent found nothing (review)."""
+    result = _result([_call("search_knowledge", query="q")])
+
+    score = _score(result, passages=_passages({"q": []}), relevant=["a"])
+
+    assert score.retrieval_quality is None
+
+
+def test_a_labelled_case_that_never_searched_text_is_not_a_retrieval_failure() -> None:
+    result = _result([_call("get_financial_fact")])
+    score = _score(result, passages=_passages({}), relevant=["a"])
+
+    failure, _ = _classify(result, score=score, answer_score=0.2)
+
+    assert failure == "reasoning"
+
+
+def test_no_answer_without_an_error_is_a_runtime_error() -> None:
+    assert _classify(_result([_call("search_filings")], answer="")) == (
+        "runtime_error",
+        "the run returned no answer",
+    )
+
+
+def test_a_session_limit_is_not_the_agents_failure() -> None:
+    error = "Claude Code returned an error result: You've hit your session limit"
+
+    assert _classify(_result([], answer="", error=error)) == (
+        None,
+        "the run hit the subscription's session limit",
+    )

@@ -98,16 +98,18 @@ def run_evaluation(
             retrieval_labels=retrieval_labels,
             correct_answer_score=correct_answer_score,
         )
-        run_span.set_attributes(
-            {
-                "recon.run_id": run.run_id,
-                "recon.runtime": run.runtime,
-                "recon.mode": run.mode,
-                "recon.total_cost_eur": run.total_cost_eur,
-                **{f"recon.{key}": value for key, value in run.aggregate.items()},
-            }
-        )
+        run_span.set_attributes(_run_attributes(run))
     return run
+
+
+def _run_attributes(run: EvalRun) -> dict[str, str | float]:
+    return {
+        "recon.run_id": run.run_id,
+        "recon.runtime": run.runtime,
+        "recon.mode": run.mode,
+        "recon.total_cost_eur": run.total_cost_eur,
+        **{f"recon.{key}": value for key, value in run.aggregate.items()},
+    }
 
 
 def _run_cases(
@@ -184,17 +186,14 @@ def _evaluate(
         retrieval_labels=retrieval_labels,
         correct_answer_score=correct_answer_score,
     )
-    run_cases = cases[: len(case_scores)]
-    aggregate = aggregate_scores(run_cases, case_scores, agent_cost_eur)
-    if len(case_scores) < len(cases):
-        skipped = SKIPPED_AT_SESSION_LIMIT if session_limit else SKIPPED_AT_COST_CAP
-        aggregate[skipped] = float(len(cases) - len(case_scores))
+    aggregate = {
+        **aggregate_scores(cases[: len(case_scores)], case_scores, agent_cost_eur),
+        **_skip_markers(len(cases), len(case_scores), session_limit),
+    }
 
-    model_config_hash = (
-        hashing.compute_model_config_hash(models_config_path, roles_config_path)
-        if mode == "multi"
-        else hashing.compute_model_config_hash(models_config_path)
-    )
+    # Multi mode also reads config/roles.yaml, so it's part of the hash.
+    roles = [roles_config_path] if mode == "multi" else []
+    model_config_hash = hashing.compute_model_config_hash(models_config_path, *roles)
 
     return EvalRun(
         run_id=_run_id(),
@@ -212,6 +211,16 @@ def _evaluate(
         total_cost_eur=sum(s.cost_eur for s in case_scores),
         tool_data_snapshot=tool_data_snapshot,
     )
+
+
+def _skip_markers(requested: int, scored: int, session_limit: bool) -> dict[str, float]:
+    """The aggregate marker for cases the run didn't measure. A session limit
+    also counts the case it cut short, which is the last one scored (#123)."""
+    if session_limit:
+        return {SKIPPED_AT_SESSION_LIMIT: float(requested - scored + 1)}
+    if scored < requested:
+        return {SKIPPED_AT_COST_CAP: float(requested - scored)}
+    return {}
 
 
 def with_cost_per_correct_answer(

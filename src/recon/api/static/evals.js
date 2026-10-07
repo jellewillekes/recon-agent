@@ -20,6 +20,13 @@ const METRIC_LABELS = {
   elapsed_ms_mean: "Time per case",
 };
 
+// Aggregate markers of cases a run didn't measure (#123), as in eval/gate.py.
+const INCOMPLETE_KEYS = {
+  cases_skipped_at_cost_cap: "case(s) not run at the cost cap",
+  cases_skipped_at_session_limit: "case(s) cut short or not run at the session limit",
+  cases_judge_failed: "case(s) the judge couldn't score",
+};
+
 // Failure classes (#116, ADR 0031), in the order they're checked.
 const FAILURE_LABELS = {
   budget: "Budget",
@@ -89,12 +96,33 @@ function renderEvalTable(runs) {
       run.rubric_version,
       String(run.case_count),
       percent(run.task_completion_rate),
-      number(run.answer_score_mean),
+      run.incomplete.length ? incompleteMean(run) : number(run.answer_score_mean),
       formatCost(run.total_cost_eur),
       run.cost_per_correct_answer_eur == null ? "—" : formatCost(run.cost_per_correct_answer_eur),
     ]));
   }
   evalTable.replaceChildren(head, body);
+}
+
+// A run that didn't score every case: its mean includes placeholder zeros.
+function incompleteMean(run) {
+  const cell = element("span", "", number(run.answer_score_mean) + " ");
+  const flag = element("span", "failure", "incomplete");
+  flag.dataset.failure = "runtime_error";
+  flag.title = run.incomplete.join("; ");
+  cell.append(flag);
+  return cell;
+}
+
+function incompleteWarning(aggregate) {
+  const reasons = Object.entries(INCOMPLETE_KEYS)
+    .filter(([key]) => aggregate[key])
+    .map(([key, text]) => aggregate[key] + " " + text);
+  if (!reasons.length) return null;
+  const box = element("div", "result-warning");
+  box.append(element("strong", "", "Not every case was scored. "));
+  box.append(document.createTextNode("The means include placeholder zeros, and the gate won't compare this run: " + reasons.join("; ") + "."));
+  return box;
 }
 
 // Defaults to the newest routing-off and routing-on multi runs, the
@@ -255,7 +283,8 @@ function renderEvalDetail(run) {
   const scroll = element("div", "table-scroll");
   scroll.append(table);
   const failures = renderFailureCounts(run.aggregate);
-  evalDetail.replaceChildren(...[meta, summary, failures, scroll].filter(Boolean));
+  const warning = incompleteWarning(run.aggregate);
+  evalDetail.replaceChildren(...[meta, warning, summary, failures, scroll].filter(Boolean));
 }
 
 compareForm.addEventListener("submit", compareRuns);

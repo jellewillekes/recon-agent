@@ -1,6 +1,7 @@
 """Markdown summary for an `EvalRun`, written alongside its JSON record."""
 
 from recon.contracts import EvalRun
+from recon.eval.gate import incomplete_reasons
 
 
 def render_markdown(run: EvalRun) -> str:
@@ -24,6 +25,8 @@ def render_markdown(run: EvalRun) -> str:
         "",
         "## Aggregate",
         "",
+        *[f"Not comparable: {reason}." for reason in incomplete_reasons(run)],
+        "",
         "| Metric | Value |",
         "|---|---|",
     ]
@@ -35,17 +38,19 @@ def render_markdown(run: EvalRun) -> str:
         "## Per-case",
         "",
         (
-            "| case_id | task_completion | answer_score | tool_call_accuracy "
-            "| cost_eur | tools | notes |"
+            "| case_id | task_completion | answer_score | failure_class "
+            "| tool_call_accuracy | cost_eur | tools | notes |"
         ),
-        "|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for score in run.case_scores:
         notes = score.notes.replace("|", "/") or "-"
         tools = ", ".join(score.tool_names) or "-"
+        answer = "unscored" if score.judge_failed else f"{score.answer_score:.2f}"
         lines.append(
-            f"| {score.case_id} | {score.task_completion} | {score.answer_score:.2f} | "
-            f"{score.tool_call_accuracy:.2f} | {score.cost_eur:.4f} | {tools} | {notes} |"
+            f"| {score.case_id} | {score.task_completion} | {answer} | "
+            f"{score.failure_class or '-'} | {score.tool_call_accuracy:.2f} | "
+            f"{score.cost_eur:.4f} | {tools} | {notes} |"
         )
 
     return "\n".join(lines) + "\n"

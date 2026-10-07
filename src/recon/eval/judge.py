@@ -193,27 +193,32 @@ def _build_options(judge_config: dict[str, Any]) -> ClaudeAgentOptions:
     )
 
 
+class JudgeOutputError(RuntimeError):
+    """A judge run that ended without usable structured output (#123)."""
+
+
 async def structured_query(
     prompt: str, options: ClaudeAgentOptions, required_key: str
 ) -> StructuredCall:
     """Run one judge query and return its structured output, which must hold
-    `required_key`. Raises when the run fails or returns no such output."""
+    `required_key`. Raises `JudgeOutputError` when the run fails or returns no
+    such output."""
     result_message: ResultMessage | None = None
     async for message in query(prompt=prompt, options=options):
         if isinstance(message, ResultMessage):
             result_message = message
 
     if result_message is None:
-        raise RuntimeError("judge query stream ended without a ResultMessage.")
+        raise JudgeOutputError("judge query stream ended without a ResultMessage.")
     if result_message.is_error:
-        raise RuntimeError(
+        raise JudgeOutputError(
             f"judge run failed: subtype={result_message.subtype!r} "
             f"errors={result_message.errors!r}"
         )
 
     structured = result_message.structured_output
     if not isinstance(structured, dict) or required_key not in structured:
-        raise TypeError(
+        raise JudgeOutputError(
             f"judge run produced no structured output (subtype={result_message.subtype!r})."
         )
     usage = result_message.usage or {}

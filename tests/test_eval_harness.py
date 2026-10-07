@@ -581,7 +581,8 @@ def test_a_session_limit_in_the_judge_stops_the_run_and_keeps_the_scored_cases(
     assert "session limit" in second.notes
     # The agent's share of c2 was spent, so it still counts.
     assert run.total_cost_eur == pytest.approx(0.012 + 0.01)
-    assert run.aggregate[gate.SKIPPED_AT_SESSION_LIMIT] == 1.0
+    # c2, which the limit cut short, and c3, which never ran.
+    assert run.aggregate[gate.SKIPPED_AT_SESSION_LIMIT] == 2.0
     assert run.aggregate[gate.CASES_JUDGE_FAILED] == 1.0
 
 
@@ -636,8 +637,44 @@ def test_a_session_limit_in_the_agent_stops_the_run_after_that_case(
     run = _run_ids(["c1", "c2", "c3"], runtime)
 
     assert [s.case_id for s in run.case_scores] == ["c1", "c2"]
-    assert run.aggregate[gate.SKIPPED_AT_SESSION_LIMIT] == 1.0
+    assert run.aggregate[gate.SKIPPED_AT_SESSION_LIMIT] == 2.0
     assert gate.CASES_JUDGE_FAILED not in run.aggregate
+
+
+@pytest.mark.unit
+def test_a_session_limit_on_the_last_case_still_marks_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review of #123: with no case left to skip, the run looked complete and
+    the cut-short case counted as a real runtime error."""
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+    limited = f"Claude Code returned an error result: {SESSION_LIMIT_TEXT}"
+    runtime = _FakeRuntime(
+        {
+            "c1": _agent_result(case_id="c1"),
+            "c2": _agent_result(case_id="c2", answer="", error=limited),
+        }
+    )
+
+    run = _run_ids(["c1", "c2"], runtime)
+
+    assert len(run.case_scores) == 2
+    assert run.aggregate[gate.SKIPPED_AT_SESSION_LIMIT] == 1.0
+    assert run.case_scores[1].failure_class is None
+
+
+@pytest.mark.unit
+def test_a_judge_without_usable_output_unscores_the_case(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from recon.eval.judge import JudgeOutputError
+
+    _patch_failing_judge(monkeypatch, "c1", JudgeOutputError("no structured output"))
+
+    run = _run_ids(["c1", "c2"])
+
+    assert run.case_scores[0].judge_failed is True
+    assert len(run.case_scores) == 2
 
 
 @pytest.mark.unit
@@ -685,6 +722,8 @@ def test_score_case_raises_with_the_scored_case_at_a_session_limit(
         (SESSION_LIMIT_TEXT, True),
         ("Claude AI usage limit reached|1760000000", True),
         ("API Error: 429 rate_limit_error", True),
+        ("You've hit your weekly limit · resets Mon 9am", True),
+        ("Claude Code returned an error result: hit your Opus limit", True),
         ("API Error: overloaded", False),
         ("tool-call budget of 12 exceeded", False),
     ],

@@ -15,8 +15,8 @@ from recon.eval.thresholds import GateThresholds
 # case. Such a run didn't measure its whole case set, so the gate refuses it
 # as a candidate and as a baseline.
 SKIPPED_AT_COST_CAP = "cases_skipped_at_cost_cap"
-# Set when the subscription's session limit stopped a run before its last case
-# (#123). Refused the same way as a capped run.
+# Cases the subscription's session limit cut short or kept from running (#123).
+# Refused the same way as a capped run.
 SKIPPED_AT_SESSION_LIMIT = "cases_skipped_at_session_limit"
 # Cases whose rubric judge call failed (#123). Their answer_score is a
 # placeholder 0.0, not a measurement, so the run is refused the same way.
@@ -25,9 +25,21 @@ CASES_JUDGE_FAILED = "cases_judge_failed"
 # Aggregate key -> how a run with that many cases unmeasured is described.
 _INCOMPLETE_RUN = {
     SKIPPED_AT_COST_CAP: "stopped at its cost cap with {n} case(s) not run",
-    SKIPPED_AT_SESSION_LIMIT: "stopped at the session limit with {n} case(s) not run",
+    SKIPPED_AT_SESSION_LIMIT: (
+        "stopped at the session limit with {n} case(s) cut short or not run"
+    ),
     CASES_JUDGE_FAILED: "has {n} case(s) the judge couldn't score",
 }
+
+
+def incomplete_reasons(run: EvalRun) -> list[str]:
+    """What `run` left unmeasured, one line per marker in its aggregate.
+    Empty for a complete run."""
+    return [
+        template.format(n=f"{count:.0f}")
+        for key, template in _INCOMPLETE_RUN.items()
+        if (count := run.aggregate.get(key))
+    ]
 
 
 def incomplete_run_failures(run: EvalRun, side: str) -> list[str]:
@@ -40,10 +52,8 @@ def incomplete_run_failures(run: EvalRun, side: str) -> list[str]:
         "cases, or after the session limit resets."
     )
     return [
-        f"the {side} run {template.format(n=f'{count:.0f}')}, so it didn't "
-        f"measure its whole case set. {rerun}"
-        for key, template in _INCOMPLETE_RUN.items()
-        if (count := run.aggregate.get(key))
+        f"the {side} run {reason}, so it didn't measure its whole case set. {rerun}"
+        for reason in incomplete_reasons(run)
     ]
 
 

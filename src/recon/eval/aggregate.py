@@ -44,23 +44,9 @@ def aggregate_scores(
         ) / len(applicable)
 
     aggregate.update(_citation_aggregate(case_scores))
-    judge_failed = sum(s.judge_failed for s in case_scores)
-    if judge_failed:
-        aggregate[CASES_JUDGE_FAILED] = float(judge_failed)
     aggregate.update(_failure_counts(case_scores))
 
-    dimension_names = {d for s in case_scores for d in s.rubric_scores}
-    for dimension in dimension_names:
-        values = [
-            s.rubric_scores[dimension]
-            for s in case_scores
-            if dimension in s.rubric_scores
-        ]
-        aggregate[f"{dimension}_mean"] = sum(values) / len(values)
-        if dimension == faithfulness.DIMENSION:
-            # Scored only on cases that searched, so the mean may rest on few.
-            aggregate["faithfulness_scored_cases"] = float(len(values))
-
+    aggregate.update(_dimension_means(case_scores))
     return aggregate
 
 
@@ -78,12 +64,33 @@ def _citation_aggregate(case_scores: list[CaseScore]) -> dict[str, float]:
 
 
 def _failure_counts(case_scores: list[CaseScore]) -> dict[str, float]:
-    """Cases per failure class, over the cases that have one (#116)."""
+    """Cases the judge couldn't score (#123), and cases per failure class over
+    the cases that have one (#116)."""
+    judge_failed = sum(s.judge_failed for s in case_scores)
+    unjudged = {CASES_JUDGE_FAILED: float(judge_failed)} if judge_failed else {}
     classified = [s.failure_class for s in case_scores if s.failure_class is not None]
     if not classified:
-        return {}
+        return unjudged
     counts = {
         f"failure_{name}_count": float(classified.count(name))
         for name in sorted(set(classified))
     }
-    return {**counts, "failure_classified_cases": float(len(classified))}
+    return {**unjudged, **counts, "failure_classified_cases": float(len(classified))}
+
+
+def _dimension_means(case_scores: list[CaseScore]) -> dict[str, float]:
+    """Each rubric dimension's mean over the cases that scored it."""
+    aggregate: dict[str, float] = {}
+    dimension_names = {d for s in case_scores for d in s.rubric_scores}
+    for dimension in dimension_names:
+        values = [
+            s.rubric_scores[dimension]
+            for s in case_scores
+            if dimension in s.rubric_scores
+        ]
+        aggregate[f"{dimension}_mean"] = sum(values) / len(values)
+        if dimension == faithfulness.DIMENSION:
+            # Scored only on cases that searched, so the mean may rest on few.
+            aggregate["faithfulness_scored_cases"] = float(len(values))
+
+    return aggregate

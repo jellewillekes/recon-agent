@@ -19,6 +19,7 @@ from recon.contracts import (
     TrajectoryScore,
 )
 from recon.eval import faithfulness, metrics, retrieval
+from recon.eval.judge_failures import is_session_limit
 
 GROUNDING_DIMENSION = "evidence_grounding"
 CORRECTNESS_DIMENSION = "answer_correctness"
@@ -71,10 +72,17 @@ def _tool_selection(case: Case, agent_result: AgentResult) -> float | None:
 
 def _retrieval_quality(
     agent_result: AgentResult, passages: faithfulness.Passages, relevant: set[str]
-) -> RetrievalQuality:
-    retrieved = [
-        passage["chunk_id"] for passage in faithfulness.replay(agent_result, passages)
-    ]
+) -> RetrievalQuality | None:
+    """None when a replayed search comes back empty. Only searches that
+    returned rows are replayed, so that means the index was unreachable or has
+    changed, not that the agent found nothing."""
+    seen: dict[str, None] = {}
+    for query, top_k, company_id in faithfulness.searched_queries(agent_result):
+        found = passages(query, top_k, company_id)
+        if not found:
+            return None
+        seen.update(dict.fromkeys(passage["chunk_id"] for passage in found))
+    retrieved = list(seen)
     return RetrievalQuality(
         recall=retrieval.recall_at_k(retrieved, relevant, k=len(retrieved)),
         precision_at_5=retrieval.precision_at_k(retrieved, relevant),
@@ -133,10 +141,12 @@ def classify_failure(
     "none" when the answer reached the cutoff. No class when the case wasn't
     scored. The checks run in ADR 0031's order: the first that applies wins."""
     error = agent_result.error
+    if is_session_limit(error):
+        return None, "the run hit the subscription's session limit"
     if error and all(marker in error for marker in _BUDGET_MARKERS):
         return "budget", error
-    if error and not agent_result.answer.strip():
-        return "runtime_error", error
+    if not agent_result.answer.strip():
+        return "runtime_error", error or "the run returned no answer"
     if judge_failed:
         return None, "the judge couldn't score this case"
     if correct_answer_score is None:
@@ -163,7 +173,8 @@ def _wrong_answer_class(
     if not calls:
         return "tool_use", "answered without calling a tool"
     quality = trajectory.retrieval_quality
-    if quality is not None and quality.recall == 0.0:
+    searched = any(call.tool == faithfulness.SEARCH_TOOL for call in calls)
+    if searched and quality is not None and quality.recall == 0.0:
         return "retrieval", "none of the labelled passages were retrieved"
     if all(call.status == "empty" for call in calls):
         return "retrieval", "every lookup came back empty"

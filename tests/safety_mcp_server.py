@@ -32,6 +32,35 @@ def _filing_row(company_id: str, vector: str) -> dict[str, Any]:
     return row
 
 
+def flag_case_for_review_tool(
+    case_id: str,
+    reason: str,
+    idempotency_key: str,
+    dry_run: bool = False,
+    confirmed: bool = False,
+    preview_token: str | None = None,
+) -> dict[str, Any]:
+    """Simulate the write protocol while keeping all writes disabled."""
+    if confirmed:
+        return {
+            "status": "unavailable",
+            "flag": None,
+            "message": "Writes are disabled in this test double.",
+            "preview_token": None,
+        }
+    status = "would_write" if dry_run else "confirmation_required"
+    return {
+        "status": status,
+        "flag": {
+            "case_id": case_id,
+            "reason": reason,
+            "idempotency_key": idempotency_key,
+        },
+        "message": "Synthetic preview; no write was made.",
+        "preview_token": None if dry_run else "synthetic-preview-token",
+    }
+
+
 def build_server(vector: str = "tool_output") -> FastMCP:
     """The double with `vector`'s payload planted. Raises KeyError for an
     unknown vector; `adversarial_cases.VECTORS` lists them."""
@@ -63,35 +92,7 @@ def build_server(vector: str = "tool_output") -> FastMCP:
             "elapsed_ms": 1,
         }
 
-    @server.tool()
-    def flag_case_for_review_tool(
-        case_id: str,
-        reason: str,
-        idempotency_key: str,
-        dry_run: bool = False,
-        confirmed: bool = False,
-        preview_token: str | None = None,
-    ) -> dict[str, Any]:
-        """Simulate the write protocol while keeping all writes disabled."""
-        if confirmed:
-            return {
-                "status": "unavailable",
-                "flag": None,
-                "message": "Writes are disabled in this test double.",
-                "preview_token": None,
-            }
-        status = "would_write" if dry_run else "confirmation_required"
-        return {
-            "status": status,
-            "flag": {
-                "case_id": case_id,
-                "reason": reason,
-                "idempotency_key": idempotency_key,
-            },
-            "message": "Synthetic preview; no write was made.",
-            "preview_token": None if dry_run else "synthetic-preview-token",
-        }
-
+    server.tool()(flag_case_for_review_tool)
     return server
 
 

@@ -262,7 +262,7 @@ def test_verdicts_name_a_change_beyond_the_noise() -> None:
     [
         (
             SKIPPED_AT_SESSION_LIMIT,
-            "stopped at the session limit with 2 case(s) not run",
+            "stopped at the session limit with 2 case(s) cut short or not run",
         ),
         (CASES_JUDGE_FAILED, "has 2 case(s) the judge couldn't score"),
     ],

@@ -677,7 +677,9 @@ def test_cmd_eval_passes_the_labels_when_a_search_index_is_reachable(
     monkeypatch.setattr(
         cli.cli_retrieval, "with_retrieval_metrics", lambda run, cases, index: run
     )
-    monkeypatch.setattr(cli.retrieval, "load_labels", lambda: {"1": ["chunk-a"]})
+    monkeypatch.setattr(
+        cli.cli_retrieval.retrieval, "load_labels", lambda: {"1": ["chunk-a"]}
+    )
     args = build_parser().parse_args(["eval", "--limit", "1"])
     args.func(args)
     assert "retrieval_labels={'1': ['chunk-a']}" in seen["options"]
@@ -759,8 +761,8 @@ def test_cmd_eval_exits_nonzero_when_the_cap_stopped_the_run(
 @pytest.mark.parametrize(
     ("key", "message"),
     [
-        (SKIPPED_AT_SESSION_LIMIT, "session limit before 2 case"),
-        (CASES_JUDGE_FAILED, "judge couldn't score 2 case"),
+        (SKIPPED_AT_SESSION_LIMIT, "session limit with 2 case"),
+        (CASES_JUDGE_FAILED, "has 2 case.s. the judge couldn't score"),
     ],
 )
 def test_cmd_eval_writes_the_run_and_exits_nonzero_when_cases_went_unscored(

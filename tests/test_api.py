@@ -282,6 +282,9 @@ async def test_ui_assets_are_served_and_submit_to_investigate() -> None:
     assert "score.failure_class" in evals.text
     assert "score.trajectory" in evals.text
     assert "renderFailureCounts(run.aggregate)" in evals.text
+    # Review of #123: a run that didn't score every case says so.
+    assert "incompleteWarning(run.aggregate)" in evals.text
+    assert "run.incomplete.length" in evals.text
     # #122 review: run history still loads when /capabilities can't be read.
     assert "loadHistoryWithoutCapabilities()" in javascript.text
     assert "function loadHistoryWithoutCapabilities()" in history.text
