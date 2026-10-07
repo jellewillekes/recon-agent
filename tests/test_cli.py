@@ -267,7 +267,9 @@ def test_build_runtime_langgraph_multi_builds_a_multi_mode_runtime() -> None:
 
 @pytest.mark.unit
 def test_cmd_eval_gate_passes_prints_message(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _patch_dataset_loading(monkeypatch)
     monkeypatch.setattr(
@@ -281,6 +283,10 @@ def test_cmd_eval_gate_passes_prints_message(
 
     args = build_parser().parse_args(["eval", "--baseline", str(baseline_path)])
     args.func(args)  # must not raise
+
+    out = capsys.readouterr().out
+    assert "Gate: answer_score_mean same" in out
+    assert "Gate passed." in out
 
 
 @pytest.mark.unit
@@ -717,7 +723,7 @@ def test_cmd_cases_prints_ids_spread_across_companies(
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "content",
-    ["gate: [unclosed\n", "gate: {answer_score_max_relative_drop: 0.02}\n"],
+    ["gate: [unclosed\n", "gate: {answer_score_noise_band: 0.1}\n"],
     ids=["bad-yaml", "missing-limit"],
 )
 def test_cmd_eval_refuses_a_broken_thresholds_file_before_running(

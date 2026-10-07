@@ -230,7 +230,8 @@ changes can be checked cheaply. A full run would cost far more.
 ### Promotion gate
 
 The check that decides whether a change, such as a new prompt or model setting, can be
-promoted without making things worse than the baseline. It fails if task completion drops, if the answer score drops more than 2%, or if cost rises
+promoted without making things worse than the baseline. It fails if task completion drops by more than one case, if the answer score drops by more
+than 0.10, or if cost rises
 more than 20% without better completion ([`eval/gate.py`](../src/recon/eval/gate.py)).
 Passing doesn't replace the baseline. A new baseline only comes through its own PR.
 

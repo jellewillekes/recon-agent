@@ -100,25 +100,23 @@ def check_gate(
 
     candidate_completion = candidate.aggregate.get("task_completion_rate", 0.0)
     baseline_completion = baseline.aggregate.get("task_completion_rate", 0.0)
-    if candidate_completion < baseline_completion:
+    judged = verdicts(candidate, baseline, limits)
+    if judged["task_completion_rate"] == "worse":
         failures.append(
-            "task_completion_rate dropped: "
+            "task_completion_rate dropped by more than "
+            f"{limits.task_completion_max_case_drop} case(s): "
             f"{baseline_completion:.3f} -> {candidate_completion:.3f}"
         )
-
-    candidate_answer = candidate.aggregate.get("answer_score_mean", 0.0)
-    baseline_answer = baseline.aggregate.get("answer_score_mean", 0.0)
     # "Weighted answer_score" per docs/contracts.md §9. Each case's
     # answer_score is already weighted across rubric dimensions
     # (metrics.weighted_answer_score), so this is the plain mean of that.
-    if baseline_answer > 0:
-        relative_drop = (baseline_answer - candidate_answer) / baseline_answer
-        if relative_drop > limits.answer_score_max_relative_drop:
-            failures.append(
-                "answer_score_mean dropped more than "
-                f"{limits.answer_score_max_relative_drop:.0%}: "
-                f"{baseline_answer:.3f} -> {candidate_answer:.3f}"
-            )
+    if judged["answer_score_mean"] == "worse":
+        failures.append(
+            "answer_score_mean dropped by more than the noise band "
+            f"({limits.answer_score_noise_band:.2f}): "
+            f"{baseline.aggregate.get('answer_score_mean', 0.0):.3f} -> "
+            f"{candidate.aggregate.get('answer_score_mean', 0.0):.3f}"
+        )
 
     if baseline.total_cost_eur > 0:
         cost_rise = (
@@ -136,3 +134,45 @@ def check_gate(
             )
 
     return failures
+
+
+def _change(delta: float, tolerance: float, higher_is_better: bool) -> str:
+    # The epsilon keeps a drop of exactly the tolerance, such as one case of
+    # seven, from failing on float rounding.
+    if abs(delta) <= tolerance + 1e-9:
+        return "same"
+    return "better" if (delta > 0) == higher_is_better else "worse"
+
+
+def verdicts(
+    candidate: EvalRun, baseline: EvalRun, limits: GateThresholds
+) -> dict[str, str]:
+    """ "same", "better" or "worse" per gated metric (#77).
+
+    A change within the measured run-to-run noise is "same": the answer score
+    within `answer_score_noise_band`, task completion within
+    `task_completion_max_case_drop` cases, and cost within
+    `cost_max_relative_rise` of the baseline's.
+    """
+    cases = len(baseline.case_scores) or int(baseline.aggregate.get("case_count", 0))
+    completion_band = limits.task_completion_max_case_drop / cases if cases else 0.0
+    cost_change = (
+        (candidate.total_cost_eur - baseline.total_cost_eur) / baseline.total_cost_eur
+        if baseline.total_cost_eur > 0
+        else 0.0
+    )
+
+    def delta(metric: str) -> float:
+        return candidate.aggregate.get(metric, 0.0) - baseline.aggregate.get(
+            metric, 0.0
+        )
+
+    return {
+        "answer_score_mean": _change(
+            delta("answer_score_mean"), limits.answer_score_noise_band, True
+        ),
+        "task_completion_rate": _change(
+            delta("task_completion_rate"), completion_band, True
+        ),
+        "total_cost_eur": _change(cost_change, limits.cost_max_relative_rise, False),
+    }

@@ -175,7 +175,7 @@ flowchart TB
     CAP -- all cases done --> AGG
 
     AGG[EvalRun<br/>aggregates, rubric version,<br/>prompt + model config hashes,<br/>tool data snapshot] --> FILE[(evals/results/*.json + .md)]
-    AGG --> THR{"Gate, with --baseline:<br/>task completion not lower<br/>answer_score drop ≤ 2%<br/>cost rise ≤ 20% unless completion rose"}
+    AGG --> THR{"Gate, with --baseline:<br/>task completion drop ≤ 1 case<br/>answer_score drop ≤ 0.10<br/>cost rise ≤ 20% unless completion rose"}
     THR -- pass --> PROMO([promotable])
     THR -- fail --> REG([regression, exit ≠ 0])
 ```

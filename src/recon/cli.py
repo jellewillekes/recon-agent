@@ -17,7 +17,12 @@ from recon.adapters.finance_agent_bench import (
 )
 from recon.contracts import Case, EvalRun
 from recon.eval import case_selection
-from recon.eval.gate import SKIPPED_AT_COST_CAP, check_gate, comparability_failures
+from recon.eval.gate import (
+    SKIPPED_AT_COST_CAP,
+    check_gate,
+    comparability_failures,
+    verdicts,
+)
 from recon.eval.harness import (
     RUBRIC_VERSION,
     run_evaluation,
@@ -221,6 +226,8 @@ def _cmd_eval(args: argparse.Namespace) -> None:
         )
 
     if baseline is not None:
+        for metric, verdict in verdicts(run, baseline, thresholds.gate).items():
+            print(f"Gate: {metric} {verdict} against the baseline")
         failures = check_gate(run, baseline, thresholds.gate)
         if failures:
             for failure in failures:
