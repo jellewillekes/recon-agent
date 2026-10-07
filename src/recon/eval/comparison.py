@@ -8,7 +8,11 @@ the reasons instead of verdicts (ADR 0018).
 from pydantic import BaseModel
 
 from recon.contracts import EvalRun
-from recon.eval.gate import comparability_failures, verdicts
+from recon.eval.gate import (
+    comparability_failures,
+    incomplete_run_failures,
+    verdicts,
+)
 from recon.eval.thresholds import GateThresholds
 
 SETTINGS = ("runtime", "mode", "routing", "rubric_version", "model_config_hash")
@@ -87,7 +91,7 @@ def compare_runs(
         tool_data_snapshot=candidate.tool_data_snapshot,
         case_ids=[score.case_id for score in candidate.case_scores],
         baseline=baseline,
-    )
+    ) + incomplete_run_failures(candidate, "candidate")
     judged = {} if reasons else verdicts(candidate, baseline, limits)
     bands = _bands(limits)
     metrics = [

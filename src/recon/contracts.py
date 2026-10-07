@@ -191,6 +191,9 @@ class CaseScore(BaseModel):
     # verified. None when there's nothing to score, and on older results.
     claim_support_rate: float | None = Field(default=None, ge=0.0, le=1.0)
     citation_precision: float | None = Field(default=None, ge=0.0, le=1.0)
+    # The rubric judge call failed, so answer_score and rubric_scores are
+    # placeholders, not measurements (#123).
+    judge_failed: bool = False
 
 
 class EvalRun(BaseModel):

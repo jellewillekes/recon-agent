@@ -18,7 +18,9 @@ from recon.adapters.finance_agent_bench import (
 from recon.contracts import Case, EvalRun
 from recon.eval import case_selection
 from recon.eval.gate import (
+    CASES_JUDGE_FAILED,
     SKIPPED_AT_COST_CAP,
+    SKIPPED_AT_SESSION_LIMIT,
     check_gate,
     comparability_failures,
     verdicts,
@@ -233,6 +235,17 @@ def _cmd_eval(args: argparse.Namespace) -> None:
             f"Stopped at the €{args.max_cost_eur:.2f} cap before "
             f"{run.aggregate[SKIPPED_AT_COST_CAP]:.0f} case(s). The gate refuses "
             "this run; rerun with fewer cases or a higher --max-cost-eur."
+        )
+    if run.aggregate.get(SKIPPED_AT_SESSION_LIMIT):
+        raise SystemExit(
+            "Stopped at the subscription's session limit before "
+            f"{run.aggregate[SKIPPED_AT_SESSION_LIMIT]:.0f} case(s). The gate "
+            "refuses this run; rerun the cases after the limit resets."
+        )
+    if run.aggregate.get(CASES_JUDGE_FAILED):
+        raise SystemExit(
+            f"The judge couldn't score {run.aggregate[CASES_JUDGE_FAILED]:.0f} "
+            "case(s); their notes say why. The gate refuses this run; rerun it."
         )
 
     if baseline is not None:

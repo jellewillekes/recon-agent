@@ -18,7 +18,11 @@ from recon import cli, cli_edgar, cli_retrieval
 from recon.adapters.finance_agent_bench import DATASET_ID
 from recon.cli import build_parser, compute_dataset_stats
 from recon.contracts import Case, CaseScore, EvalRun
-from recon.eval.gate import SKIPPED_AT_COST_CAP
+from recon.eval.gate import (
+    CASES_JUDGE_FAILED,
+    SKIPPED_AT_COST_CAP,
+    SKIPPED_AT_SESSION_LIMIT,
+)
 from recon.eval.harness import RUBRIC_VERSION
 from recon.eval.thresholds import load_thresholds
 from recon.tools import data_source
@@ -700,6 +704,29 @@ def test_cmd_eval_exits_nonzero_when_the_cap_stopped_the_run(
     monkeypatch.chdir(tmp_path)
     args = build_parser().parse_args(["eval"])
     with pytest.raises(SystemExit, match="before 2 case"):
+        args.func(args)
+    assert (tmp_path / "evals" / "results" / "eval-fixed.json").exists()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("key", "message"),
+    [
+        (SKIPPED_AT_SESSION_LIMIT, "session limit before 2 case"),
+        (CASES_JUDGE_FAILED, "judge couldn't score 2 case"),
+    ],
+)
+def test_cmd_eval_writes_the_run_and_exits_nonzero_when_cases_went_unscored(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, key: str, message: str
+) -> None:
+    """#123: the cases that ran are kept on disk, and the exit says why the
+    gate will refuse the run."""
+    _patch_dataset_loading(monkeypatch)
+    incomplete = _eval_run(aggregate={"task_completion_rate": 1.0, key: 2.0})
+    monkeypatch.setattr(cli, "run_evaluation", lambda *a, **k: incomplete)
+    monkeypatch.chdir(tmp_path)
+    args = build_parser().parse_args(["eval"])
+    with pytest.raises(SystemExit, match=message):
         args.func(args)
     assert (tmp_path / "evals" / "results" / "eval-fixed.json").exists()
 
