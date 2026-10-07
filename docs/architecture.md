@@ -97,7 +97,7 @@ One investigator gets four read tools (`list_companies`, `list_financial_concept
 `get_financial_fact`, `search_filings`) plus `flag_case_for_review`, and answers with a
 structured `answer`, `evidence` and `confidence`. [Budgets](glossary.md#run-budget) in
 [`config/models.yaml`](../config/models.yaml) cap each run at 30 tool calls, 450k tokens
-and 150 seconds (240 in multi mode). A breach ends the run with a partial `AgentResult` instead of an
+and 150 seconds (300 in multi mode). A breach ends the run with a partial `AgentResult` instead of an
 exception ([ADR 0009](adr/0009-tool-reliability-and-run-budgets.md)).
 
 ### Multi mode

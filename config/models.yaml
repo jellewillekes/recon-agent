@@ -51,7 +51,7 @@ run_budget:
   # Well above a typical run's usage; catches a runaway loop, not normal cost.
   # 450k, up from 300k: a single-mode case used 349k on the text cases.
   max_tokens: 450000
-  # Under api/main.py's own RECON_API_REQUEST_TIMEOUT_S default (270s), so on
+  # Under api/main.py's own RECON_API_REQUEST_TIMEOUT_S default (330s), so on
   # a breach the run still ends with this budget's graceful partial
   # AgentResult instead of the API's blunter 504 with no body. CLI/eval
   # callers have no other wall-clock bound at all, so this is their only one.
@@ -61,10 +61,11 @@ run_budget:
 
 # Multi mode's values over run_budget's (runtimes/run_budget.py). It runs a
 # supervisor, workers and a critic per case: 109 s per case on average on the
-# text cases, against single's 58 s, and 2 of 7 hit 150 s. Still under the
-# API's 270 s request timeout.
+# text cases, against single's 58 s, and 2 of 7 hit 150 s. 300, up from 240:
+# a smoke run with the evidence-ref prompts (#119) hit 240 s with its workers
+# still running. Still under the API's 330 s request timeout.
 run_budget_multi:
-  max_wall_clock_s: 240
+  max_wall_clock_s: 300
 
 # Model routing (step 14, #19; docs/adr/0029). With `eval --routing on`, multi
 # mode sends these steps to a local model instead of Claude. It runs on this

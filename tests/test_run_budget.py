@@ -41,11 +41,11 @@ def test_without_an_override_multi_mode_uses_the_default() -> None:
 
 
 def test_the_repo_budgets() -> None:
-    """The values the user set on 2026-10-07."""
+    """The values the user set on 2026-10-07 (multi 240 to 300 s for #119)."""
     config = yaml.safe_load(Path("config/models.yaml").read_text())
     assert budget_section(config, "single")["max_tokens"] == 450000
     assert budget_section(config, "single")["max_wall_clock_s"] == 150
-    assert budget_section(config, "multi")["max_wall_clock_s"] == 240
+    assert budget_section(config, "multi")["max_wall_clock_s"] == 300
 
 
 @pytest.mark.anyio
