@@ -15,6 +15,7 @@ import yaml
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
+    ResultError,
     ResultMessage,
     ToolResultBlock,
     ToolUseBlock,
@@ -474,3 +475,49 @@ def test_sdk_tool_servers_ask_for_the_search_models_warm_up() -> None:
         assert (
             servers[agent_sdk.MCP_SERVER_NAME]["env"]["RECON_WARM_SEARCH_MODELS"] == "1"
         )
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_a_worker_that_fails_keeps_the_runs_cost_so_far(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#110: a worker hit its turn limit and the run recorded EUR 0.00, though
+    the decompose call and the worker itself had both cost something."""
+    _patch_roles_and_models(monkeypatch)
+
+    def query(*, prompt: str, options: ClaudeAgentOptions | None = None) -> Any:
+        async def gen() -> Any:
+            if "Decompose this question" in prompt:
+                yield _result_message(
+                    total_cost_usd=0.10,
+                    usage={"input_tokens": 1000, "output_tokens": 100},
+                    structured_output={
+                        "subtasks": [
+                            {"worker": "worker_lookup", "instruction": "find it"}
+                        ]
+                    },
+                )
+                return
+            yield _result_message(
+                is_error=True,
+                subtype="error_max_turns",
+                total_cost_usd=0.05,
+                usage={"input_tokens": 500, "output_tokens": 50},
+                structured_output=None,
+            )
+            raise ResultError(
+                "Claude Code returned an error result: Reached maximum number of turns (8)",
+                data={"subtype": "error_max_turns"},
+                exit_code=1,
+            )
+
+        return gen()
+
+    monkeypatch.setattr(agent_sdk, "query", query)
+
+    result = await agent_sdk.AgentSdkRuntime(mode="multi").run_async(CASE)
+
+    assert result.error is not None and "maximum number of turns" in result.error
+    assert result.cost_eur == pytest.approx((0.10 + 0.05) * 0.9)
+    assert (result.tokens_in, result.tokens_out) == (1500, 150)
