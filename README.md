@@ -59,7 +59,8 @@ The sdk single row is the baseline, run `eval-20261007T081821Z`, judged on Haiku
 a 450k-token and 150 s budget per case. Its one incomplete case used 483k tokens and was
 still judged. The sdk multi row is run `eval-20261007T084001Z`, a record, not a baseline,
 with a 240 s budget. Its one incomplete case hit a worker's 8-turn limit. ¹That case
-recorded €0.00, because a run that errors reports no cost, so multi's real cost is higher.
+recorded €0.00, because a run that errored reported no cost then, so multi's real cost is
+higher. Runs recorded after #110's fix keep what a failed run spent.
 The same case cost €0.50 in single mode. The single row's tool-call accuracy is 1.000 by
 default, since none of these cases has an expected tool path to check.
 

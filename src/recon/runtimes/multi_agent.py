@@ -31,6 +31,7 @@ from recon.runtimes.agent_sdk import (
     _load_model_config,
     _load_run_budget,
     _Outcome,
+    _PartialRun,
     _QueryResult,
     _run_query,
     _validate_answer,
@@ -239,19 +240,20 @@ async def run_multi_async(
             )
 
     async def _run(prompt: str, options: ClaudeAgentOptions) -> _QueryResult:
-        """`_run_query`, with a mid-stream `_BudgetExceeded` enriched with
-        everything this run has accumulated across *prior* calls before it
-        propagates - `_run_query` itself only knows about the call it's in.
+        """`_run_query`, with a run that ended early (a budget breach or a failed
+        call, #110) enriched with everything this run has accumulated across
+        *prior* calls before it propagates - `_run_query` itself only knows
+        about the call it's in.
         """
         try:
             return await _run_query(prompt, options, usd_to_eur_rate, tracker=tracker)
-        except _BudgetExceeded as exc:
-            raise _BudgetExceeded(
+        except _PartialRun as exc:
+            raise type(exc)(
                 exc.reason,
                 tool_calls=tool_calls + exc.tool_calls,
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
-                cost_eur=cost_eur,
+                tokens_in=tokens_in + exc.tokens_in,
+                tokens_out=tokens_out + exc.tokens_out,
+                cost_eur=cost_eur + exc.cost_eur,
             ) from exc
 
     decompose_options = _build_role_options(

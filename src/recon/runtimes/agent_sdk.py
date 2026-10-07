@@ -22,6 +22,7 @@ import yaml
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
+    ResultError,
     ResultMessage,
     ToolResultBlock,
     ToolUseBlock,
@@ -131,12 +132,10 @@ class _BudgetTracker:
         return None
 
 
-class _BudgetExceeded(Exception):
-    """Raised by `_run_query` (tool-call/wall-clock) or by `run_multi_async`
-    (token budget, checked between calls) on a mid-run breach. Carries
-    everything gathered before the breach so the caller returns a partial
-    `AgentResult` (`AgentSdkRuntime.run_async`'s `except _BudgetExceeded`)
-    instead of crashing or silently discarding it.
+class _PartialRun(Exception):
+    """A run that ended early, carrying everything gathered before it ended so
+    the caller returns a partial `AgentResult` (`AgentSdkRuntime.run_async`'s
+    `except _PartialRun`) instead of crashing or silently discarding it.
 
     `answer`/`evidence`/`confidence` default to the empty/`"low"` values used
     when the breach lands before any answer exists (single mode; multi
@@ -166,6 +165,31 @@ class _BudgetExceeded(Exception):
         self.answer = answer
         self.evidence = evidence or []
         self.confidence = confidence
+
+
+class _BudgetExceeded(_PartialRun):
+    """Raised by `_run_query` (tool-call/wall-clock) or by `run_multi_async`
+    (token budget, checked between calls) on a mid-run breach."""
+
+
+class _RunFailed(_PartialRun):
+    """Raised by `_run_query` when the CLI ends a run with an error result
+    (max turns, an API error). The CLI still reports what the run cost, which
+    the caller keeps (#110) instead of recording EUR 0.00."""
+
+
+def _spent(
+    usage: dict[str, Any] | None, total_cost_usd: float | None, usd_to_eur_rate: float
+) -> tuple[int, int, float]:
+    """(tokens_in, tokens_out, cost_eur) from a result's usage and cost."""
+    usage = usage or {}
+    tokens_in = (
+        int(usage.get("input_tokens", 0))
+        + int(usage.get("cache_creation_input_tokens", 0))
+        + int(usage.get("cache_read_input_tokens", 0))
+    )
+    tokens_out = int(usage.get("output_tokens", 0))
+    return tokens_in, tokens_out, (total_cost_usd or 0.0) * usd_to_eur_rate
 
 
 def _load_model_config(path: Path) -> dict[str, Any]:
@@ -367,68 +391,95 @@ async def _run_query(
     raw_stream = cast(
         "AsyncGenerator[object, None]", query(prompt=prompt, options=options)
     )
-    async with contextlib.aclosing(raw_stream) as stream:
-        async for message in stream:
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    # Only our four MCP tools are `tool_calls` in the AgentResult
-                    # sense. `Read` (kept for the CLI's own oversized-result
-                    # recovery, see _build_options) isn't one of tools/server.py's
-                    # tools and its result doesn't match ToolResult's shape —
-                    # recording it here would mislabel a successful recovery read
-                    # with the generic "unknown" fallback status.
-                    if isinstance(block, ToolUseBlock) and block.name.startswith(
-                        mcp_prefix
-                    ):
-                        pending[block.id] = (_strip_tool_name(block.name), block.input)
-            elif isinstance(message, UserMessage) and isinstance(message.content, list):
-                for block in message.content:
-                    if (
-                        isinstance(block, ToolResultBlock)
-                        and block.tool_use_id in pending
-                    ):
-                        tool_name, arguments = pending.pop(block.tool_use_id)
-                        status, elapsed_ms = _parse_tool_result(block.content)
-                        tool_calls.append(
-                            ToolCall(
-                                tool=tool_name,
-                                arguments=arguments,
-                                status=status,
-                                elapsed_ms=elapsed_ms,
+    try:
+        async with contextlib.aclosing(raw_stream) as stream:
+            async for message in stream:
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        # Only our four MCP tools are `tool_calls` in the AgentResult
+                        # sense. `Read` (kept for the CLI's own oversized-result
+                        # recovery, see _build_options) isn't one of tools/server.py's
+                        # tools and its result doesn't match ToolResult's shape —
+                        # recording it here would mislabel a successful recovery read
+                        # with the generic "unknown" fallback status.
+                        if isinstance(block, ToolUseBlock) and block.name.startswith(
+                            mcp_prefix
+                        ):
+                            pending[block.id] = (
+                                _strip_tool_name(block.name),
+                                block.input,
                             )
-                        )
-                        if tracker is not None:
-                            tracker.tool_calls_used += 1
-            elif isinstance(message, ResultMessage):
-                result_message = message
+                elif isinstance(message, UserMessage) and isinstance(
+                    message.content, list
+                ):
+                    for block in message.content:
+                        if (
+                            isinstance(block, ToolResultBlock)
+                            and block.tool_use_id in pending
+                        ):
+                            tool_name, arguments = pending.pop(block.tool_use_id)
+                            status, elapsed_ms = _parse_tool_result(block.content)
+                            tool_calls.append(
+                                ToolCall(
+                                    tool=tool_name,
+                                    arguments=arguments,
+                                    status=status,
+                                    elapsed_ms=elapsed_ms,
+                                )
+                            )
+                            if tracker is not None:
+                                tracker.tool_calls_used += 1
+                elif isinstance(message, ResultMessage):
+                    result_message = message
 
-            if tracker is not None and result_message is None:
-                reason = tracker.breach_reason()
-                if reason is not None:
-                    raise _BudgetExceeded(reason, tool_calls=list(tool_calls))
+                if tracker is not None and result_message is None:
+                    reason = tracker.breach_reason()
+                    if reason is not None:
+                        raise _BudgetExceeded(reason, tool_calls=list(tool_calls))
+    except ResultError as exc:
+        # The CLI reports a failed run's result, cost included, then exits
+        # non-zero, which the SDK raises here (#110).
+        if result_message is not None:
+            usage, cost = result_message.usage, result_message.total_cost_usd
+        else:
+            usage, cost = exc.data.get("usage"), exc.data.get("total_cost_usd")
+        tokens_in, tokens_out, cost_eur = _spent(
+            usage if isinstance(usage, dict) else None,
+            cost if isinstance(cost, int | float) else None,
+            usd_to_eur_rate,
+        )
+        raise _RunFailed(
+            str(exc),
+            tool_calls=list(tool_calls),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_eur=cost_eur,
+        ) from exc
 
     if result_message is None:
         raise RuntimeError("agent_sdk query stream ended without a ResultMessage.")
+    tokens_in, tokens_out, cost_eur = _spent(
+        result_message.usage, result_message.total_cost_usd, usd_to_eur_rate
+    )
     if result_message.is_error:
-        raise RuntimeError(
+        raise _RunFailed(
             f"agent_sdk run failed: subtype={result_message.subtype!r} "
-            f"errors={result_message.errors!r}"
+            f"errors={result_message.errors!r}",
+            tool_calls=list(tool_calls),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_eur=cost_eur,
         )
 
     structured = result_message.structured_output
     if not isinstance(structured, dict):
-        raise TypeError(
-            f"agent_sdk run produced no structured answer (subtype={result_message.subtype!r})."
+        raise _RunFailed(
+            f"agent_sdk run produced no structured answer (subtype={result_message.subtype!r}).",
+            tool_calls=list(tool_calls),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_eur=cost_eur,
         )
-
-    usage = result_message.usage or {}
-    tokens_in = (
-        int(usage.get("input_tokens", 0))
-        + int(usage.get("cache_creation_input_tokens", 0))
-        + int(usage.get("cache_read_input_tokens", 0))
-    )
-    tokens_out = int(usage.get("output_tokens", 0))
-    cost_eur = (result_message.total_cost_usd or 0.0) * usd_to_eur_rate
 
     return _QueryResult(
         structured=structured,
@@ -555,7 +606,7 @@ class AgentSdkRuntime:
                 elapsed_ms=int((time.monotonic() - start) * 1000),
                 error=token_budget_note,
             )
-        except _BudgetExceeded as exc:
+        except _PartialRun as exc:
             return AgentResult(
                 case_id=case.case_id,
                 answer=exc.answer,

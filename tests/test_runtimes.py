@@ -20,6 +20,7 @@ import pytest
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
+    ResultError,
     ResultMessage,
     ToolResultBlock,
     ToolUseBlock,
@@ -521,6 +522,8 @@ def test_run_missing_structured_output_populates_error_not_raise(
 
     assert result.error is not None
     assert result.answer == ""
+    # The call finished and reported its cost; only the answer is missing (#110).
+    assert result.cost_eur == pytest.approx(0.01 * 0.9)
 
 
 @pytest.mark.unit
@@ -615,3 +618,123 @@ async def test_run_async_cancellation_stops_the_underlying_query(
         )
 
     assert cleanup_ran == [True]
+
+
+# --- a failed run keeps what it spent (#110) ----------------------------------
+
+
+def _tool_use(tool_use_id: str) -> AssistantMessage:
+    return AssistantMessage(
+        content=[
+            ToolUseBlock(
+                id=tool_use_id,
+                name="mcp__recon-tools__list_companies_tool",
+                input={"sector": None},
+            )
+        ],
+        model="claude-sonnet-5",
+    )
+
+
+def _failed_result(**overrides: Any) -> ResultMessage:
+    return _result_message(
+        is_error=True,
+        subtype="error_max_turns",
+        errors=["Reached maximum number of turns (8)"],
+        total_cost_usd=0.05,
+        usage={"input_tokens": 4000, "output_tokens": 300},
+        structured_output=None,
+        **overrides,
+    )
+
+
+def _patch_failing_query(
+    monkeypatch: pytest.MonkeyPatch, messages: list[object], error: Exception
+) -> None:
+    """The CLI's order on a failed run: the error result, then a non-zero exit
+    that the SDK raises as `ResultError`."""
+
+    async def fake_query(
+        *, prompt: str, options: ClaudeAgentOptions | None = None
+    ) -> AsyncIterator[object]:
+        for message in messages:
+            yield message
+        raise error
+
+    monkeypatch.setattr(agent_sdk, "query", fake_query)
+
+
+@pytest.mark.unit
+def test_a_run_ending_in_a_result_error_keeps_its_cost_tokens_and_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The SDK sends the failed result, with its cost, then raises. The cost was
+    recorded as EUR 0.00 (eval-20261007T084001Z)."""
+    _patch_options(monkeypatch)
+    failed = _failed_result()
+    _patch_failing_query(
+        monkeypatch,
+        [_tool_use("tu1"), _tool_result_message("tu1", "ok", 12), failed],
+        ResultError(
+            "Claude Code returned an error result: Reached maximum number of turns (8)",
+            data={"subtype": "error_max_turns", "total_cost_usd": 0.05},
+            exit_code=1,
+        ),
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is not None and "maximum number of turns" in result.error
+    assert result.cost_eur == pytest.approx(0.05 * 0.9)
+    assert (result.tokens_in, result.tokens_out) == (4000, 300)
+    assert [call.tool for call in result.tool_calls] == ["list_companies"]
+
+
+@pytest.mark.unit
+def test_a_result_error_without_the_result_message_uses_its_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_options(monkeypatch)
+    _patch_failing_query(
+        monkeypatch,
+        [],
+        ResultError(
+            "Claude Code returned an error result: API Error",
+            data={
+                "total_cost_usd": 0.02,
+                "usage": {"input_tokens": 1000, "output_tokens": 10},
+            },
+            exit_code=1,
+        ),
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.cost_eur == pytest.approx(0.02 * 0.9)
+    assert (result.tokens_in, result.tokens_out) == (1000, 10)
+
+
+@pytest.mark.unit
+def test_an_error_result_without_an_exception_keeps_its_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_options(monkeypatch)
+    _patch_query(monkeypatch, [_failed_result()])
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is not None
+    assert result.cost_eur == pytest.approx(0.05 * 0.9)
+
+
+@pytest.mark.unit
+def test_a_crash_with_nothing_reported_still_records_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_options(monkeypatch)
+    _patch_failing_query(monkeypatch, [], OSError("CLI not found"))
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is not None and "CLI not found" in result.error
+    assert result.cost_eur == 0.0
