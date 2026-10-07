@@ -146,6 +146,13 @@ POST /runs/{run_id}/feedback body {rating: "up" | "down", note?: str}; replaces 
   404:      no saved run with that id
   503:      run history is off: DATABASE_URL isn't set
 
+GET /evals                   eval runs from evals/results/, newest first: settings, completion, score, cost
+GET /evals/{run_id}          one EvalRun with its per-case scores
+GET /evals/compare?baseline=&candidate=
+                             settings and metrics side by side; the gate's verdict per gated
+                             metric, or comparable: false with the reasons (ADR 0018)
+  404:      no eval run with that id
+
 GET /healthz   liveness  — process is up, no dependency checks
 GET /readyz    readiness — MCP server reachable AND Postgres reachable
 GET /metrics   Prometheus text format
@@ -156,6 +163,8 @@ GET /metrics   Prometheus text format
 Every answered `/investigate` is saved in Postgres (`research_runs`, ADR 0030) under its request ID, which is also `AgentResult.case_id`. A failed save is logged and the answer is still returned. No response carries environment values, keys or the database URL.
 
 `/healthz` must never check dependencies. A liveness probe that fails on a database blip restarts a healthy pod.
+
+The `/evals` endpoints only read result files (`RECON_EVAL_RESULTS_DIR`, default `evals/results`). They never start a run. `recon.cli compare` prints the same comparison (`eval/comparison.py`).
 
 The request ID flows into the agent and appears on every span in the trace.
 

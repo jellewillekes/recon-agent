@@ -1,0 +1,126 @@
+"""Tests for the evaluation endpoints (`api/evals.py`, #117). They read
+result files from a temporary directory and never start a run."""
+
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+from httpx import ASGITransport, AsyncClient, Response
+
+from recon.api import evals as api_evals
+from recon.api import main as api_main
+from recon.contracts import CaseScore, EvalRun
+
+pytestmark = [pytest.mark.unit, pytest.mark.anyio]
+
+T0 = datetime(2026, 10, 7, 12, tzinfo=UTC)
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+def _run(run_id: str, **overrides: object) -> EvalRun:
+    defaults: dict[str, object] = {
+        "run_id": run_id,
+        "timestamp_utc": T0,
+        "dataset": "finance-agent-bench@pin",
+        "dataset_license": "MIT",
+        "dataset_attribution": "attribution",
+        "runtime": "agent_sdk",
+        "mode": "multi",
+        "model_config_hash": "abc",
+        "prompt_hashes": {"supervisor": "abc"},
+        "rubric_version": "4",
+        "case_scores": [
+            CaseScore(
+                case_id="a",
+                task_completion=True,
+                answer_score=0.6,
+                tool_path_exact=True,
+                tool_path_equivalent=True,
+                tool_call_accuracy=1.0,
+                rubric_scores={},
+                cost_eur=0.2,
+                elapsed_ms=1000,
+                notes="",
+            )
+        ],
+        "aggregate": {"task_completion_rate": 1.0, "answer_score_mean": 0.6},
+        "total_cost_eur": 1.0,
+        "tool_data_snapshot": "snap",
+    }
+    defaults.update(overrides)
+    return EvalRun(**defaults)  # type: ignore[arg-type]
+
+
+@pytest.fixture
+def results(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(api_evals, "RESULTS_DIR", tmp_path)
+    for run in (
+        _run("eval-off"),
+        _run("eval-on", routing=True, timestamp_utc=T0 + timedelta(hours=1)),
+        _run("eval-old", rubric_version="3", timestamp_utc=T0 - timedelta(days=1)),
+    ):
+        (tmp_path / f"{run.run_id}.json").write_text(run.model_dump_json())
+    return tmp_path
+
+
+async def _get(path: str, **params: str) -> Response:
+    transport = ASGITransport(app=api_main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        return await client.get(path, params=params)
+
+
+async def test_evals_lists_runs_newest_first(results: Path) -> None:
+    (results / "eval-broken.json").write_text("{not json")
+
+    resp = await _get("/evals")
+
+    assert resp.status_code == 200
+    runs = resp.json()["runs"]
+    assert [r["run_id"] for r in runs] == ["eval-on", "eval-off", "eval-old"]
+    assert runs[0]["routing"] is True and runs[0]["case_count"] == 1
+
+
+async def test_an_eval_run_comes_back_with_its_case_scores(results: Path) -> None:
+    resp = await _get("/evals/eval-off")
+
+    assert resp.status_code == 200
+    assert resp.json()["case_scores"][0]["case_id"] == "a"
+
+
+async def test_an_unknown_eval_run_is_a_404_that_points_at_the_list(
+    results: Path,
+) -> None:
+    resp = await _get("/evals/eval-nope")
+
+    assert resp.status_code == 404
+    assert "/evals" in resp.json()["detail"]
+
+
+async def test_compare_judges_comparable_runs(results: Path) -> None:
+    resp = await _get("/evals/compare", baseline="eval-off", candidate="eval-on")
+
+    body = resp.json()
+    assert body["comparable"] is True
+    verdicts = {m["name"]: m["verdict"] for m in body["metrics"]}
+    assert verdicts["answer_score_mean"] == "same"
+
+
+async def test_compare_returns_reasons_for_runs_it_cant_compare(
+    results: Path,
+) -> None:
+    resp = await _get("/evals/compare", baseline="eval-old", candidate="eval-on")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["comparable"] is False
+    assert any("rubric_version" in reason for reason in body["reasons"])
+
+
+async def test_compare_with_an_unknown_run_is_a_404(results: Path) -> None:
+    resp = await _get("/evals/compare", baseline="eval-off", candidate="eval-nope")
+
+    assert resp.status_code == 404

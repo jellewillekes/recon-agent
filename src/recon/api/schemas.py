@@ -104,3 +104,26 @@ class Capabilities(BaseModel):
     data_source: DataSource
     # Whether runs are saved: the run store needs DATABASE_URL.
     run_history: bool
+
+
+class EvalSummary(BaseModel):
+    """One row of `GET /evals`: an eval run from `evals/results/`."""
+
+    run_id: str
+    timestamp_utc: datetime
+    runtime: str
+    mode: str
+    routing: bool
+    rubric_version: str
+    dataset: str
+    case_count: int
+    task_completion_rate: float | None
+    answer_score_mean: float | None
+    total_cost_eur: float
+    cost_per_correct_answer_eur: float | None
+
+
+class EvalList(BaseModel):
+    """Body of `GET /evals`, newest first."""
+
+    runs: list[EvalSummary]
