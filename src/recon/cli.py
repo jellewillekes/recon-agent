@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from recon import cli_edgar, cli_retrieval
+from recon import cli_compare, cli_edgar, cli_retrieval
 from recon.adapters import sec_edgar, sec_edgar_tickers
 from recon.adapters.finance_agent_bench import (
     DATASET_ID,
@@ -30,8 +30,8 @@ from recon.eval.harness import (
 )
 from recon.eval.report import render_markdown
 from recon.eval.thresholds import load_thresholds
-from recon.runtimes import api_key
-from recon.runtimes.agent_sdk import AgentSdkRuntime
+from recon.runtimes import api_key, providers
+from recon.runtimes.agent_sdk import DEFAULT_MODELS_CONFIG_PATH, AgentSdkRuntime
 from recon.runtimes.base import Runtime
 from recon.runtimes.langgraph import LangGraphRuntime
 from recon.tools.data_source import tool_data_snapshot_id
@@ -87,10 +87,10 @@ def _find_case(cases: list[Case], case_id: str) -> Case:
     )
 
 
-def _build_runtime(runtime: str, mode: str) -> Runtime:
+def _build_runtime(runtime: str, mode: str, routing: bool = False) -> Runtime:
     if runtime == "langgraph":
         return LangGraphRuntime(mode=mode)  # type: ignore[arg-type]
-    return AgentSdkRuntime(mode=mode)  # type: ignore[arg-type]
+    return AgentSdkRuntime(mode=mode, routing=routing)  # type: ignore[arg-type]
 
 
 def _cmd_run(args: argparse.Namespace) -> None:
@@ -160,6 +160,14 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     key_problem = api_key.eval_key_problem(args.runtime)
     if key_problem is not None:
         raise SystemExit(key_problem)
+    routing = args.routing == "on"
+    routes_decompose = False
+    if routing:
+        config = yaml.safe_load(DEFAULT_MODELS_CONFIG_PATH.read_text(encoding="utf-8"))
+        routing_problem = providers.routing_problem(args.runtime, args.mode, config)
+        if routing_problem is not None:
+            raise SystemExit(routing_problem)
+        routes_decompose = providers.routes(config, "decompose")
     cases = _select_cases(args)
     _refuse_over_cap(len(cases), args.max_cost_eur)
     # Read now, so a broken thresholds file fails before credit is spent.
@@ -188,7 +196,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     try:
         run = run_evaluation(
             cases,
-            _build_runtime(args.runtime, args.mode),
+            _build_runtime(args.runtime, args.mode, routing),
             tool_data_snapshot=tool_data_snapshot,
             max_cost_eur=args.max_cost_eur,
             passages=(
@@ -200,6 +208,8 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     finally:
         shutdown_tracing()
     run = with_cost_per_correct_answer(run, thresholds.correct_answer_score)
+    if routes_decompose:
+        run = run.model_copy(update={"routing": True})
     if search_index is not None:
         run = cli_retrieval.with_retrieval_metrics(run, cases, search_index)
 
@@ -342,6 +352,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Refuse to start above this estimate, and stop before a case that "
         f"could pass it (default €{DEFAULT_MAX_COST_EUR:.2f}).",
     )
+    eval_parser.add_argument(
+        "--routing",
+        choices=["on", "off"],
+        default="off",
+        help="on: multi mode's decompose step runs on the local Ollama model in "
+        "config/models.yaml, free and keyless (docs/adr/0029).",
+    )
     eval_parser.set_defaults(func=_cmd_eval)
 
     cases_parser = subparsers.add_parser(
@@ -359,6 +376,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     cli_edgar.add_edgar_parser(subparsers, DEFAULT_DATASET_PATH)
     cli_retrieval.add_retrieval_parser(subparsers, DEFAULT_DATASET_PATH)
+    cli_compare.add_compare_parser(subparsers)
     return parser
 
 

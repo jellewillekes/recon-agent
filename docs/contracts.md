@@ -197,6 +197,7 @@ class EvalRun(BaseModel):
     total_cost_eur: float
     tool_data_snapshot: str | None = None  # "<fetch date>-<content hash>" or "fixture-<hash>"; None before this field existed
     retrieval_labels_hash: str | None = None  # hash of evals/retrieval-labels.yaml when retrieval metrics were scored
+    routing: bool = False              # decompose ran on the local model (step 14, ADR 0029); on vs off is gated like any change
 ```
 
 The gate doesn't use the retrieval metrics (`retrieval_*` in `aggregate`). Compare them by hand only between runs with the same `retrieval_labels_hash`, since a different label set changes them.

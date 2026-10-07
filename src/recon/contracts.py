@@ -174,6 +174,10 @@ class EvalRun(BaseModel):
     # Hash of evals/retrieval-labels.yaml when the run has retrieval metrics
     # (#105). Compare those metrics only between runs with the same hash.
     retrieval_labels_hash: str | None = None
+    # Whether multi mode's decompose step ran on the local model (step 14,
+    # ADR 0029). Recorded, not a comparability field: on against off is the
+    # comparison routing is measured by.
+    routing: bool = False
 
     @model_validator(mode="after")
     def _prompt_hashes_required(self) -> "EvalRun":

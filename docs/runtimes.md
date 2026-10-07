@@ -69,6 +69,26 @@ RECON_ANTHROPIC_API_KEY=$(security find-generic-password -a "$USER" -s recon-ant
   DATABASE_URL=... uv run python -m recon.cli eval --runtime langgraph --cases evals/text-cases.txt
 ```
 
+## Routing to a local model
+
+`eval --mode multi --routing on` runs multi mode's decompose step on a local Ollama
+model, and everything else on Claude through the subscription (ADR 0029). It needs no
+API key and costs nothing. One-time setup, outside the repo:
+
+```bash
+brew install ollama               # 0.5 or later, for JSON-schema replies
+ollama serve                      # leave running
+ollama pull qwen2.5:7b-instruct   # about 4.7 GB
+```
+
+`eval` checks that Ollama answers, is 0.5 or later and has the model before it spends
+any credit. Compare a routed run with an unrouted one, side by side with the gate's
+verdicts:
+
+```bash
+uv run python -m recon.cli compare evals/results/<off>.json evals/results/<on>.json
+```
+
 ## See also
 
 - `docs/adr/0007-multi-agent-orchestration.md` — why the SDK runtime uses separate

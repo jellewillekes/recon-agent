@@ -37,6 +37,7 @@ from recon.runtimes.agent_sdk import (
     _validate_answer,
 )
 from recon.runtimes.api_key import without_api_keys
+from recon.runtimes.providers import local_provider, routes
 
 DEFAULT_ROLES_CONFIG_PATH = Path("config/roles.yaml")
 DEFAULT_PROMPTS_DIR = Path("prompts")
@@ -183,11 +184,15 @@ async def run_multi_async(
     roles_config_path: Path | None = None,
     prompts_dir: Path | None = None,
     models_config_path: Path = DEFAULT_MODELS_CONFIG_PATH,
+    routing: bool = False,
 ) -> _Outcome:
     """Supervisor decomposes -> workers run their routed subtasks with their
     own restricted tool subset -> supervisor synthesizes -> critic checks the
     synthesis against its evidence, forcing confidence to "low" on rejection.
     No retry loop on rejection - see ADR-0007.
+
+    With `routing`, the decompose step runs on the local model in
+    `config/models.yaml`'s `routing:` section instead (step 14, ADR 0029).
     """
     roles_config_path = roles_config_path or DEFAULT_ROLES_CONFIG_PATH
     prompts_dir = prompts_dir or DEFAULT_PROMPTS_DIR
@@ -256,14 +261,30 @@ async def run_multi_async(
                 cost_eur=cost_eur + exc.cost_eur,
             ) from exc
 
-    decompose_options = _build_role_options(
-        "supervisor", roles_config["supervisor"], prompts_dir, _DECOMPOSE_SCHEMA
-    )
-    decompose_result = await _run(
+    decompose_prompt = (
         f"Case ID: {case.case_id}\n\n"
-        f"Decompose this question into subtasks for your workers: {case.question}",
-        decompose_options,
+        f"Decompose this question into subtasks for your workers: {case.question}"
     )
+    if routing and routes(model_config, "decompose"):
+        reply = await local_provider(model_config).complete(
+            (prompts_dir / "supervisor.md").read_text(encoding="utf-8"),
+            decompose_prompt,
+            _DECOMPOSE_SCHEMA["schema"],
+        )
+        # The local model's tokens are free and outside Claude's token
+        # budget, so they aren't counted with Claude's (ADR 0029).
+        decompose_result = _QueryResult(
+            structured=reply.structured,
+            tool_calls=[],
+            tokens_in=0,
+            tokens_out=0,
+            cost_eur=reply.cost_eur,
+        )
+    else:
+        decompose_options = _build_role_options(
+            "supervisor", roles_config["supervisor"], prompts_dir, _DECOMPOSE_SCHEMA
+        )
+        decompose_result = await _run(decompose_prompt, decompose_options)
     _accumulate(decompose_result)
     subtasks = _validate_decomposition(decompose_result.structured)
 

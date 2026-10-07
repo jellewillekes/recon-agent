@@ -10,7 +10,7 @@ a model, or the real `data/` directories.
 import json
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 import pytest
 
@@ -891,3 +891,145 @@ def test_cmd_run_refuses_an_exported_sdk_api_key(
     args = build_parser().parse_args(["run", "--case-id", "any"])
     with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
         args.func(args)
+
+
+# --- routing (step 14, #19) ----------------------------------------------------
+
+
+def _ready_ollama(monkeypatch: pytest.MonkeyPatch, problem: str | None = None) -> None:
+    # These tests chdir to tmp_path; read the repo's routing config anyway.
+    repo_models = Path(__file__).resolve().parent.parent / "config" / "models.yaml"
+    monkeypatch.setattr(cli, "DEFAULT_MODELS_CONFIG_PATH", repo_models)
+    monkeypatch.setattr(
+        cli.providers.OllamaProvider, "readiness_problem", lambda self: problem
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("flags", "message"),
+    [
+        (["--routing", "on"], "needs --mode multi"),
+        (["--routing", "on", "--mode", "multi", "--runtime", "langgraph"], "Agent SDK"),
+    ],
+    ids=["single-mode", "langgraph"],
+)
+def test_cmd_eval_refuses_routing_where_nothing_is_routed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, flags: list[str], message: str
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    _ready_ollama(monkeypatch)
+    monkeypatch.setenv("RECON_ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(cli, "run_evaluation", lambda *a, **k: pytest.fail("ran"))
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(["eval", "--limit", "1", *flags])
+    with pytest.raises(SystemExit, match=message):
+        args.func(args)
+
+
+@pytest.mark.unit
+def test_cmd_eval_refuses_routing_before_running_when_ollama_isnt_ready(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    _ready_ollama(monkeypatch, "Ollama isn't reachable. Start it with `ollama serve`.")
+    monkeypatch.setattr(cli, "run_evaluation", lambda *a, **k: pytest.fail("ran"))
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(
+        ["eval", "--limit", "1", "--mode", "multi", "--routing", "on"]
+    )
+    with pytest.raises(SystemExit, match="ollama serve"):
+        args.func(args)
+
+
+@pytest.mark.unit
+def test_cmd_eval_records_routing_on_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_dataset_loading(monkeypatch)
+    _ready_ollama(monkeypatch)
+    runtimes: list[Any] = []
+
+    def fake_run_evaluation(cases: Any, runtime: Any, **kwargs: Any) -> EvalRun:
+        runtimes.append(runtime)
+        return _eval_run()
+
+    monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(
+        ["eval", "--limit", "1", "--mode", "multi", "--routing", "on"]
+    )
+    args.func(args)
+
+    assert runtimes[0]._routing is True
+    written = json.loads((tmp_path / "evals/results/eval-fixed.json").read_text())
+    assert written["routing"] is True
+
+
+@pytest.mark.unit
+def test_cmd_eval_does_not_record_routing_when_steps_is_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """routing.steps: [] is a valid way to route nothing (PR #114). The
+    readiness check still passes and every case decomposes on Claude as
+    usual, so the recorded run must not claim decompose was routed."""
+    models_config = tmp_path / "models.yaml"
+    models_config.write_text(
+        "routing:\n"
+        "  provider: ollama\n"
+        "  base_url: http://localhost:11434\n"
+        "  model: qwen2.5:7b-instruct\n"
+        "  timeout_s: 60\n"
+        "  steps: []\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "DEFAULT_MODELS_CONFIG_PATH", models_config)
+    monkeypatch.setattr(
+        cli.providers.OllamaProvider, "readiness_problem", lambda self: None
+    )
+    _patch_dataset_loading(monkeypatch)
+    monkeypatch.setattr(cli, "run_evaluation", lambda *a, **k: _eval_run())
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(
+        ["eval", "--limit", "1", "--mode", "multi", "--routing", "on"]
+    )
+    args.func(args)
+
+    written = json.loads((tmp_path / "evals/results/eval-fixed.json").read_text())
+    assert written["routing"] is False
+
+
+@pytest.mark.unit
+def test_compare_shows_two_runs_side_by_side_with_the_gate_verdicts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Step 14: report cost and task completion for both routing settings."""
+    off = _eval_run(
+        mode="multi",
+        aggregate={"task_completion_rate": 1.0, "answer_score_mean": 0.6},
+        total_cost_eur=1.40,
+    )
+    on = _eval_run(
+        run_id="eval-routed",
+        mode="multi",
+        routing=True,
+        aggregate={"task_completion_rate": 1.0, "answer_score_mean": 0.58},
+        total_cost_eur=1.10,
+    )
+    (tmp_path / "off.json").write_text(off.model_dump_json())
+    (tmp_path / "on.json").write_text(on.model_dump_json())
+
+    args = build_parser().parse_args(
+        ["compare", str(tmp_path / "off.json"), str(tmp_path / "on.json")]
+    )
+    args.func(args)
+
+    out = capsys.readouterr().out
+    assert "| routing | off | on |" in out
+    assert "| total_cost_eur | 1.400 | 1.100 | better |" in out
+    assert "| answer_score_mean | 0.600 | 0.580 | same |" in out
+    assert "| task_completion_rate | 1.000 | 1.000 | same |" in out
