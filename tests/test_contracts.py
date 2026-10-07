@@ -19,7 +19,9 @@ from recon.contracts import (
     AgentResult,
     Case,
     CaseScore,
+    Claim,
     EvalRun,
+    Evidence,
     ReviewFlag,
     ReviewFlagResult,
     ToolCall,
@@ -99,6 +101,18 @@ VALID_CASE_SCORE: dict[str, Any] = {
     "notes": "matches expected answer",
 }
 
+VALID_EVIDENCE: dict[str, Any] = {
+    "ref": "E0123456789ab",
+    "verified": False,
+    "source_type": "unknown",
+}
+
+VALID_CLAIM: dict[str, Any] = {
+    "text": "Revenue rose 4%.",
+    "importance": "key",
+    "evidence_refs": ["E0123456789ab"],
+}
+
 VALID_EVAL_RUN: dict[str, Any] = {
     "run_id": "run-001",
     "timestamp_utc": datetime.now(UTC),
@@ -120,6 +134,8 @@ MODEL_CASES: list[tuple[type[BaseModel], dict[str, Any]]] = [
     (ToolResult, VALID_TOOL_RESULT_OK),
     (ToolCall, VALID_TOOL_CALL),
     (AgentResult, VALID_AGENT_RESULT),
+    (Evidence, VALID_EVIDENCE),
+    (Claim, VALID_CLAIM),
     (ReviewFlag, VALID_REVIEW_FLAG),
     (ReviewFlagResult, VALID_REVIEW_FLAG_RESULT),
     (CaseScore, VALID_CASE_SCORE),
@@ -260,6 +276,8 @@ DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "ToolResult": ToolResult,
     "ToolCall": ToolCall,
     "AgentResult": AgentResult,
+    "Evidence": Evidence,
+    "Claim": Claim,
     "ReviewFlag": ReviewFlag,
     "ReviewFlagResult": ReviewFlagResult,
     "CaseScore": CaseScore,
@@ -292,3 +310,17 @@ def test_results_recorded_before_tool_data_snapshot_still_load() -> None:
             assert run.tool_data_snapshot is None, path.name
         else:
             assert run.tool_data_snapshot is not None, path.name
+
+
+@pytest.mark.unit
+def test_agent_results_recorded_before_claims_still_load() -> None:
+    """ADR 0030 adds claims and evidence_items; older results have neither."""
+    result = AgentResult(**VALID_AGENT_RESULT)
+    assert result.claims == []
+    assert result.evidence_items == []
+
+
+@pytest.mark.unit
+def test_claim_importance_is_key_or_supporting() -> None:
+    with pytest.raises(ValidationError):
+        Claim(**{**VALID_CLAIM, "importance": "critical"})

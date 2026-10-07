@@ -65,6 +65,8 @@ class ToolResult(BaseModel):
 | `invalid_input` | Schema or range error | `[]` | which field, and what is valid |
 | `unavailable` | Source down, timeout, circuit open | `[]` | whether a retry is worthwhile |
 
+Every row in `data` from the five read tools carries a `ref`: `"E"` plus the first 12 hex characters of the sha256 of the tool name and the row's canonical JSON (ADR 0030). The same row always gets the same ref, so the model can cite it and the runtime can check the citation.
+
 `MAX_ROWS = 500` per call. `TIMEOUT_S = 30`. `search_knowledge` returns at most `top_k` (up to 20) passages, so it never reports `truncated`.
 
 `empty` is explicitly not an error. The agent must be able to conclude that nothing is there — for some cases that is the correct answer.
@@ -80,10 +82,30 @@ class ToolCall(BaseModel):
     status: str                        # mirrors ToolResult.status
     elapsed_ms: int
 
+class Evidence(BaseModel):
+    ref: str                           # the row's ref, as the tool returned it
+    verified: bool                     # ref matches a row a tool returned in this run
+    source_type: Literal["filing_text", "financial_fact", "filing", "company", "concept", "unknown"]
+    tool: str | None                   # the rest come from the row, None when unverified
+    company_id: str | None
+    form: str | None
+    filed: str | None
+    accession: str | None
+    section: str | None
+    locator: str | None                # chunk id, or concept and period for a fact
+    excerpt: str                       # the passage or the fact, rendered from the row
+    retrieval_score: float | None      # search_knowledge's rerank score
+    content_hash: str | None           # sha256 of the row
+
+class Claim(BaseModel):
+    text: str
+    importance: Literal["key", "supporting"]
+    evidence_refs: list[str]           # Evidence.ref values
+
 class AgentResult(BaseModel):
     case_id: str
     answer: str
-    evidence: list[str]                # references to tool output or source
+    evidence: list[str]                # one line per cited source; filled from evidence_items when claims exist
     confidence: Literal["high", "medium", "low"]
     tool_calls: list[ToolCall]         # in call order
     runtime: str                       # which runtime produced this
@@ -93,7 +115,11 @@ class AgentResult(BaseModel):
     cost_eur: float
     elapsed_ms: int
     error: str | None
+    claims: list[Claim]                # empty on older results, or when the model gave none
+    evidence_items: list[Evidence]     # every ref the claims cite, resolved by the server
 ```
+
+Claims and evidence are ADR 0030. Every row a read tool returns carries a `ref` (section 3). The model cites refs; the runtime resolves each one against the rows its tools returned in that run. A resolved ref is `verified`, and its source details and excerpt come from the row. A ref that matches nothing stays, unverified, so a made-up citation is visible instead of silently dropped.
 
 Empty `evidence` on a non-trivial answer is a signal, not an error — the critic and the rubric judge that.
 

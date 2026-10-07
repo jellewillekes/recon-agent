@@ -88,6 +88,40 @@ class ToolCall(BaseModel):
     elapsed_ms: int
 
 
+class Evidence(BaseModel):
+    """One tool row an answer cites, resolved by the server (ADR 0030).
+
+    The model cites a row by its `ref`. `verified` is true only when that ref
+    matches a row a tool returned in the same run; the source details and
+    `excerpt` then come from that row, never from the model. An unverified
+    ref keeps only `ref`, with `source_type="unknown"`.
+    """
+
+    ref: str
+    verified: bool
+    source_type: Literal[
+        "filing_text", "financial_fact", "filing", "company", "concept", "unknown"
+    ]
+    tool: str | None = None
+    company_id: str | None = None
+    form: str | None = None
+    filed: str | None = None
+    accession: str | None = None
+    section: str | None = None
+    locator: str | None = None
+    excerpt: str = ""
+    retrieval_score: float | None = None
+    content_hash: str | None = None
+
+
+class Claim(BaseModel):
+    """A statement in the answer and the evidence refs it rests on."""
+
+    text: str
+    importance: Literal["key", "supporting"]
+    evidence_refs: list[str]
+
+
 class AgentResult(BaseModel):
     """What every runtime produces, regardless of which one ran the case."""
 
@@ -103,6 +137,10 @@ class AgentResult(BaseModel):
     cost_eur: float
     elapsed_ms: int
     error: str | None
+    # ADR 0030. Empty on results recorded before claims existed, and when the
+    # model returned no claims; `evidence` is then the model's own strings.
+    claims: list[Claim] = []
+    evidence_items: list[Evidence] = []
 
 
 class ReviewFlag(BaseModel):
