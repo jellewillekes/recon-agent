@@ -482,9 +482,14 @@ async def _run_query(
         result_message.usage, result_message.total_cost_usd, usd_to_eur_rate
     )
     if result_message.is_error:
-        raise _RunFailed(
+        failure = (
             f"agent_sdk run failed: subtype={result_message.subtype!r} "
-            f"errors={result_message.errors!r}",
+            f"errors={result_message.errors!r}"
+        )
+        if result_message.api_error_status == 429:
+            failure = f"usage limit (HTTP 429): {failure}"
+        raise _RunFailed(
+            failure,
             tool_calls=list(tool_calls),
             tokens_in=tokens_in,
             tokens_out=tokens_out,

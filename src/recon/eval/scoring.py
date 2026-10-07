@@ -9,7 +9,7 @@ import yaml
 
 from recon.contracts import AgentResult, Case, CaseScore
 from recon.eval import faithfulness, metrics, trajectory
-from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH, judge_case
+from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH, JudgeResult, judge_case
 from recon.eval.judge_failures import (
     JUDGE_ERRORS,
     SessionLimitReached,
@@ -203,18 +203,7 @@ def _judge_answer(
     """Run the rubric judge, then the faithfulness judge when `passages` is
     given. A failed call is noted in `notes_parts` instead of raised (#123)."""
     try:
-        with span("chat judge") as judge_span:
-            judge_result = judge_case(
-                case, agent_result, rubrics, models_config_path=models_config_path
-            )
-            record_judge_call(
-                judge_span,
-                model=judge_result.model,
-                tokens_in=judge_result.tokens_in,
-                tokens_out=judge_result.tokens_out,
-                num_turns=judge_result.num_turns,
-                cost_eur=judge_result.cost_eur,
-            )
+        judge_result = _rubric_judge(case, agent_result, rubrics, models_config_path)
     except JUDGE_ERRORS as exc:
         notes_parts.append(f"judge failed: {exc}")
         return _Judged(
@@ -242,6 +231,28 @@ def _judge_answer(
         faithfulness_failed=error is not None,
         session_limit=error is not None and error_is_session_limit(error),
     )
+
+
+def _rubric_judge(
+    case: Case,
+    agent_result: AgentResult,
+    rubrics: dict[str, Rubric],
+    models_config_path: Path,
+) -> JudgeResult:
+    """`judge_case` under its own judge trace span."""
+    with span("chat judge") as judge_span:
+        result = judge_case(
+            case, agent_result, rubrics, models_config_path=models_config_path
+        )
+        record_judge_call(
+            judge_span,
+            model=result.model,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            num_turns=result.num_turns,
+            cost_eur=result.cost_eur,
+        )
+    return result
 
 
 def _faithfulness_or_note(

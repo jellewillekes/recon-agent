@@ -38,6 +38,7 @@ from recon.runtimes.langgraph_run import (
     _Outcome,
     _Paused,
     _run_graph,
+    new_thread_id,
 )
 from recon.runtimes.langgraph_state import (
     AgentState,
@@ -205,6 +206,7 @@ async def run_multi_async(
     prompts_dir = prompts_dir or DEFAULT_PROMPTS_DIR
     roles_config = _load_roles_config(roles_config_path)
     graph = _build_multi_graph(roles_config, model_config, prompts_dir, checkpointer)
+    thread_id = new_thread_id(case)
 
     try:
         result = await _run_graph(
@@ -215,6 +217,7 @@ async def run_multi_async(
             max_tool_calls,
             input_state=_initial_state(case),
             telemetry_fn=_state_telemetry,
+            thread_id=thread_id,
         )
     except _BudgetExceeded as exc:
         # _run_graph doesn't know per-role models - re-raise enriched with a
@@ -238,7 +241,7 @@ async def run_multi_async(
         ) from exc
 
     if "__interrupt__" in result:
-        raise _Paused(case.case_id, _outcome_from_state(result))
+        raise _Paused(thread_id, _outcome_from_state(result))
 
     return _outcome_from_state(result)
 

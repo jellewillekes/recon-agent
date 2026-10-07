@@ -765,6 +765,23 @@ def test_an_http_429_names_the_usage_limit_in_the_error(
 
 
 @pytest.mark.unit
+def test_an_http_429_without_an_exception_names_the_usage_limit_too(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review of #126: the CLI can report the error result and exit 0."""
+    _patch_options(monkeypatch)
+    _patch_query(
+        monkeypatch,
+        [_failed_result(api_error_status=429)],
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is not None
+    assert result.error.startswith("usage limit (HTTP 429): ")
+
+
+@pytest.mark.unit
 def test_an_error_result_without_an_exception_keeps_its_cost(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

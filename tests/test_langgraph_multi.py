@@ -117,6 +117,8 @@ def _patch_roles(monkeypatch: pytest.MonkeyPatch) -> None:
 # A canned response citing FIRST_REF cites the first real row ref the fake
 # can see in its input instead (#118): the refs only exist once a tool ran.
 FIRST_REF = "<first-ref>"
+LOOKUP_REF = "E000000000001"
+FACTS_REF = "E000000000002"
 # A row ref in a tool's JSON (its quotes escaped once it's nested in a message
 # block) or at the start of a resolved evidence line.
 _REF = re.compile(r'\\*"ref\\*": ?\\*"(E[0-9a-f]{12})|\[(E[0-9a-f]{12})\] ')
@@ -366,7 +368,7 @@ async def test_run_multi_routes_to_both_workers_in_one_case(
             ),
             lg.AnswerResponse(
                 answer="Industrials, revenue reported",
-                claims=_claims("Enot-returned"),
+                claims=_claims(LOOKUP_REF, FACTS_REF, "Enot-returned"),
                 confidence="high",
             ),
             lgm.CriticResponse(accepted=True, reason="supported"),
@@ -376,8 +378,11 @@ async def test_run_multi_routes_to_both_workers_in_one_case(
 
     async def fake_run_worker_task(task: Any, **kwargs: Any) -> dict[str, Any]:
         seen_instructions.append(task["instruction"])
+        ref = LOOKUP_REF if task["worker"] == "worker_lookup" else FACTS_REF
+        row = {"ref": ref, "company_id": "FIRM-001", "name": "Firm One"}
         return {
             "findings": [f"[{task['worker']}] found: {task['instruction']}"],
+            "rows": [{"tool": "list_companies", "arguments": {}, "rows": [row]}],
             "tool_calls": [],
             "tokens_in": 0,
             "tokens_out": 0,
@@ -390,8 +395,32 @@ async def test_run_multi_routes_to_both_workers_in_one_case(
 
     assert sorted(seen_instructions) == ["find FIRM-001", "get its revenue"]
     assert outcome.answer == "Industrials, revenue reported"
-    # No worker returned that row, so the citation stays unverified.
-    assert [item.verified for item in outcome.evidence_items] == [False]
+    # Both workers' rows survive the merge and verify their refs. No worker
+    # returned the third, so it stays unverified.
+    assert [(item.ref, item.verified) for item in outcome.evidence_items] == [
+        (LOOKUP_REF, True),
+        (FACTS_REF, True),
+        ("Enot-returned", False),
+    ]
+
+
+@pytest.mark.anyio
+async def test_a_second_run_of_the_same_case_starts_a_fresh_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review of #118: with one thread per case, a rerun on the same
+    checkpointer appended to the first run's rows, tool calls and tokens, so
+    its refs could verify the second run's claims."""
+    _patch_roles(monkeypatch)
+    _patch_supervisor_model(monkeypatch, _accepting_flow() + _accepting_flow())
+    _patch_worker_model(monkeypatch, _ONE_WORKER_RESPONSES * 2)
+    checkpointer = InMemorySaver()
+
+    first = await _run_multi(checkpointer)
+    second = await _run_multi(checkpointer)
+
+    assert len(second.tool_calls) == len(first.tool_calls) == 1
+    assert second.tokens_in == first.tokens_in
 
 
 @pytest.mark.anyio
@@ -589,7 +618,7 @@ async def test_run_multi_pauses_when_supervisor_sets_flag_reason(
     with pytest.raises(lg._Paused) as exc_info:
         await _run_multi(InMemorySaver())
 
-    assert exc_info.value.thread_id == CASE.case_id
+    assert exc_info.value.thread_id.startswith(f"{CASE.case_id}:")
     # decompose/workers/synthesize/critic already produced a real answer -
     # only the flag write is pending, so it isn't discarded.
     assert exc_info.value.outcome.answer == "Industrials"

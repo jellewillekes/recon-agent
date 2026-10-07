@@ -5,6 +5,7 @@ end in. Shared by single and multi mode (`langgraph.py`,
 
 import asyncio
 import contextlib
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -181,6 +182,14 @@ class _Paused(Exception):
         self.outcome = outcome
 
 
+def new_thread_id(case: Case) -> str:
+    """A thread of its own for each run. Reducer fields (rows, tool calls,
+    tokens) append to whatever a checkpoint already holds, so a rerun on the
+    case's id alone would inherit the earlier run's state, and its rows could
+    verify the new run's claims (review of #118)."""
+    return f"{case.case_id}:{uuid.uuid4().hex[:12]}"
+
+
 async def _run_graph(
     graph: Any,
     case: Case,
@@ -218,7 +227,7 @@ async def _run_graph(
     (`LangGraphRuntime.resume` takes `thread_id` as its own argument).
     """
     config = {
-        "configurable": {"thread_id": thread_id or case.case_id},
+        "configurable": {"thread_id": thread_id or new_thread_id(case)},
         # Graph *steps*, not literal turns (each tool-call round trip is ~2
         # steps in this prebuilt graph) - reuses investigator.max_turns as a
         # generous, not exact, bound, rather than forking a second
