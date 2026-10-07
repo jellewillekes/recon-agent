@@ -6,6 +6,26 @@ const characterCount = document.querySelector("#character-count");
 const answerCard = document.querySelector(".answer-card");
 const answerContent = document.querySelector("#answer-content");
 const runState = document.querySelector("#run-state");
+const modeSelect = document.querySelector("#mode");
+const examples = document.querySelector("#examples");
+
+// Example questions per data source. The EDGAR ones are benchmark questions
+// the agent answered well on the text cases (evals/text-cases.txt).
+const EXAMPLES = {
+  edgar: [
+    ["Retention metric", "Does Workday (NASDAQ: WDAY) report a gross or net retention metric in its annual or quarterly reporting? If so, provide the definition"],
+    ["Regulatory risks", "Summarize the regulatory risks Paylocity's (NASDAQ: PCTY) lists in its FY 2024 10-K."],
+    ["New facility", "When is production expected to begin in J M Smucker's (NYSE: SJ) new distribution center in McCalla, Alabama?"],
+  ],
+  fixture: [
+    ["Revenue trend", "How has Aurora Robotics Corp's revenue changed from 2022 to 2024?"],
+    ["Filing risks", "What risks appear in Aurora Robotics Corp's recent filings?"],
+  ],
+};
+const DATA_NOTES = {
+  edgar: "Tools query a pinned snapshot of SEC EDGAR filings and XBRL facts. Answers cite the rows the tools returned.",
+  fixture: "Tools query synthetic fixtures. Companies and filings are fictional and only illustrate the workflow.",
+};
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -33,8 +53,19 @@ function renderEmpty(message) {
   answerContent.replaceChildren(element("div", "error-box", message));
 }
 
-function renderResult(result) {
+// `saved`, when given, is the run's history entry: {run_id, created_at,
+// feedback, replayed}. A replayed run comes from the store, not a live call.
+function renderResult(result, saved) {
   const wrapper = element("div", "result");
+  if (saved?.replayed) {
+    wrapper.append(
+      element(
+        "p",
+        "replay-banner",
+        "Saved run from " + new Date(saved.created_at).toLocaleString() + " · reopened from the run store, no new agent call",
+      ),
+    );
+  }
   const meta = element("div", "result-meta");
   const confidence = element(
     "span",
@@ -79,9 +110,14 @@ function renderResult(result) {
   }
 
   const stats = element("div", "result-stats");
+  stats.append(stat("Mode", result.mode ?? "—"));
   stats.append(stat("Elapsed", formatDuration(result.elapsed_ms)));
   stats.append(stat("Cost", formatCost(result.cost_eur)));
+  stats.append(stat("Tokens", formatCount((result.tokens_in ?? 0) + (result.tokens_out ?? 0))));
   wrapper.append(stats);
+  if (saved && typeof renderRunActions === "function") {
+    wrapper.append(renderRunActions(saved));
+  }
   answerContent.replaceChildren(wrapper);
 }
 
@@ -172,6 +208,10 @@ function formatDuration(milliseconds) {
   return value >= 1000 ? (value / 1000).toFixed(1) + "s" : Math.round(value) + "ms";
 }
 
+function formatCount(value) {
+  return Number.isFinite(value) ? new Intl.NumberFormat().format(value) : "—";
+}
+
 function formatCost(euros) {
   const value = Number(euros);
   if (!Number.isFinite(value)) return "—";
@@ -186,12 +226,66 @@ question.addEventListener("input", () => {
   characterCount.textContent = question.value.length + " / 2000";
 });
 
-document.querySelectorAll(".example-chip").forEach((button) => {
-  button.addEventListener("click", () => {
-    question.value = button.dataset.question ?? "";
-    question.dispatchEvent(new Event("input", { bubbles: true }));
-    question.focus();
+function renderExamples(kind) {
+  const chips = (EXAMPLES[kind] ?? []).map(([label, text]) => {
+    const button = element("button", "example-chip", label);
+    button.type = "button";
+    button.append(element("span", "", "↗"));
+    button.addEventListener("click", () => {
+      question.value = text;
+      question.dispatchEvent(new Event("input", { bubbles: true }));
+      question.focus();
+    });
+    return button;
   });
+  examples.replaceChildren(element("span", "examples-label", "TRY AN EXAMPLE"), ...chips);
+}
+
+// Offer only what this deployment reports it can run (GET /capabilities).
+async function loadCapabilities() {
+  const label = document.querySelector("#data-source-label");
+  const note = document.querySelector("#data-note-text");
+  try {
+    const response = await fetch("/capabilities");
+    if (!response.ok) throw new Error(String(response.status));
+    const caps = await response.json();
+    const kind = caps.data_source.kind;
+    label.textContent = kind === "edgar" ? "SEC EDGAR snapshot" : "Synthetic fixtures";
+    label.parentElement.dataset.source = kind;
+    label.parentElement.title = "Tool data: " + caps.data_source.snapshot;
+    note.textContent = DATA_NOTES[kind];
+    const runtime = caps.runtimes.find((r) => r.name === caps.default_runtime && r.supported);
+    const modes = runtime ? runtime.modes : [caps.default_mode];
+    modeSelect.replaceChildren(...modes.map((mode) => {
+      const option = element("option", "", mode);
+      option.value = mode;
+      option.selected = mode === caps.default_mode;
+      return option;
+    }));
+    renderExamples(kind);
+    if (typeof setHistoryEnabled === "function") setHistoryEnabled(caps.run_history);
+  } catch {
+    label.textContent = "Data source unknown";
+    note.textContent = "Couldn't reach /capabilities. Check that the API is running.";
+  }
+}
+
+function showView(name) {
+  for (const tab of document.querySelectorAll(".view-tab")) {
+    const selected = tab.id === "tab-" + name;
+    tab.setAttribute("aria-selected", String(selected));
+    document.getElementById(tab.getAttribute("aria-controls")).hidden = !selected;
+  }
+  if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+  if (name === "evaluation" && typeof loadEvals === "function") loadEvals();
+}
+
+document.querySelector("#tab-research").addEventListener("click", () => showView("research"));
+document.querySelector("#tab-evaluation").addEventListener("click", () => showView("evaluation"));
+document.addEventListener("DOMContentLoaded", () => {
+  loadCapabilities();
+  // /#evaluation opens the evaluation view directly.
+  if (location.hash === "#evaluation") showView("evaluation");
 });
 
 form.addEventListener("submit", async (event) => {
@@ -206,7 +300,7 @@ form.addEventListener("submit", async (event) => {
 
   submitButton.disabled = true;
   buttonLabel.textContent = "Researching…";
-  setState("running", "Researching");
+  setState("running", "Researching (" + modeSelect.value + " mode can take minutes)");
   answerContent.replaceChildren(
     element("div", "empty-state loading-state", "Running the research agent…"),
   );
@@ -215,7 +309,7 @@ form.addEventListener("submit", async (event) => {
     const response = await fetch("/investigate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: value, context: {} }),
+      body: JSON.stringify({ question: value, context: {}, mode: modeSelect.value }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -223,7 +317,8 @@ form.addEventListener("submit", async (event) => {
         describeError(payload, "The request failed (" + response.status + "). Try again."),
       );
     }
-    renderResult(payload);
+    renderResult(payload, historyEnabled() ? { run_id: payload.case_id } : undefined);
+    if (typeof loadHistory === "function") loadHistory();
     setState(
       payload.error ? "error" : "complete",
       payload.error ? "Completed with issue" : "Complete",
