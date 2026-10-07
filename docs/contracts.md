@@ -138,10 +138,22 @@ POST /investigate
   504:      run exceeded the per-request timeout
   headers:  X-Request-ID echoed back on every response
 
+GET /capabilities            runtimes and modes this deployment runs, the data source, whether runs are saved
+GET /runs?limit=&offset=     saved runs, newest first (limit 1-100, default 20)
+GET /runs/{run_id}           one saved run: question, settings, AgentResult, feedback
+GET /runs/{run_id}/export    the same, as a JSON file to download
+POST /runs/{run_id}/feedback body {rating: "up" | "down", note?: str}; replaces earlier feedback
+  404:      no saved run with that id
+  503:      run history is off: DATABASE_URL isn't set
+
 GET /healthz   liveness  — process is up, no dependency checks
 GET /readyz    readiness — MCP server reachable AND Postgres reachable
 GET /metrics   Prometheus text format
 ```
+
+`mode` is `single` or `multi`; `runtime` is `agent_sdk`. LangGraph is listed in `/capabilities` as unsupported: it needs a metered API key (ADR 0027).
+
+Every answered `/investigate` is saved in Postgres (`research_runs`, ADR 0030) under its request ID, which is also `AgentResult.case_id`. A failed save is logged and the answer is still returned. No response carries environment values, keys or the database URL.
 
 `/healthz` must never check dependencies. A liveness probe that fails on a database blip restarts a healthy pod.
 

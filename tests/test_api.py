@@ -1,7 +1,7 @@
 """Tests for `api/main.py`. `docs/contracts.md` section 5.
 
 `httpx.AsyncClient` against the app in-process via `ASGITransport` — no real
-server, no real agent run: `_runtime.run_async` (what `investigate()` actually
+server, no real agent run: `_runtimes[mode].run_async` (what `investigate()` actually
 awaits) and the two `health.py` checks are monkeypatched, so nothing here
 calls a model or a network service.
 """
@@ -24,6 +24,18 @@ pytestmark = [pytest.mark.unit, pytest.mark.anyio]
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A test that doesn't patch a mode's runtime fails instead of running a
+    real, paid agent run."""
+
+    async def refuse(case: Case) -> AgentResult:
+        raise AssertionError("an API test reached a real runtime; patch run_async")
+
+    for runtime in api_main._runtimes.values():
+        monkeypatch.setattr(runtime, "run_async", refuse)
 
 
 def _agent_result(case_id: str, **overrides: object) -> AgentResult:
@@ -109,7 +121,7 @@ async def test_investigate_success_echoes_request_id(
         captured["case"] = case
         return _agent_result(case.case_id)
 
-    monkeypatch.setattr(api_main._runtime, "run_async", fake_run_async)
+    monkeypatch.setattr(api_main._runtimes["single"], "run_async", fake_run_async)
 
     async with await _client() as client:
         resp = await client.post(
@@ -131,7 +143,7 @@ async def test_investigate_generates_request_id_when_absent(
     async def fake_run_async(case: Case) -> AgentResult:
         return _agent_result(case.case_id)
 
-    monkeypatch.setattr(api_main._runtime, "run_async", fake_run_async)
+    monkeypatch.setattr(api_main._runtimes["single"], "run_async", fake_run_async)
 
     async with await _client() as client:
         resp = await client.post("/investigate", json={"question": "q"})
@@ -171,7 +183,7 @@ async def test_investigate_empty_question_is_422() -> None:
 async def test_investigate_unsupported_mode_is_422() -> None:
     async with await _client() as client:
         resp = await client.post(
-            "/investigate", json={"question": "q", "mode": "multi"}
+            "/investigate", json={"question": "q", "mode": "swarm"}
         )
 
     assert resp.status_code == 422
@@ -202,7 +214,7 @@ async def test_investigate_timeout_is_504(
         finally:
             cleanup_ran.append(True)
 
-    monkeypatch.setattr(api_main._runtime, "run_async", hanging_run_async)
+    monkeypatch.setattr(api_main._runtimes["single"], "run_async", hanging_run_async)
     monkeypatch.setattr(api_main, "REQUEST_TIMEOUT_S", 0.01)
 
     with caplog.at_level("WARNING", logger="recon.api.main"):

@@ -56,20 +56,11 @@ function renderResult(result) {
   wrapper.append(element("p", "answer-text", result.answer || "The agent returned no answer."));
   wrapper.append(element("hr", "result-divider"));
 
-  const evidenceHeading = element("h3", "detail-heading", "Evidence");
-  const evidence = Array.isArray(result.evidence) ? result.evidence : [];
-  evidenceHeading.append(
-    element("small", "", evidence.length + " item" + (evidence.length === 1 ? "" : "s")),
-  );
-  wrapper.append(evidenceHeading);
-  if (evidence.length) {
-    const list = element("ul", "evidence-list");
-    for (const item of evidence) {
-      list.append(element("li", "evidence-item", String(item)));
-    }
-    wrapper.append(list);
+  const claims = Array.isArray(result.claims) ? result.claims : [];
+  if (claims.length) {
+    renderClaims(wrapper, claims, result.evidence_items ?? []);
   } else {
-    wrapper.append(element("p", "no-data", "No evidence was returned for this answer."));
+    renderEvidenceStrings(wrapper, Array.isArray(result.evidence) ? result.evidence : []);
   }
 
   wrapper.append(element("hr", "result-divider"));
@@ -92,6 +83,65 @@ function renderResult(result) {
   stats.append(stat("Cost", formatCost(result.cost_eur)));
   wrapper.append(stats);
   answerContent.replaceChildren(wrapper);
+}
+
+// Claims with their sources (ADR 0030). The source details come from the
+// rows the tools returned; an unverified citation is shown as such.
+function renderClaims(wrapper, claims, evidenceItems) {
+  const byRef = new Map(evidenceItems.map((item) => [item.ref, item]));
+  const heading = element("h3", "detail-heading", "Claims and sources");
+  heading.append(element("small", "", claims.length + " claim" + (claims.length === 1 ? "" : "s")));
+  wrapper.append(heading);
+  const list = element("ol", "claim-list");
+  for (const claim of claims) {
+    const item = element("li", "claim-item");
+    item.dataset.importance = claim.importance;
+    item.append(element("p", "claim-text", claim.text));
+    const refs = claim.evidence_refs ?? [];
+    if (!refs.length) item.append(element("p", "no-data", "No source cited."));
+    for (const ref of refs) item.append(renderSource(byRef.get(ref) ?? { ref, verified: false }));
+    list.append(item);
+  }
+  wrapper.append(list);
+}
+
+function renderSource(evidence) {
+  const details = element("details", "source-item");
+  const summary = element("summary");
+  const badge = element("span", "source-badge", evidence.verified ? "verified" : "unverified");
+  badge.dataset.verified = String(Boolean(evidence.verified));
+  const parts = [
+    evidence.company_id,
+    evidence.form,
+    evidence.filed ? "filed " + evidence.filed : null,
+    evidence.section,
+  ].filter(Boolean);
+  summary.append(badge, element("span", "source-label", parts.join(" · ") || evidence.ref));
+  details.append(summary);
+  if (evidence.verified) {
+    details.append(element("blockquote", "source-excerpt", evidence.excerpt ?? ""));
+    if (evidence.accession) details.append(element("p", "source-meta", "Accession " + evidence.accession));
+  } else {
+    details.append(element("p", "source-meta", "No tool returned " + evidence.ref + " in this run."));
+  }
+  return details;
+}
+
+function renderEvidenceStrings(wrapper, evidence) {
+  const evidenceHeading = element("h3", "detail-heading", "Evidence");
+  evidenceHeading.append(
+    element("small", "", evidence.length + " item" + (evidence.length === 1 ? "" : "s")),
+  );
+  wrapper.append(evidenceHeading);
+  if (evidence.length) {
+    const list = element("ul", "evidence-list");
+    for (const item of evidence) {
+      list.append(element("li", "evidence-item", String(item)));
+    }
+    wrapper.append(list);
+  } else {
+    wrapper.append(element("p", "no-data", "No evidence was returned for this answer."));
+  }
 }
 
 function renderToolCall(call, index) {

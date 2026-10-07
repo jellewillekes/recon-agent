@@ -1,5 +1,6 @@
 """FastAPI service. `docs/contracts.md` section 5: `POST /investigate`,
-`GET /healthz`, `GET /readyz`, `GET /metrics`.
+`GET /capabilities`, the saved runs under `/runs`, `GET /healthz`,
+`GET /readyz`, `GET /metrics`.
 
 Twelve-factor: every deployment-varying value is read from an environment
 variable once at import time — `RECON_API_MAX_CONCURRENCY`,
@@ -13,26 +14,39 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import FastAPI, Request, Response, status
+import asyncpg
+from fastapi import FastAPI, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.staticfiles import StaticFiles
 
+from recon.api import run_store
 from recon.api.health import check_mcp_server, check_postgres
 from recon.api.metrics import (
     INVESTIGATE_IN_FLIGHT,
     INVESTIGATE_LATENCY,
     REQUEST_COUNT,
 )
-from recon.api.schemas import InvestigateRequest
-from recon.contracts import Case
+from recon.api.schemas import (
+    Capabilities,
+    DataSource,
+    Feedback,
+    InvestigateRequest,
+    ResearchRun,
+    RunList,
+    RuntimeCapability,
+)
+from recon.contracts import AgentResult, Case
 from recon.runtimes import api_key
 from recon.runtimes.agent_sdk import AgentSdkRuntime
+from recon.tools.data_source import tool_data_snapshot_id
 from recon.tracing import (
     configure_tracing,
     record_agent_result,
@@ -50,14 +64,22 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 # take, not a deployment-varying value, so a constant rather than an env var.
 READYZ_CHECK_TIMEOUT_S = 5.0
 
-# Only what this build actually implements. mode="multi" is step 7; a second
-# runtime is later — both come back as 422 until then, not silently ignored.
-SUPPORTED_MODES = {"single"}
+# Only what this build actually implements; anything else comes back as 422,
+# not silently ignored. LangGraph needs a metered API key (ADR 0027), which
+# the service never uses.
+SUPPORTED_MODES: tuple[Literal["single", "multi"], ...] = ("single", "multi")
 SUPPORTED_RUNTIMES = {"agent_sdk"}
+_LANGGRAPH_REASON = (
+    "LangGraph needs a metered Anthropic API key (ADR 0027); this service runs "
+    "on the Agent SDK subscription only."
+)
+_NO_RUN_HISTORY = (
+    "Run history needs Postgres. Set DATABASE_URL for the API and restart it."
+)
 
 REQUEST_ID_HEADER = "X-Request-ID"
 
-_runtime = AgentSdkRuntime()
+_runtimes = {mode: AgentSdkRuntime(mode=mode) for mode in SUPPORTED_MODES}
 _semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
 
 
@@ -174,7 +196,8 @@ async def investigate(request: Request, body: InvestigateRequest) -> Response:
             try:
                 with span("invoke_agent") as agent_span:
                     result = await asyncio.wait_for(
-                        _runtime.run_async(case), timeout=REQUEST_TIMEOUT_S
+                        _runtimes[body.mode or "single"].run_async(case),
+                        timeout=REQUEST_TIMEOUT_S,
                     )
                     record_agent_result(agent_span, result)
             finally:
@@ -203,8 +226,133 @@ async def investigate(request: Request, body: InvestigateRequest) -> Response:
     finally:
         INVESTIGATE_LATENCY.observe(time.monotonic() - start)
 
+    await _save(body, result)
     REQUEST_COUNT.labels(route="/investigate", status="200").inc()
     return JSONResponse(status_code=status.HTTP_200_OK, content=result.model_dump())
+
+
+@cache
+def _data_source() -> tuple[str, str]:
+    """The tools' data kind and snapshot id. Hashing the snapshot reads its
+    files, so it's done once per process; the snapshot doesn't change under
+    a running server."""
+    snapshot = tool_data_snapshot_id()
+    return ("fixture" if snapshot.startswith("fixture") else "edgar"), snapshot
+
+
+async def _save(body: InvestigateRequest, result: AgentResult) -> None:
+    """Save a finished run. A failed save is logged, not raised: the answer
+    the user waited for matters more than its history entry."""
+    if DATABASE_URL is None:
+        return
+    run = ResearchRun(
+        run_id=result.case_id,
+        created_at=datetime.now(UTC),
+        question=body.question,
+        context=body.context,
+        runtime=result.runtime,
+        mode=result.mode,
+        data_source=_data_source()[1],
+        result=result,
+    )
+    try:
+        await run_store.save_run(DATABASE_URL, run)
+    except (OSError, asyncpg.PostgresError) as exc:
+        logger.warning(
+            "run_id=%s wasn't saved to the run store (%s); check Postgres "
+            "and DATABASE_URL",
+            run.run_id,
+            type(exc).__name__,
+        )
+
+
+def _no_run_history() -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": _NO_RUN_HISTORY},
+    )
+
+
+def _no_such_run(run_id: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"detail": f"No saved run {run_id!r}. List saved runs at /runs."},
+    )
+
+
+@app.get("/capabilities")
+async def capabilities() -> Capabilities:
+    """What this deployment can run, so a client offers only that."""
+    kind, snapshot = _data_source()
+    return Capabilities(
+        runtimes=[
+            RuntimeCapability(
+                name="agent_sdk", modes=list(SUPPORTED_MODES), supported=True
+            ),
+            RuntimeCapability(
+                name="langgraph",
+                modes=list(SUPPORTED_MODES),
+                supported=False,
+                reason=_LANGGRAPH_REASON,
+            ),
+        ],
+        default_runtime="agent_sdk",
+        default_mode="single",
+        data_source=DataSource(kind=kind, snapshot=snapshot),  # type: ignore[arg-type]
+        run_history=DATABASE_URL is not None,
+    )
+
+
+@app.get("/runs", response_model=None)
+async def runs(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> RunList | JSONResponse:
+    """Saved runs, newest first."""
+    if DATABASE_URL is None:
+        return _no_run_history()
+    summaries = await run_store.list_runs(DATABASE_URL, limit, offset)
+    return RunList(runs=summaries, limit=limit, offset=offset)
+
+
+@app.get("/runs/{run_id}", response_model=None)
+async def get_run(run_id: str) -> ResearchRun | JSONResponse:
+    """One saved run: the question, settings, answer, claims, evidence and
+    tool calls."""
+    if DATABASE_URL is None:
+        return _no_run_history()
+    run = await run_store.get_run(DATABASE_URL, run_id)
+    return _no_such_run(run_id) if run is None else run
+
+
+@app.get("/runs/{run_id}/export", response_model=None)
+async def export_run(run_id: str) -> Response:
+    """A saved run as a JSON file to download."""
+    if DATABASE_URL is None:
+        return _no_run_history()
+    run = await run_store.get_run(DATABASE_URL, run_id)
+    if run is None:
+        return _no_such_run(run_id)
+    safe_id = "".join(c for c in run_id if c.isalnum() or c in "-_")
+    return Response(
+        content=run.model_dump_json(indent=2),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="recon-run-{safe_id}.json"'
+        },
+    )
+
+
+@app.post("/runs/{run_id}/feedback", response_model=None)
+async def run_feedback(
+    run_id: str, feedback: Feedback
+) -> dict[str, str] | JSONResponse:
+    """A 👍/👎 and an optional note on a saved run, replacing any earlier one."""
+    if DATABASE_URL is None:
+        return _no_run_history()
+    if not await run_store.set_feedback(DATABASE_URL, run_id, feedback):
+        return _no_such_run(run_id)
+    return {"status": "ok"}
 
 
 @app.get("/healthz")

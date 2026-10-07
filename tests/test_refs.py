@@ -1,7 +1,7 @@
 """Row refs on tool output (ADR 0030, docs/contracts.md section 3)."""
 
 import json
-from typing import Any
+from typing import Any, cast
 
 import duckdb
 import pytest
@@ -75,10 +75,11 @@ async def test_the_mcp_server_returns_rows_with_refs() -> None:
     conn = duckdb.connect(":memory:")
     fixtures.seed(conn)
     server = build_server(conn)
-    _, structured = await server.call_tool(
+    _, raw = await server.call_tool(
         "get_financial_fact_tool",
         {"company_id": "FIRM-001", "concept": "revenue", "fiscal_year": 2024},
     )
+    structured = cast(dict[str, Any], raw)
     payload: dict[str, Any] = structured.get("result", structured)
     assert payload["status"] == "ok"
     assert all(row["ref"].startswith("E") for row in payload["data"])
