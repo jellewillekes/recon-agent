@@ -2,7 +2,7 @@
 
 - Dataset: finance-agent-bench@8ba65f81ab75 (MIT)
 - Runtime: agent_sdk / mode: single
-- Timestamp: 2026-10-07T18:56:22.352277+00:00
+- Timestamp: 2026-10-07T19:01:40.523446+00:00
 - Rubric version: 4
 - Tool data: fixture-804ed42c6cf6
 - Retrieval labels: not scored
