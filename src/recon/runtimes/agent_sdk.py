@@ -173,6 +173,15 @@ class _RunFailed(_PartialRun):
     the caller keeps (#110) instead of recording EUR 0.00."""
 
 
+def _failure_text(exc: ResultError) -> str:
+    """The run's error text. `AgentResult` keeps only text, so an HTTP 429 is
+    named in it, for the harness to stop at the usage limit however the CLI
+    words the message (#123)."""
+    if exc.api_error_status == 429:
+        return f"usage limit (HTTP 429): {exc}"
+    return str(exc)
+
+
 def _spent(
     usage: dict[str, Any] | None, total_cost_usd: float | None, usd_to_eur_rate: float
 ) -> tuple[int, int, float]:
@@ -460,7 +469,7 @@ async def _run_query(
             usd_to_eur_rate,
         )
         raise _RunFailed(
-            str(exc),
+            _failure_text(exc),
             tool_calls=list(tool_calls),
             tokens_in=tokens_in,
             tokens_out=tokens_out,

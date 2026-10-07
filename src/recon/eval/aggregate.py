@@ -68,6 +68,11 @@ def _failure_counts(case_scores: list[CaseScore]) -> dict[str, float]:
     the cases that have one (#116)."""
     judge_failed = sum(s.judge_failed for s in case_scores)
     unjudged = {CASES_JUDGE_FAILED: float(judge_failed)} if judge_failed else {}
+    # Not gated, so not an incomplete-run marker: faithfulness_mean just rests
+    # on fewer cases.
+    faithfulness_failed = sum(s.faithfulness_judge_failed for s in case_scores)
+    if faithfulness_failed:
+        unjudged["cases_faithfulness_judge_failed"] = float(faithfulness_failed)
     classified = [s.failure_class for s in case_scores if s.failure_class is not None]
     if not classified:
         return unjudged

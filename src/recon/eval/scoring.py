@@ -85,6 +85,7 @@ class _Judged:
     answer_score: float
     cost_eur: float = 0.0
     failed: bool = False
+    faithfulness_failed: bool = False
     session_limit: bool = False
 
 
@@ -155,6 +156,7 @@ def _score_case(
         claim_support_rate=metrics.claim_support_rate(agent_result),
         citation_precision=metrics.citation_precision(agent_result),
         judge_failed=judged.failed,
+        faithfulness_judge_failed=judged.faithfulness_failed,
     )
     session_limit = judged.session_limit or is_session_limit(agent_result.error)
     return score, agent_result, session_limit
@@ -223,12 +225,12 @@ def _judge_answer(
         )
 
     rubric_scores = dict(judge_result.rubric_scores)
-    faithful, faithful_cost, session_limit = (
+    faithful, faithful_cost, error = (
         _faithfulness_or_note(
             case, agent_result, passages, models_config_path, notes_parts
         )
         if passages is not None
-        else (None, 0.0, False)
+        else (None, 0.0, None)
     )
     if faithful is not None:
         # Not a rubric, so weighted_answer_score ignores it.
@@ -237,7 +239,8 @@ def _judge_answer(
         rubric_scores=rubric_scores,
         answer_score=metrics.weighted_answer_score(judge_result.rubric_scores, rubrics),
         cost_eur=judge_result.cost_eur + faithful_cost,
-        session_limit=session_limit,
+        faithfulness_failed=error is not None,
+        session_limit=error is not None and error_is_session_limit(error),
     )
 
 
@@ -247,15 +250,15 @@ def _faithfulness_or_note(
     passages: faithfulness.Passages,
     models_config_path: Path,
     notes_parts: list[str],
-) -> tuple[float | None, float, bool]:
-    """The faithfulness score, its cost, and whether a failed call hit the
-    session limit. A failed call is noted, not raised (#123)."""
+) -> tuple[float | None, float, Exception | None]:
+    """The faithfulness score, its cost, and the error when the call failed.
+    A failed call is noted, not raised (#123)."""
     try:
         result = _judge_faithfulness(case, agent_result, passages, models_config_path)
     except JUDGE_ERRORS as exc:
         notes_parts.append(f"faithfulness judge failed: {exc}")
-        return None, 0.0, error_is_session_limit(exc)
-    return result.score, result.cost_eur, False
+        return None, 0.0, exc
+    return result.score, result.cost_eur, None
 
 
 def _judge_faithfulness(
