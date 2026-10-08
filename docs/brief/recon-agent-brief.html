@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>recon-agent: one-page brief</title>
+<style>
+  @page { size: A4 portrait; margin: 12mm; }
+  :root { --accent: #0b6b50; --ink: #1d2421; --muted: #59635e; --line: #c9d0cc; --soft: #eef2ef; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font: 9pt/1.34 -apple-system, "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
+  .page { width: 186mm; margin: 0 auto; }
+  h1 { font-size: 17pt; margin: 0 0 1.5mm; letter-spacing: -0.2px; }
+  h1 span { color: var(--accent); }
+  .lede { font-size: 9.8pt; margin: 0 0 1.5mm; }
+  .note { font-size: 8.4pt; color: var(--muted); margin: 0 0 2mm; padding-bottom: 2mm; border-bottom: 1px solid var(--line); }
+  h2 { font-size: 9.4pt; text-transform: uppercase; letter-spacing: 0.6px; color: var(--accent); margin: 2.4mm 0 1mm; }
+  p { margin: 0 0 1.6mm; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; fill: var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-size: 8.6pt; white-space: nowrap; margin: 0.5mm 0 1.2mm; }
+  th, td { text-align: left; padding: 1mm 1.6mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); }
+  td.num { font-variant-numeric: tabular-nums; }
+  ul { margin: 0; padding-left: 4.5mm; }
+  li { margin-bottom: 1mm; }
+  .small { font-size: 8.4pt; color: var(--muted); }
+  footer { margin-top: 2mm; font-size: 7.6pt; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>recon-agent <span>·</span> evaluating AI agents for financial research</h1>
+<p class="lede">It tells you whether an agent change is safe to ship, what a useful answer costs, and whether each claim traces to data the agent really retrieved.</p>
+<p class="note">An agent answers analyst questions with tools over SEC EDGAR data. The harness scores the answer and the path taken: the harness is the product, the agent is what it measures. "Reconciliation" here means checking each claim against tool output really returned in that run, and comparing a candidate run with a committed baseline. It is not ledger or bank reconciliation.</p>
+
+<h2>Business problem</h2>
+<p>Analysts want agents that answer questions from filings: revenue, margins, segment figures, risk-factor text. A wrong or unsupported number in research is costly, and a new model, prompt or tool can lower accuracy or raise cost without anyone noticing. recon-agent runs each candidate on fixed benchmark questions and checks it against the baseline before it ships, prices each useful answer, and traces claims to source data. On the current baseline a case scoring at least 0.5 costs about €0.20, judge cost included.</p>
+
+<h2>System architecture</h2>
+<svg viewBox="0 0 700 198" role="img" aria-label="System architecture">
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#59635e"/></marker>
+  </defs>
+  <g font-size="10.5">
+    <!-- questions -->
+    <rect x="2" y="30" width="92" height="56" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+    <text x="48" y="52" text-anchor="middle" font-weight="600">Benchmark</text>
+    <text x="48" y="66" text-anchor="middle">questions</text>
+    <text x="48" y="79" text-anchor="middle" font-size="8.5" fill="#59635e">finance-agent-bench</text>
+    <!-- runtime -->
+    <rect x="116" y="22" width="132" height="72" rx="5" fill="#fff" stroke="#0b6b50" stroke-width="1.6"/>
+    <text x="182" y="42" text-anchor="middle" font-weight="600">Agent runtime</text>
+    <text x="182" y="57" text-anchor="middle">Claude Agent SDK</text>
+    <text x="182" y="70" text-anchor="middle">or LangGraph</text>
+    <text x="182" y="84" text-anchor="middle" font-size="8.5" fill="#59635e">single or multi mode</text>
+    <!-- tools -->
+    <rect x="116" y="112" width="132" height="74" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+    <text x="182" y="129" text-anchor="middle" font-weight="600">MCP tools</text>
+    <text x="182" y="143" text-anchor="middle" font-size="9">XBRL facts, filings</text>
+    <text x="182" y="155" text-anchor="middle" font-size="9">in DuckDB</text>
+    <text x="182" y="168" text-anchor="middle" font-size="9">filing-text search in</text>
+    <text x="182" y="180" text-anchor="middle" font-size="9">Postgres / pgvector</text>
+    <!-- result -->
+    <rect x="270" y="30" width="96" height="56" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+    <text x="318" y="52" text-anchor="middle" font-weight="600">AgentResult</text>
+    <text x="318" y="66" text-anchor="middle" font-size="8.5" fill="#59635e">answer, claims,</text>
+    <text x="318" y="78" text-anchor="middle" font-size="8.5" fill="#59635e">tool calls, cost</text>
+    <!-- judge -->
+    <rect x="388" y="30" width="96" height="56" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+    <text x="436" y="52" text-anchor="middle" font-weight="600">LLM judge</text>
+    <text x="436" y="66" text-anchor="middle">+ rubrics</text>
+    <text x="436" y="79" text-anchor="middle" font-size="8.5" fill="#59635e">Haiku 4.5</text>
+    <!-- metrics -->
+    <rect x="506" y="30" width="72" height="56" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+    <text x="542" y="62" text-anchor="middle" font-weight="600">Metrics</text>
+    <!-- gate -->
+    <rect x="600" y="22" width="98" height="72" rx="5" fill="#fff" stroke="#0b6b50" stroke-width="1.6"/>
+    <text x="649" y="44" text-anchor="middle" font-weight="600">Promotion</text>
+    <text x="649" y="57" text-anchor="middle" font-weight="600">gate</text>
+    <text x="649" y="73" text-anchor="middle" font-size="8.5" fill="#59635e">vs committed</text>
+    <text x="649" y="85" text-anchor="middle" font-size="8.5" fill="#59635e">baseline</text>
+    <!-- arrows -->
+    <g stroke="#59635e" stroke-width="1.2" fill="none" marker-end="url(#a)">
+      <line x1="94" y1="58" x2="114" y2="58"/>
+      <line x1="248" y1="58" x2="268" y2="58"/>
+      <line x1="366" y1="58" x2="386" y2="58"/>
+      <line x1="484" y1="58" x2="504" y2="58"/>
+      <line x1="578" y1="58" x2="598" y2="58"/>
+      <line x1="172" y1="94" x2="172" y2="110" marker-start="url(#a)"/>
+    </g>
+    <text x="180" y="105" font-size="8.5" fill="#59635e">MCP calls, rows back</text>
+    <!-- production shape -->
+    <rect x="388" y="112" width="310" height="74" rx="5" fill="#fff" stroke="#c9d0cc" stroke-dasharray="4 3"/>
+    <text x="400" y="130" font-weight="600">Production shape</text>
+    <text x="400" y="147" font-size="9.5">FastAPI service with health and readiness checks</text>
+    <text x="400" y="161" font-size="9.5">Prometheus metrics, OpenTelemetry traces to Grafana</text>
+    <text x="400" y="175" font-size="9.5">Docker image scanned in CI, Helm chart tested on k3d</text>
+  </g>
+</svg>
+
+<h2>Agent setup and verification</h2>
+<svg viewBox="0 0 700 248" role="img" aria-label="Multi mode and the verification chain">
+  <defs>
+    <marker id="b" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#59635e"/></marker>
+  </defs>
+  <g font-size="10.5">
+    <text x="2" y="12" font-size="9" font-weight="600" fill="#0b6b50" letter-spacing="0.5">MULTI MODE</text>
+    <rect x="62" y="22" width="120" height="34" rx="5" fill="#fff" stroke="#0b6b50" stroke-width="1.6"/>
+    <text x="122" y="37" text-anchor="middle" font-weight="600">Supervisor</text>
+    <text x="122" y="50" text-anchor="middle" font-size="8.5" fill="#59635e">splits the question</text>
+    <rect x="2" y="88" width="112" height="44" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+    <text x="58" y="106" text-anchor="middle" font-weight="600">Lookup worker</text>
+    <text x="58" y="121" text-anchor="middle" font-size="8.5" fill="#59635e">companies, concepts</text>
+    <rect x="130" y="88" width="112" height="44" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+    <text x="186" y="106" text-anchor="middle" font-weight="600">Facts worker</text>
+    <text x="186" y="121" text-anchor="middle" font-size="8.5" fill="#59635e">facts, filing text</text>
+    <rect x="62" y="160" width="120" height="30" rx="5" fill="#fff" stroke="#0b6b50" stroke-width="1.6"/>
+    <text x="122" y="179" text-anchor="middle" font-weight="600">Supervisor answers</text>
+    <rect x="62" y="202" width="120" height="30" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+    <text x="122" y="221" text-anchor="middle" font-weight="600">Critic checks it</text>
+    <g stroke="#59635e" stroke-width="1.2" fill="none" marker-end="url(#b)">
+      <line x1="100" y1="56" x2="64" y2="86"/>
+      <line x1="144" y1="56" x2="180" y2="86"/>
+      <line x1="58" y1="132" x2="96" y2="158"/>
+      <line x1="186" y1="132" x2="148" y2="158"/>
+      <line x1="122" y1="190" x2="122" y2="200"/>
+    </g>
+    <text x="250" y="150" font-size="8.5" fill="#59635e">Single mode: one</text>
+    <text x="250" y="162" font-size="8.5" fill="#59635e">investigator with</text>
+    <text x="250" y="174" font-size="8.5" fill="#59635e">all read tools.</text>
+
+    <line x1="338" y1="6" x2="338" y2="244" stroke="#c9d0cc"/>
+
+    <text x="352" y="12" font-size="9" font-weight="600" fill="#0b6b50" letter-spacing="0.5">VERIFICATION CHAIN</text>
+    <g>
+      <rect x="352" y="22" width="346" height="38" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+      <text x="362" y="38" font-weight="600">1. Agent cites tool rows</text>
+      <text x="362" y="52" font-size="9">Each claim lists the refs of the rows it rests on.</text>
+      <rect x="352" y="70" width="346" height="38" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+      <text x="362" y="86" font-weight="600">2. Server checks every citation</text>
+      <text x="362" y="100" font-size="9">Verified only if a tool returned that row in this run.</text>
+      <rect x="352" y="118" width="346" height="38" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
+      <text x="362" y="134" font-weight="600">3. Judge scores the answer</text>
+      <text x="362" y="148" font-size="9">Correctness, grounding, tool efficiency.</text>
+      <rect x="352" y="166" width="346" height="78" rx="5" fill="#fff" stroke="#0b6b50" stroke-width="1.6"/>
+      <text x="362" y="182" font-weight="600">4. Gate compares with the baseline</text>
+      <text x="362" y="196" font-size="9">First: same rubric, dataset, data snapshot and case set.</text>
+      <text x="362" y="209" font-size="9">Then fails if task completion drops by more than one case,</text>
+      <text x="362" y="222" font-size="9">the answer score by more than 0.10, or cost rises over</text>
+      <text x="362" y="235" font-size="9">20% without better completion.</text>
+    </g>
+    <g stroke="#59635e" stroke-width="1.2" marker-end="url(#b)">
+      <line x1="525" y1="60" x2="525" y2="68"/>
+      <line x1="525" y1="108" x2="525" y2="116"/>
+      <line x1="525" y1="156" x2="525" y2="164"/>
+    </g>
+  </g>
+</svg>
+<p class="small"><strong>Guardrails.</strong> Tools return one of five statuses and never raise. Runs have budgets for tool calls, tokens and time. The one write path needs confirmation, and prompt-injection tests check tool data can't trigger it. Eval runs are capped at €1 by default.</p>
+
+<h2>Current results</h2>
+<table>
+  <thead><tr><th>Runtime, mode</th><th>Cases</th><th>Task completion</th><th>Answer score</th><th>Cited rows returned</th><th>Key claims cite a returned row</th><th>Total cost</th></tr></thead>
+  <tbody><tr><td>Agent SDK, single</td><td class="num">7</td><td class="num">1.000</td><td class="num">0.772</td><td class="num">1.000</td><td class="num">0.786</td><td class="num">€1.42</td></tr></tbody>
+</table>
+<p class="small">The committed baseline: 7 cases that need filing text, judged on Haiku 4.5. Task completion means a non-empty answer without a runtime error, not a correct one. Multi mode and LangGraph are not yet measured on the current rubric.</p>
+
+<h2>Known limits</h2>
+<ul>
+  <li>The citation check confirms a cited row was returned, not that it supports the claim. Case 731403050270 scored 0.944 with grounding rated 1.0, yet none of its key claims cites a returned row and its filing-text faithfulness is 0.0.</li>
+  <li>The baseline covers 7 cases. The gate treats a change of up to 0.10 in answer score, or one case in completion, as run-to-run noise, so smaller effects can't be confirmed.</li>
+  <li>LangGraph has not been run: it needs a metered API key, and the project runs on a Claude subscription only.</li>
+</ul>
+
+<footer>Source: github.com/jellewillekes/recon-agent, README, docs/architecture.md and evals/baseline.json (run eval-20261007T175852Z, rubric version 4).</footer>
+</div>
+</body>
+</html>
