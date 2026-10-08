@@ -249,6 +249,7 @@ class CaseScore(BaseModel):
     claim_support_rate: float | None   # key claims with a verified ref (ADR 0030); None when nothing to score
     citation_precision: float | None   # cited refs that are verified (ADR 0030); None when nothing is cited
     judge_failed: bool = False         # the rubric judge call failed, so answer_score and rubric_scores are placeholders (#123)
+    faithfulness_judge_failed: bool = False  # the faithfulness judge call failed, so faithfulness is unscored (#123)
     trajectory: TrajectoryScore | None = None  # #116; None before this field existed
     failure_class: FailureClass | None = None  # the main reason the case failed, "none" when correct (ADR 0031); None when unscored
     failure_reason: str | None = None          # one line naming what the class rests on

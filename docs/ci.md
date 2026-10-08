@@ -53,9 +53,10 @@ provenance first (`gh attestation verify <archive> --repo aquasecurity/trivy`).
 - ruff lint and format, whitespace, YAML and TOML checks, large files
 - gitleaks, at the same version as `gitleaks.yml`
 - forbidden tracked paths
-- `prompt-baseline`: fails when a file in `prompts/` no longer matches the
-  `prompt_hashes` in `evals/baseline.json`. The baseline was scored with the old
-  prompt, so the gate would compare against a different agent. Run a full eval and
+- `prompt-baseline`: fails when a prompt the baseline's run read no longer matches
+  the `prompt_hashes` in `evals/baseline.json`. The baseline was scored with the old
+  prompt, so the gate would compare against a different agent. A prompt that
+  runtime and mode never read only gets a notice (ADR 0032). Run a full eval and
   replace the baseline in the same PR, or revert the prompt. Until a baseline exists
   it prints a notice. CI runs the same check in the Lint job.
 
