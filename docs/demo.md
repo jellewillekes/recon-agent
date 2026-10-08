@@ -62,9 +62,14 @@ runs. Nothing in the rest of the story needs a live call.
 
 1. Switch to **Evaluation** (or open http://localhost:8000/#evaluation). The label says it: benchmark results, not live answers.
 2. **Recorded runs**: every run scored the agent on the same fixed benchmark questions. Point at task completion, answer score, cost, and cost per correct answer.
-3. **Compare** opens on multi mode with routing off against routing on: the local model plans the work, Claude does the rest. Read the verdicts. "same" means the change is within the measured run-to-run noise (ADR 0028), so we don't call noise an improvement.
-4. Pick an older rubric-3 run as the baseline and compare again. The gate refuses and lists why: the scoring changed, so the numbers aren't evidence of better or worse.
-5. Click a run id in the table to show its per-case results, including the cases that didn't complete and why.
+3. **Compare**, noise first. Pick baseline `eval-20261006T204756Z` and candidate `eval-20261006T210553Z`: the same agent run twice on the 7 text cases. Every verdict is "same". The scores moved a little, but within the measured run-to-run noise (ADR 0028), so we don't call that an improvement.
+4. A real comparison: baseline `eval-20261007T081821Z` (single mode) against candidate `eval-20261007T084001Z` (multi mode). Multi mode's answer score is worse, and it isn't cheaper. That's an honest finding: more agents isn't automatically better.
+5. Baseline `eval-20261007T081821Z` (rubric 3) against candidate `eval-20261007T175852Z` (rubric 4). The gate refuses and lists why: the scoring changed, so the numbers aren't evidence of better or worse.
+6. Click `eval-20261007T175852Z` in the table to show its per-case results: the failure class and run path per case, including the cases that didn't complete and why.
+
+The panel opens on multi mode with routing off against routing on once a
+routing-on run is recorded. Until then it opens on the two newest runs, which
+the gate refuses to compare, so pick the pairs above.
 
 ### 4. Feedback closes the loop (1 min)
 
@@ -76,6 +81,7 @@ start of the set we'll use to check the LLM judge against people.
 | What goes wrong | Do this |
 |---|---|
 | A live call is slow or hits the session limit | Reopen a saved run (step 1). |
+| The page says the front end isn't built | Run `make web` in the repo, then reload. |
 | "Run history is off" | Restart the API with `DATABASE_URL` exported. |
 | Postgres lost the runs | Show the JSON in `data/demo-runs/` in an editor; the Evaluation tab still works. |
 | The API won't start: API key exported | `unset ANTHROPIC_API_KEY` and start it again. |
