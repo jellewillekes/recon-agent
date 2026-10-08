@@ -99,12 +99,7 @@ def claim_failures(
     failures: list[str] = []
     before, after = bad_rate(baseline), bad_rate(candidate)
     if before is not None and after is None:
-        failures.append(
-            "none of the candidate's claims could be checked, while "
-            f"{before:.1%} of the baseline's were bad. A run the verifier can't "
-            "read can't pass the claim rule; check the run's claims "
-            "(UNVERIFIABLE reasons are in its summary)."
-        )
+        failures.append(_nothing_checkable(candidate, baseline))
     if (
         before is not None
         and after is not None
@@ -118,6 +113,26 @@ def claim_failures(
         )
     failures.extend(_new_contradictions(candidate, baseline))
     return failures
+
+
+def _readable(run: EvalRun) -> str:
+    claims = _verified(run)
+    readable = sum(1 for v in claims if v.verdict != "UNVERIFIABLE")
+    return f"{readable} of {len(claims)}"
+
+
+def _nothing_checkable(candidate: EvalRun, baseline: EvalRun) -> str:
+    """Why a candidate with nothing to check fails (ADR 0039)."""
+    cause = (
+        "the candidate made no claims"
+        if not _verified(candidate)
+        else "none of the candidate's claims could be checked"
+    )
+    return (
+        f"{cause}: claims checked, baseline {_readable(baseline)}, candidate "
+        f"{_readable(candidate)}. A run the verifier can't read doesn't pass the "
+        "claim rule. The UNVERIFIABLE reasons are in the run's summary."
+    )
 
 
 def _cases_with_more_bad_claims(candidate: EvalRun, baseline: EvalRun) -> list[str]:

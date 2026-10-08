@@ -13,12 +13,14 @@ choice was between failing such a candidate and only warning.
 
 ## Decision
 
-- The gate fails a candidate when the verifier could read none of its claims and could
-  read some of the baseline's. It doesn't fail when neither side had a readable claim.
+- The gate fails a candidate when the verifier could read none of its claims, or it made
+  none, and could read some of the baseline's. It doesn't fail when neither side had a
+  readable claim. The message gives the claims checked on each side.
 - When the baseline has no verified claims, `eval` and `compare` print that the claim
   check didn't run. The rules themselves don't change for that case.
-- `get_financial_fact` orders tied rows by `filed` and `accession`, so a truncated result
-  is the same on replay.
+- `get_financial_fact` breaks ties by `filed`, `accession`, `period_start`, `unit` and
+  `value`, so a truncated result is the same on replay. Only identical rows still tie,
+  and those carry the same ref.
 
 ## Consequences
 
@@ -27,3 +29,5 @@ choice was between failing such a candidate and only warning.
 - On cases where few claims are readable, such as the text cases (`docs/eval-noise.md`),
   one run that happens to make no readable claim fails the gate. That is the price of
   not passing what wasn't checked.
+- The rule only catches the extreme. A candidate that drops from 30 readable claims to 1
+  still passes. The message's counts make that visible, but nothing gates on them yet.

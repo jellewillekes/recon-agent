@@ -213,3 +213,22 @@ def test_the_skip_note_names_an_unverified_baseline() -> None:
     assert note is not None
     assert "claim check not run" in note
     assert skip_note(candidate) is None
+
+
+def test_the_unreadable_failure_counts_readable_claims_on_each_side() -> None:
+    baseline = _run([_case("a", ["SUPPORTED", "UNVERIFIABLE"])])
+    candidate = _run([_case("a", ["UNVERIFIABLE", "UNVERIFIABLE", "UNVERIFIABLE"])])
+
+    [failure] = check_gate(candidate, baseline, LIMITS)
+
+    assert "0 of 3" in failure
+    assert "1 of 2" in failure
+
+
+def test_a_candidate_that_made_no_claims_is_named_as_such() -> None:
+    baseline = _run([_case("a", GOOD)])
+    candidate = _run([_case("a", [])])
+
+    [failure] = check_gate(candidate, baseline, LIMITS)
+
+    assert "made no claims" in failure
