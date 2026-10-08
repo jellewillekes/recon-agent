@@ -326,15 +326,22 @@
         "type": "object"
       },
       "Company": {
-        "description": "A company the tools have data for.",
+        "description": "A company the tools have data for. `name` is `None` when the EDGAR\nsubmission the ticker was built from didn't carry one; the ticker is\nstill usable.",
         "properties": {
           "company_id": {
             "title": "Company Id",
             "type": "string"
           },
           "name": {
-            "title": "Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           }
         },
         "required": [

@@ -392,13 +392,15 @@ export interface components {
         };
         /**
          * Company
-         * @description A company the tools have data for.
+         * @description A company the tools have data for. `name` is `None` when the EDGAR
+         *     submission the ticker was built from didn't carry one; the ticker is
+         *     still usable.
          */
         Company: {
             /** Company Id */
             company_id: string;
             /** Name */
-            name: string;
+            name: string | null;
         };
         /**
          * CompanyList

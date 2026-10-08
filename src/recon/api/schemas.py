@@ -133,10 +133,12 @@ class EvalList(BaseModel):
 
 
 class Company(BaseModel):
-    """A company the tools have data for."""
+    """A company the tools have data for. `name` is `None` when the EDGAR
+    submission the ticker was built from didn't carry one; the ticker is
+    still usable."""
 
     company_id: str
-    name: str
+    name: str | None
 
 
 class CompanyList(BaseModel):
