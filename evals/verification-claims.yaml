@@ -1,0 +1,366 @@
+# DRAFT: the labels below were written by Claude from the synthetic rows, not
+# by the repo owner. AGENTS.md says labels come from the user, so this file
+# stays draft until the owner reviews every `expected_verdict`.
+#
+# Hand-labelled claims for the claim verifier (#137, ADR 0034).
+#
+# Every claim carries the tool rows it may be checked against and the verdict
+# a correct verifier gives. The data is synthetic: fictional companies, round
+# numbers, no real filing (.claude/rules/tests.md). Rows are shaped like
+# `get_financial_fact` output.
+#
+# scope: numeric  the numeric verifier must return `expected_verdict`.
+# scope: llm      needs judgement about causes or wording. The numeric verifier
+#                 must return UNVERIFIABLE here instead of guessing; the label
+#                 is the target for a later model-based verifier.
+
+rowsets:
+  # Aurora Robotics Corp, annual figures. Revenue grew 12.5% from FY2023 to
+  # FY2024 and 11.1% from FY2022 to FY2023; net income was 8.0% of revenue.
+  annual:
+    - {ref: E00000000a01, concept: revenue, fiscal_year: 2022, fiscal_period: FY, period_end: "2022-12-31", value: 360.0, unit: USD_M, form: 10-K, filed: "2023-02-14", accession: ACC-22K}
+    - {ref: E00000000a02, concept: revenue, fiscal_year: 2023, fiscal_period: FY, period_end: "2023-12-31", value: 400.0, unit: USD_M, form: 10-K, filed: "2024-02-14", accession: ACC-23K}
+    - {ref: E00000000a03, concept: revenue, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 450.0, unit: USD_M, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+    - {ref: E00000000a04, concept: net_income, fiscal_year: 2023, fiscal_period: FY, period_end: "2023-12-31", value: 32.0, unit: USD_M, form: 10-K, filed: "2024-02-14", accession: ACC-23K}
+    - {ref: E00000000a05, concept: net_income, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 36.0, unit: USD_M, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+    - {ref: E00000000a06, concept: gross_margin_pct, fiscal_year: 2023, fiscal_period: FY, period_end: "2023-12-31", value: 41.0, unit: PCT, form: 10-K, filed: "2024-02-14", accession: ACC-23K}
+    - {ref: E00000000a07, concept: gross_margin_pct, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 42.0, unit: PCT, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+    - {ref: E00000000a08, concept: operating_expenses, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 120.0, unit: USD_M, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+
+  # Third quarter revenue grew 10.0% year on year.
+  quarterly:
+    - {ref: E00000000b01, concept: revenue, fiscal_year: 2023, fiscal_period: Q3, period_end: "2023-09-30", value: 110.0, unit: USD_M, form: 10-Q, filed: "2023-11-01", accession: ACC-23Q3}
+    - {ref: E00000000b02, concept: revenue, fiscal_year: 2024, fiscal_period: Q3, period_end: "2024-09-30", value: 121.0, unit: USD_M, form: 10-Q, filed: "2024-11-01", accession: ACC-24Q3}
+
+  # Same year, stored in dollars rather than millions.
+  raw_dollars:
+    - {ref: E00000000c01, concept: revenue, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 450000000.0, unit: USD, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+
+  # Revenue fell 10.0% from FY2023 to FY2024.
+  declining:
+    - {ref: E00000000d01, concept: revenue, fiscal_year: 2023, fiscal_period: FY, period_end: "2023-12-31", value: 500.0, unit: USD_M, form: 10-K, filed: "2024-02-14", accession: ACC-23K}
+    - {ref: E00000000d02, concept: revenue, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 450.0, unit: USD_M, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+
+  # FY2023 revenue was restated from 400.0 to 392.0 in the FY2024 10-K.
+  # As first filed, FY2023 to FY2024 growth was 12.5%; as restated, 14.8%.
+  restated_revenue:
+    - {ref: E00000000e01, concept: revenue, fiscal_year: 2023, fiscal_period: FY, period_end: "2023-12-31", value: 400.0, unit: USD_M, form: 10-K, filed: "2024-02-14", accession: ACC-23K}
+    - {ref: E00000000e02, concept: revenue, fiscal_year: 2023, fiscal_period: FY, period_end: "2023-12-31", value: 392.0, unit: USD_M, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+    - {ref: E00000000e03, concept: revenue, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 450.0, unit: USD_M, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+
+  # FY2024 net income was restated from 36.0 to 34.0 by a 10-K/A.
+  restated_income:
+    - {ref: E00000000f01, concept: net_income, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 36.0, unit: USD_M, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+    - {ref: E00000000f02, concept: net_income, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 34.0, unit: USD_M, form: 10-K/A, filed: "2025-08-01", accession: ACC-24KA}
+
+  # Q3 2024 revenue was restated from 121.0 to 118.0 in the next 10-K.
+  restated_quarter:
+    - {ref: E00000000g01, concept: revenue, fiscal_year: 2023, fiscal_period: Q3, period_end: "2023-09-30", value: 110.0, unit: USD_M, form: 10-Q, filed: "2023-11-01", accession: ACC-23Q3}
+    - {ref: E00000000g02, concept: revenue, fiscal_year: 2024, fiscal_period: Q3, period_end: "2024-09-30", value: 121.0, unit: USD_M, form: 10-Q, filed: "2024-11-01", accession: ACC-24Q3}
+    - {ref: E00000000g03, concept: revenue, fiscal_year: 2024, fiscal_period: Q3, period_end: "2024-09-30", value: 118.0, unit: USD_M, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+
+  # One year only: no prior period to compare with.
+  single_year:
+    - {ref: E00000000h01, concept: revenue, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 450.0, unit: USD_M, form: 10-K, filed: "2025-02-14", accession: ACC-24K}
+
+  # Two values for one period and no filing dates: nothing says which is current.
+  undated_conflict:
+    - {ref: E00000000i01, concept: revenue, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 450.0, unit: USD_M}
+    - {ref: E00000000i02, concept: revenue, fiscal_year: 2024, fiscal_period: FY, period_end: "2024-12-31", value: 440.0, unit: USD_M}
+
+  empty: []
+
+claims:
+  # ---- SUPPORTED ----------------------------------------------------------
+  - id: supported-level-exact
+    text: "Aurora Robotics Corp reported revenue of $450.0 million in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: SUPPORTED
+    reason: The FY2024 revenue row is 450.0 USD_M.
+  - id: supported-level-whole-millions
+    text: "Revenue for fiscal 2024 was $450 million."
+    scope: numeric
+    rowset: annual
+    expected_verdict: SUPPORTED
+    reason: A whole-million claim is within half a million of 450.0.
+  - id: supported-level-billions
+    text: "Revenue was $0.45 billion in fiscal year 2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: SUPPORTED
+    reason: 0.45 billion is 450 million, stated to the nearest ten million.
+  - id: supported-level-unit-dollars
+    text: "Revenue was $450.0 million in FY2024."
+    scope: numeric
+    rowset: raw_dollars
+    expected_verdict: SUPPORTED
+    reason: The row is in dollars; 450,000,000 is 450.0 million.
+  - id: supported-growth-two-periods
+    text: "Revenue grew 12.5% from FY2023 to FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: SUPPORTED
+    reason: (450 - 400) / 400 is 12.5%.
+  - id: supported-growth-implied-prior-year
+    text: "Net income increased 12.5% in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: SUPPORTED
+    reason: (36 - 32) / 32 is 12.5%, against the prior fiscal year.
+  - id: supported-growth-rounded
+    text: "Revenue rose 11% from FY2022 to FY2023."
+    scope: numeric
+    rowset: annual
+    expected_verdict: SUPPORTED
+    reason: (400 - 360) / 360 is 11.1%, which rounds to 11.
+  - id: supported-decline
+    text: "Revenue fell 10.0% in FY2024."
+    scope: numeric
+    rowset: declining
+    expected_verdict: SUPPORTED
+    reason: (450 - 500) / 500 is -10.0%.
+  - id: supported-quarter-growth
+    text: "Q3 2024 revenue grew 10.0% versus Q3 2023."
+    scope: numeric
+    rowset: quarterly
+    expected_verdict: SUPPORTED
+    reason: (121 - 110) / 110 is 10.0%.
+  - id: supported-margin-level
+    text: "Gross margin was 42.0% in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: SUPPORTED
+    reason: The gross margin row is 42.0 PCT.
+  - id: supported-ratio
+    text: "Net income was 8.0% of revenue in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: SUPPORTED
+    reason: 36 / 450 is 8.0%.
+  - id: supported-growth-after-restatement
+    text: "Revenue grew 14.8% from FY2023 to FY2024."
+    scope: numeric
+    rowset: restated_revenue
+    expected_verdict: SUPPORTED
+    reason: Uses the restated FY2023 value, (450 - 392) / 392 is 14.8%.
+
+  # ---- CONTRADICTED -------------------------------------------------------
+  - id: contradicted-level-value
+    text: "Revenue was $480.0 million in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: CONTRADICTED
+    reason: The FY2024 row is 450.0, and no other year is 480.0.
+  - id: contradicted-level-wrong-year
+    text: "Revenue was $400.0 million in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: CONTRADICTED
+    reason: 400.0 is the FY2023 value. The FY2024 value is 450.0.
+  - id: contradicted-level-other-year-value
+    text: "Revenue was $450.0 million in FY2023."
+    scope: numeric
+    rowset: annual
+    expected_verdict: CONTRADICTED
+    reason: 450.0 is the FY2024 value. The FY2023 value is 400.0.
+  - id: contradicted-growth-rate
+    text: "Revenue grew 8.3% from FY2023 to FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: CONTRADICTED
+    reason: Growth was 12.5%, not 8.3%.
+  - id: contradicted-growth-one-point-off
+    text: "Revenue grew 12.0% from FY2023 to FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: CONTRADICTED
+    reason: Stated to one decimal, 12.0% is outside the rounding of 12.5%.
+  - id: contradicted-growth-direction
+    text: "Revenue fell 12.5% in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: CONTRADICTED
+    reason: Revenue rose 12.5%; the claim has the wrong sign.
+  - id: contradicted-ratio
+    text: "Net income was 12.0% of revenue in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: CONTRADICTED
+    reason: 36 / 450 is 8.0%.
+  - id: contradicted-margin
+    text: "Gross margin was 45.0% in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: CONTRADICTED
+    reason: The gross margin row is 42.0.
+
+  # ---- STALE --------------------------------------------------------------
+  - id: stale-growth-original-figures
+    text: "Revenue grew 12.5% from FY2023 to FY2024."
+    scope: numeric
+    rowset: restated_revenue
+    expected_verdict: STALE
+    reason: True on FY2023 as first filed (400.0). The FY2024 10-K restated it to 392.0, making growth 14.8%.
+  - id: stale-level-superseded
+    text: "Revenue was $400.0 million in FY2023."
+    scope: numeric
+    rowset: restated_revenue
+    expected_verdict: STALE
+    reason: 400.0 was the FY2023 value as first filed, since superseded by 392.0.
+  - id: stale-level-amended-filing
+    text: "Net income was $36.0 million in FY2024."
+    scope: numeric
+    rowset: restated_income
+    expected_verdict: STALE
+    reason: A 10-K/A restated FY2024 net income to 34.0.
+  - id: stale-level-whole-millions
+    text: "Net income was $36 million for FY2024."
+    scope: numeric
+    rowset: restated_income
+    expected_verdict: STALE
+    reason: Same superseded value, stated to the nearest million.
+  - id: stale-quarter-level
+    text: "Q3 2024 revenue was $121.0 million."
+    scope: numeric
+    rowset: restated_quarter
+    expected_verdict: STALE
+    reason: The 10-Q figure was restated to 118.0 in the next 10-K.
+  - id: stale-quarter-growth
+    text: "Q3 2024 revenue grew 10.0% from Q3 2023."
+    scope: numeric
+    rowset: restated_quarter
+    expected_verdict: STALE
+    reason: True on the 10-Q figure (121.0). With the restated 118.0 growth is 7.3%.
+
+  # ---- UNSUPPORTED --------------------------------------------------------
+  - id: unsupported-period-missing
+    text: "Revenue was $510.0 million in FY2025."
+    scope: numeric
+    rowset: annual
+    expected_verdict: UNSUPPORTED
+    reason: No FY2025 revenue row, and no other year has this value.
+  - id: unsupported-no-prior-year
+    text: "Revenue grew 5.0% in FY2024."
+    scope: numeric
+    rowset: single_year
+    expected_verdict: UNSUPPORTED
+    reason: No FY2023 row to compute growth against.
+  - id: unsupported-no-rows
+    text: "Revenue was $450.0 million in FY2024."
+    scope: numeric
+    rowset: empty
+    expected_verdict: UNSUPPORTED
+    reason: The claim cites no evidence rows.
+  - id: unsupported-concept-year-missing
+    text: "Operating expenses were $95.0 million in FY2023."
+    scope: numeric
+    rowset: annual
+    expected_verdict: UNSUPPORTED
+    reason: Operating expenses exist for FY2024 only.
+  - id: unsupported-ratio-input-missing
+    text: "Net income was 9.0% of revenue in FY2022."
+    scope: numeric
+    rowset: annual
+    expected_verdict: UNSUPPORTED
+    reason: No FY2022 net income row.
+  - id: unsupported-cause
+    text: "Revenue growth came from a new product launch."
+    scope: llm
+    rowset: annual
+    expected_verdict: UNSUPPORTED
+    reason: Nothing in the rows names a driver of growth.
+  - id: unsupported-cause-market
+    text: "Management attributed the margin gain to lower input costs."
+    scope: llm
+    rowset: annual
+    expected_verdict: UNSUPPORTED
+    reason: The rows hold numbers only; no statement by management.
+  - id: unsupported-outlook
+    text: "The company expects revenue to keep growing next year."
+    scope: llm
+    rowset: annual
+    expected_verdict: UNSUPPORTED
+    reason: No guidance in the rows.
+
+  # ---- UNVERIFIABLE -------------------------------------------------------
+  - id: unverifiable-no-number
+    text: "Revenue was strong in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: UNVERIFIABLE
+    reason: No figure to check.
+  - id: unverifiable-two-concepts
+    text: "Revenue and net income both improved in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: UNVERIFIABLE
+    reason: Two concepts and no figure.
+  - id: unverifiable-unknown-concept
+    text: "Free cash flow was $50.0 million in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: UNVERIFIABLE
+    reason: No row for this concept, so what to look up is unknown.
+  - id: unverifiable-margin-change
+    text: "Gross margin rose 1.0 points to 42.0% in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: UNVERIFIABLE
+    reason: Two percentages for a percentage concept; the parser won't pick one.
+  - id: unverifiable-no-period
+    text: "Revenue was $450.0 million."
+    scope: numeric
+    rowset: annual
+    expected_verdict: UNVERIFIABLE
+    reason: No period stated.
+  - id: unverifiable-growth-no-period
+    text: "Revenue grew 12.5%."
+    scope: numeric
+    rowset: annual
+    expected_verdict: UNVERIFIABLE
+    reason: No period stated.
+  - id: unverifiable-negated
+    text: "Revenue was not $480.0 million in FY2024."
+    scope: numeric
+    rowset: annual
+    expected_verdict: UNVERIFIABLE
+    reason: A negated figure is true when the value differs; reading it as a claim of 480.0 would call a true statement contradicted.
+  - id: unverifiable-undated-conflict
+    text: "Revenue was $450.0 million in FY2024."
+    scope: numeric
+    rowset: undated_conflict
+    expected_verdict: UNVERIFIABLE
+    reason: Two values for FY2024 and no filing dates to say which is current.
+
+  # ---- PARTIALLY_SUPPORTED (needs judgement) ------------------------------
+  - id: partial-growth-with-cause
+    text: "Revenue grew 12.5% from FY2023 to FY2024, driven primarily by Services."
+    scope: llm
+    rowset: annual
+    expected_verdict: PARTIALLY_SUPPORTED
+    reason: The growth is right; no row supports the driver.
+  - id: partial-level-with-cause
+    text: "Revenue was $450.0 million in FY2024 because of strong demand."
+    scope: llm
+    rowset: annual
+    expected_verdict: PARTIALLY_SUPPORTED
+    reason: The figure is right; the reason is unsupported.
+  - id: partial-margin-with-cause
+    text: "Gross margin was 42.0% in FY2024 due to lower component costs."
+    scope: llm
+    rowset: annual
+    expected_verdict: PARTIALLY_SUPPORTED
+    reason: The margin is right; the cause is unsupported.
+  - id: partial-ratio-with-qualifier
+    text: "Net income was 8.0% of revenue in FY2024, mainly thanks to cost cuts."
+    scope: llm
+    rowset: annual
+    expected_verdict: PARTIALLY_SUPPORTED
+    reason: The ratio is right; the cause is unsupported.
+  - id: partial-quarter-with-cause
+    text: "Q3 2024 revenue grew 10.0% versus Q3 2023 as a result of new contracts."
+    scope: llm
+    rowset: quarterly
+    expected_verdict: PARTIALLY_SUPPORTED
+    reason: The growth is right; the cause is unsupported.
