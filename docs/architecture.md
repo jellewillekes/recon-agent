@@ -293,3 +293,4 @@ tooling, not the agent under evaluation. See [`github-agents.md`](github-agents.
 | [0032](adr/0032-prompt-check-pins-only-prompts-the-baseline-read.md) | The prompt check pins only the prompts the baseline read |
 | [0033](adr/0033-react-front-end-built-into-the-api.md) | A React front end, built into the API image |
 | [0034](adr/0034-numeric-claim-verification.md) | Numeric claims are verified by recomputation, against labelled claims |
+| [0035](adr/0035-verification-report-and-claim-gate.md) | A verification report, a /verify endpoint and a claim check in the gate |

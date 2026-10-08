@@ -45,6 +45,7 @@ from recon.api.schemas import (
     RunList,
     RuntimeCapability,
 )
+from recon.api.verify import router as verify_router
 from recon.api.web import mount_web
 from recon.contracts import AgentResult, Case
 from recon.runtimes import api_key
@@ -132,6 +133,7 @@ class _RequestIDMiddleware(BaseHTTPMiddleware):
 app.add_middleware(_RequestIDMiddleware)
 app.include_router(evals_router)
 app.include_router(companies_router)
+app.include_router(verify_router)
 
 
 @app.exception_handler(RequestValidationError)

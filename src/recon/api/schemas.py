@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from recon.contracts import AgentResult
+from recon.contracts import AgentResult, Claim
 
 
 class InvestigateRequest(BaseModel):
@@ -24,6 +24,21 @@ class InvestigateRequest(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
     mode: str | None = None
     runtime: str | None = None
+
+
+MAX_VERIFY_CLAIMS = 100
+MAX_VERIFY_ROWS = 1000
+
+
+class VerifyRequest(BaseModel):
+    """Body of `POST /verify`: an answer's claims and the tool rows they rest
+    on. A claim that cites refs is checked against those rows only; one that
+    cites none, against every row. Rows are `get_financial_fact` output."""
+
+    claims: list[Claim] = Field(default_factory=list, max_length=MAX_VERIFY_CLAIMS)
+    evidence: list[dict[str, Any]] = Field(
+        default_factory=list, max_length=MAX_VERIFY_ROWS
+    )
 
 
 class Feedback(BaseModel):

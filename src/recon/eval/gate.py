@@ -9,6 +9,7 @@ metric is compared; see docs/adr/0018-run-comparability-in-the-gate.md.
 from collections.abc import Collection
 
 from recon.contracts import EvalRun
+from recon.eval.claim_gate import claim_failures, version_failures
 from recon.eval.thresholds import GateThresholds
 
 # Set in `EvalRun.aggregate` when the cost cap stopped a run before its last
@@ -125,6 +126,7 @@ def check_gate(
     # The baseline side is in comparability_failures, so the CLI refuses a
     # capped baseline before running. A candidate is only known afterwards.
     failures.extend(incomplete_run_failures(candidate, "candidate"))
+    failures.extend(version_failures(candidate, baseline))
     if failures:
         return failures
 
@@ -163,6 +165,7 @@ def check_gate(
                 f"€{candidate.total_cost_eur:.4f}"
             )
 
+    failures.extend(claim_failures(candidate, baseline, limits))
     return failures
 
 

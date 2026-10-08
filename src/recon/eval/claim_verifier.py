@@ -12,10 +12,7 @@ Rows are the dicts `get_financial_fact` returns. When several rows describe one
 period, the latest `filed` is current and an earlier one is a superseded value.
 """
 
-from typing import Literal, get_args
-
-from pydantic import BaseModel
-
+from recon.contracts import ClaimVerification, Verdict
 from recon.eval.claim_reader import (
     Period,
     Reading,
@@ -25,35 +22,17 @@ from recon.eval.claim_reader import (
     read_claim,
 )
 
-Verdict = Literal[
-    "SUPPORTED",
-    "PARTIALLY_SUPPORTED",
-    "UNSUPPORTED",
-    "CONTRADICTED",
-    "STALE",
-    "UNVERIFIABLE",
-]
-VERDICTS: tuple[Verdict, ...] = get_args(Verdict)
-
-
 # Dollars per unit of a row's `unit`. A row in any other unit can't be compared.
 _UNIT_DOLLARS = {"USD": 1.0, "USD_M": 1e6}
 _EPSILON = 1e-9
+# Bump when a rule changes what a claim's verdict is (ADR 0034, 0035).
+VERIFIER_RULES = "1"
 
 
-class ClaimVerification(BaseModel):
-    """The verdict on one claim, with the rows it came from and the numbers
-    compared. `claimed_value` and `recomputed_value` share a unit: percentage
-    points for growth and ratios, the row's unit for a level. `tolerance` is
-    the largest difference still counted as a match."""
-
-    claim_id: str
-    verdict: Verdict
-    evidence_refs: list[str]
-    claimed_value: float | None
-    recomputed_value: float | None
-    tolerance: float | None
-    reasoning: str
+def verifier_version(tolerance: float = 0.0) -> str:
+    """The id a run records for how its claims were verified. Two runs'
+    verdicts are comparable only when these match."""
+    return f"{VERIFIER_RULES}:tol={tolerance:g}"
 
 
 def verify_claim(
@@ -65,6 +44,13 @@ def verify_claim(
     precision the claim states ("8.3%" allows 0.05 points). `tolerance` adds
     to that allowance, in percentage points or in the row's unit.
     """
+    return _verify(claim_id, text, rows, tolerance).model_copy(update={"text": text})
+
+
+def _verify(
+    claim_id: str, text: str, rows: list[Row], tolerance: float
+) -> ClaimVerification:
+    """`verify_claim` before the claim text is attached to the result."""
     usable = [row for row in rows if _is_usable(row)]
     try:
         if (why := needs_judgement(text)) is not None:
@@ -100,6 +86,7 @@ def _result(
 ) -> ClaimVerification:
     return ClaimVerification(
         claim_id=claim_id,
+        text="",
         verdict=verdict,
         evidence_refs=refs or [],
         claimed_value=claimed,
