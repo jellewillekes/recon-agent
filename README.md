@@ -65,6 +65,10 @@ checks each citation against what the tools returned (ADR 0030).
 | langgraph | single | not run | | | | | — |
 | langgraph | multi | not run | | | | | — |
 
+On 7 cases the numbers are wide. The 95% interval on the answer score is 0.63 to 0.91, and
+on task completion 0.65 to 1.00 (ADR 0036). The interval says how far the scores could move
+on other cases, not how much a rerun of these moves (see `docs/eval-noise.md`).
+
 The sdk single row is the baseline, run `eval-20261007T175852Z`, judged on Haiku 4.5, with
 a 450k-token and 150 s budget per case. All 7 cases completed, in 58 s per case on average.
 Task completion means a non-empty answer without a runtime error, not a right one. The answer

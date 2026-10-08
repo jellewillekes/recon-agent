@@ -1108,4 +1108,8 @@ def test_compare_shows_two_runs_side_by_side_with_the_gate_verdicts(
     assert "| routing | off | on |" in out
     assert "| total_cost_eur | 1.400 | 1.100 | better |" in out
     assert "| answer_score_mean | 0.600 | 0.580 | same |" in out
-    assert "| task_completion_rate | 1.000 | 1.000 | same |" in out
+    # ADR 0036: a metric with an interval shows it next to the value.
+    assert (
+        "| task_completion_rate | 1.000 (0.21 to 1.00) | 1.000 (0.21 to 1.00) | same |"
+        in out
+    )

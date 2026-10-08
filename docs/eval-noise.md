@@ -51,6 +51,33 @@ dimensions counted with the judge's own variance.
   cases it rests on little data.
 - **Cost varied by about 8%.**
 
+## Intervals, and what they are not
+
+A 95% interval on a run's score (ADR 0036) answers a different question from the noise band.
+
+- **The interval** says how far the score could move on other cases than the ones run. The
+  baseline's answer score of 0.772 on 7 cases has a Student t interval of 0.63 to 0.91.
+  Task completion of 7 of 7 has a Wilson interval of 0.65 to 1.00. Cost per correct answer
+  of €0.203 has a bootstrap interval of €0.11 to €0.34. `recon.cli eval` writes them into the
+  run's markdown summary, and `recon.cli compare` and `GET /evals/compare` show them.
+- **The noise band** is how far a rerun of the same cases moves. Only repeat runs measure it.
+  The interval doesn't, because it is mostly the spread between cases (the baseline's
+  per-case scores have a standard deviation of 0.15), and a rerun sees the same cases.
+
+The two runs above are stored repeats: same dataset, rubric, tool data, model config,
+prompts, mode and cases. `recon.eval.noise` measures them. Their per-case differences are
+0.0, 0.0, 0.1, 0.07, 0.1, 0.47 and −0.43, which gives a standard deviation of 0.094 for the
+difference between two runs' `answer_score_mean`, and a 95% band of **about ±0.22**.
+
+That is wider than the gate's fixed ±0.10 (ADR 0028). If it holds, the risk is the gate
+failing an unchanged candidate, not missing a real drop. One pair is a thin sample, and two
+cases that moved by 0.47 and −0.43 carry most of it. The gate still uses ±0.10, which is the
+owner's value. `compare` prints the measured band as a warning next to it.
+
+Reaching a ±0.10 band by averaging alone would take roughly 5 times as many cases as the
+7 (the band shrinks with the square root of the cases), or more repeat runs to measure it
+properly. Neither is done here.
+
 ## Not done here
 
 - The gate now treats a drop of up to 0.10 in the answer score, or one case in task

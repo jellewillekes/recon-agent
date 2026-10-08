@@ -2,9 +2,45 @@
 
 from recon.contracts import EvalRun
 from recon.eval.gate import incomplete_reasons
+from recon.eval.intervals import run_interval
+
+_INTERVAL_METRICS = (
+    ("task_completion_rate", "Wilson score"),
+    ("answer_score_mean", "Student t over cases"),
+    ("cost_per_correct_answer_eur", "bootstrap over cases"),
+)
 
 
-def render_markdown(run: EvalRun) -> str:
+def _uncertainty(run: EvalRun, correct_answer_score: float | None) -> list[str]:
+    """The run's 95% intervals as a markdown section (ADR 0036)."""
+    lines = [
+        "",
+        "## Uncertainty",
+        "",
+        (
+            f"95% intervals over this run's {len(run.case_scores)} cases. They show "
+            "how far a score could move on other cases, not how much a rerun of "
+            "these cases moves (docs/eval-noise.md)."
+        ),
+        "",
+        "| Metric | Value | 95% interval | Method |",
+        "|---|---|---|---|",
+    ]
+    for metric, method in _INTERVAL_METRICS:
+        interval = run_interval(run, metric, correct_answer_score)
+        value = run.aggregate.get(metric)
+        if interval is None or value is None:
+            continue
+        lines.append(
+            f"| {metric} | {value:.3f} | {interval.low:.3f} to {interval.high:.3f} "
+            f"| {method} |"
+        )
+    if run_interval(run, "answer_score_mean") is None:
+        lines += ["", "No interval for the answer score: it needs at least two cases."]
+    return lines
+
+
+def render_markdown(run: EvalRun, correct_answer_score: float | None = None) -> str:
     lines = [
         f"# Evaluation run {run.run_id}",
         "",
@@ -33,6 +69,7 @@ def render_markdown(run: EvalRun) -> str:
     for key in sorted(run.aggregate):
         lines.append(f"| {key} | {run.aggregate[key]:.3f} |")
 
+    lines += _uncertainty(run, correct_answer_score)
     lines += [
         "",
         "## Per-case",

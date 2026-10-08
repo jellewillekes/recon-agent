@@ -478,6 +478,11 @@
             "title": "Metrics",
             "type": "array"
           },
+          "noise_rule": {
+            "default": "",
+            "title": "Noise Rule",
+            "type": "string"
+          },
           "reasons": {
             "items": {
               "type": "string"
@@ -490,6 +495,14 @@
               "$ref": "#/components/schemas/SettingRow"
             },
             "title": "Settings",
+            "type": "array"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
             "type": "array"
           }
         },
@@ -938,6 +951,25 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "Interval": {
+        "description": "A 95% interval.",
+        "properties": {
+          "high": {
+            "title": "High",
+            "type": "number"
+          },
+          "low": {
+            "title": "Low",
+            "type": "number"
+          }
+        },
+        "required": [
+          "low",
+          "high"
+        ],
+        "title": "Interval",
+        "type": "object"
+      },
       "InvestigateRequest": {
         "description": "Body of `POST /investigate`.\n\n`mode`/`runtime` are left as plain strings, not a `Literal`, so an\nunsupported value reaches the endpoint's own check and comes back as a 422\nnaming what's unsupported, rather than FastAPI's schema-level 400.",
         "properties": {
@@ -1004,6 +1036,16 @@
             ],
             "title": "Baseline"
           },
+          "baseline_interval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "candidate": {
             "anyOf": [
               {
@@ -1014,6 +1056,16 @@
               }
             ],
             "title": "Candidate"
+          },
+          "candidate_interval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Interval"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "title": "Name",

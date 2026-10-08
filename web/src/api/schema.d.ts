@@ -473,10 +473,20 @@ export interface components {
             comparable: boolean;
             /** Metrics */
             metrics: components["schemas"]["MetricRow"][];
+            /**
+             * Noise Rule
+             * @default
+             */
+            noise_rule: string;
             /** Reasons */
             reasons: string[];
             /** Settings */
             settings: components["schemas"]["SettingRow"][];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /**
          * DataSource
@@ -653,6 +663,16 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * Interval
+         * @description A 95% interval.
+         */
+        Interval: {
+            /** High */
+            high: number;
+            /** Low */
+            low: number;
+        };
+        /**
          * InvestigateRequest
          * @description Body of `POST /investigate`.
          *
@@ -682,8 +702,10 @@ export interface components {
             band?: string | null;
             /** Baseline */
             baseline: number | null;
+            baseline_interval?: components["schemas"]["Interval"] | null;
             /** Candidate */
             candidate: number | null;
+            candidate_interval?: components["schemas"]["Interval"] | null;
             /** Name */
             name: string;
             /** Verdict */

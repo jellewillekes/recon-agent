@@ -150,7 +150,9 @@ GET /evals                   eval runs from evals/results/, newest first: settin
 GET /evals/{run_id}          one EvalRun with its per-case scores
 GET /evals/compare?baseline=&candidate=
                              settings and metrics side by side; the gate's verdict per gated
-                             metric, or comparable: false with the reasons (ADR 0018)
+                             metric, or comparable: false with the reasons (ADR 0018). Also each run's 95%
+                             interval per metric, the gate's noise rule, and warnings from stored repeat
+                             runs (ADR 0036). None of these changes a verdict
   404:      no eval run with that id
 
 POST /verify                 check an answer's claims against the tool rows they cite (ADR 0035)
