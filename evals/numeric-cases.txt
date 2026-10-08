@@ -1,9 +1,32 @@
 # 6 cases whose answers rest on figures the fact rows hold, each about a
-# different company (#145). From the cases tagged "Simple retrieval -
-# Quantitative", "Numerical Reasoning", "Trends" or "Beat or Miss", kept where
-# the snapshot has the concepts the answer needs. Picked by case-id order,
-# blind to scores. A baseline over this file is compared only with runs over
-# this file (ADR 0018).
+# different company, for measuring the claim gate (#145). Blind to scores.
+#
+# Candidates: all 27 dataset cases tagged "Simple retrieval - Quantitative",
+# "Numerical Reasoning", "Trends" or "Beat or Miss". Kept by hand where the
+# expected answer is computed from concepts in tool-data snapshot 20260928:
+#   135cf3369c99  lease payments due by year (LesseeOperatingLeaseLiabilityPaymentsDue*)
+#   1e6fcc9bda5d  operating cash flow, capex and revenue, FY2022-2024
+#   9e7e8a3f7139  cost of goods sold and inventory, FY2024
+#   caf4be73b29f  restructuring charges
+#   ed95ff9ff29c  revenue, FY2022-2024
+#   fd98327e142d  effective tax rate (unit pure), FY2023-2024
+# Dropped, as the answer needs filing text or a figure the facts don't hold:
+#   0b26fac6d4af  acquisition consideration: only an unrelated equity-issued row
+#   1c60f0523743  revenue share from channel partners
+#   2777a42cc5f1  revenue per paying member
+#   277df9b69b08  nights per booking by region
+#   2b1268dd2158  employees outside the home country
+#   408f6ef07a58, 8f4e936df23b, a117d3ca116b, a3198eb6e162, a9e51b460045,
+#   b0f3e6928916, df148968d2b5  guidance, which is filing text
+#   480510b33967  shares outstanding by class
+#   5023c1916448, 99a483da911b  gross booking value
+#   52c289104b28  director compensation, from a proxy statement
+#   87d9288f312e  acquisition price per share and enterprise value
+#   8d234364e8f3  same-store sales growth
+#   f3ff32ebaa74  debt face value excluding one class of notes
+#   f4cbf1813299  projected cash requirements
+#   f9489001e27e  loan originations by purpose
+# A baseline over this file is compared only with runs over this file (ADR 0018).
 finance-agent-bench:135cf3369c99
 finance-agent-bench:1e6fcc9bda5d
 finance-agent-bench:9e7e8a3f7139

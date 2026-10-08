@@ -181,3 +181,19 @@ def test_a_pure_ratio_row_is_read_as_a_percentage(text: str, verdict: str) -> No
     `pure`: 0.109 is 10.9%."""
     rows = [_row(0.109, concept="margin", unit="pure")]
     assert verify_claim("c", text, rows).verdict == verdict
+
+
+def test_a_pure_row_that_isnt_a_fraction_is_not_converted() -> None:
+    """`pure` also holds multiples such as a leverage ratio of 3.5."""
+    rows = [_row(3.5, concept="leverage", unit="pure")]
+    result = verify_claim("c", "Leverage was 350% in FY2024.", rows)
+    assert result.verdict == "UNVERIFIABLE"
+
+
+def test_a_text_ratio_of_rows_in_different_units_is_unverifiable() -> None:
+    rows = [
+        _row(0.109, concept="margin", unit="pure"),
+        _row(450.0, concept="revenue", unit="USD_M"),
+    ]
+    result = verify_claim("c", "Margin was 2.4% of revenue in FY2024.", rows)
+    assert result.verdict == "UNVERIFIABLE"

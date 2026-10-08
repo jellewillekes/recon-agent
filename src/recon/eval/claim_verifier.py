@@ -83,8 +83,9 @@ def _verify(
 
 def _as_percent(row: Row) -> Row:
     """EDGAR files rates as a fraction in unit `pure` (0.109), where claims
-    state a percentage (10.9%). Such a row is read as `PCT`."""
-    if row.get("unit") != "pure":
+    state a percentage (10.9%). Such a row is read as `PCT`. A `pure` value
+    beyond ±1 is a multiple or a count, not a fraction, and stays as it is."""
+    if row.get("unit") != "pure" or abs(row["value"]) > 1:
         return row
     return {**row, "unit": "PCT", "value": row["value"] * 100}
 
