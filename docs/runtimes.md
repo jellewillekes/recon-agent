@@ -46,7 +46,7 @@ Select a combination with `--runtime {sdk,langgraph} --mode {single,multi}` on
 
 ## Evaluation comparison
 
-Not yet populated — see the "Runtimes" section of the README. Populating it means
+Not yet populated. The measured rows are in the README's "Results" section. Populating it means
 running `recon.cli eval` for all four combinations, real spend against both the Agent
 SDK credit and the metered API key (`CLAUDE.md`'s Cost section: never run without being
 asked).

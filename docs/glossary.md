@@ -215,6 +215,29 @@ The sequence of tools the agent called. The harness can compare it with an expec
 but finance-agent-bench doesn't provide one. The tool-efficiency rubric judges the path
 instead.
 
+### Claim, ref and verified evidence
+
+An answer is a list of claims, each citing the `ref` of the tool rows it rests on. Every
+row a tool returns carries a ref. After the run, the server looks each cited ref up among
+the rows the tools really returned in that run. A match is verified evidence, rendered from
+the row itself. A ref no tool returned stays unverified and is shown as such
+([ADR 0030](adr/0030-claims-cite-tool-rows-by-ref.md)).
+
+### Faithfulness
+
+Whether the answer's claims from filing text are backed by the passages the agent
+retrieved. A judge checks them against the agent's own searches, replayed
+([ADR 0026](adr/0026-faithfulness-by-replaying-searches.md)). Cases that made no claim from
+filing text get no score.
+
+### Run path and failure class
+
+The run path is a case's trace scored step by step without a model: tool selection,
+argument correctness, retrieval quality, evidence sufficiency, recovery, efficiency,
+grounding and final correctness. The failure class is the main reason a case failed:
+retrieval, reasoning, tool use, budget or runtime error, or none for a correct answer
+([ADR 0031](adr/0031-failure-classes.md)).
+
 ### Baseline
 
 The committed eval run that new runs are compared against,
@@ -247,6 +270,12 @@ The most an eval run may spend, €1 by default (`--max-cost-eur`). The run won'
 its estimate is higher, and stops before a case that could go over.
 
 ## Reliability and safety
+
+### Session limit
+
+The usage limit of the Claude subscription the project runs on. When a run hits it, the
+harness stops before the next case, keeps the cases it scored, and marks the run
+incomplete, so the gate refuses it.
 
 ### Run budget
 
@@ -296,6 +325,12 @@ decided and the consequences. They're numbered in [`adr/`](adr/), and
 
 A Python web framework. The API service in [`api/main.py`](../src/recon/api/main.py)
 exposes the agent over HTTP at `POST /investigate`, with health and metrics endpoints.
+
+### Workspace
+
+The web page the API serves at `/`, built from [`web/`](../web/). Its research view runs
+live questions and reopens saved ones. Its evaluation view shows recorded eval runs and the
+gate's comparison of any two ([ADR 0033](adr/0033-react-front-end-built-into-the-api.md)).
 
 ### OpenTelemetry
 

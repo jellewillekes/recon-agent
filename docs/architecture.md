@@ -284,3 +284,11 @@ tooling, not the agent under evaluation. See [`github-agents.md`](github-agents.
 | [0023](adr/0023-tracing-at-the-harness-boundary.md) | Tracing at the harness boundary |
 | [0024](adr/0024-blocking-only-change-requests.md) | The review bot requests changes only for blocking findings |
 | [0025](adr/0025-retrieval-over-filing-text.md) | Retrieval over SEC filing text |
+| [0026](adr/0026-faithfulness-by-replaying-searches.md) | Faithfulness by replaying searches |
+| [0027](adr/0027-langgraph-api-key-in-its-own-variable.md) | The LangGraph API key lives in its own variable |
+| [0028](adr/0028-gate-noise-band.md) | The gate allows for measured run-to-run noise |
+| [0029](adr/0029-route-decompose-to-a-local-model.md) | Route multi mode's decompose step to a local model |
+| [0030](adr/0030-claims-cite-tool-rows-by-ref.md) | Claims cite tool rows by ref, and the server checks them |
+| [0031](adr/0031-failure-classes.md) | One failure class per case, checked in a fixed order |
+| [0032](adr/0032-prompt-check-pins-only-prompts-the-baseline-read.md) | The prompt check pins only the prompts the baseline read |
+| [0033](adr/0033-react-front-end-built-into-the-api.md) | A React front end, built into the API image |
