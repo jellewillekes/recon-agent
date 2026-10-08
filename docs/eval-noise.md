@@ -78,6 +78,46 @@ Reaching a ±0.10 band by averaging alone would take roughly 5 times as many cas
 7 (the band shrinks with the square root of the cases), or more repeat runs to measure it
 properly. Neither is done here.
 
+## A second repeat, on rubric 4 (2026-10-08)
+
+`eval-20261008T162733Z` reran the current baseline's 7 text cases on sdk/single for #139,
+with the same dataset, rubric, tool data, model config and cases. Nothing the run reads
+had changed since the baseline. Only `prompts/supervisor_langgraph.md` differs, which
+sdk/single doesn't read. That difference still keeps `recon.eval.noise.repeat_groups` from
+pairing the two runs on its own. It cost €1.42: €0.87 agent and €0.56 judges.
+
+| Metric | Baseline `eval-20261007T175852Z` | Rerun | Difference |
+|---|---|---|---|
+| answer_score_mean | 0.772 | 0.645 | −0.127 |
+| answer_correctness_mean | 0.659 | 0.548 | −0.111 |
+| tool_efficiency_mean | 0.929 | 0.571 | −0.357 |
+| evidence_grounding_mean | 0.857 | 0.857 | 0.000 |
+| task_completion_rate | 1.000 | 1.000 | 0.000 |
+| retrieval metrics (all variants) | | | 0.000 |
+| total_cost_eur | 1.423 | 1.425 | +0.002 |
+
+One case carries most of the drop. `731403050270` fell from 0.94 to 0.31 and was classed
+as a reasoning failure. Every other case moved by 0.15 or less. The gate fails the rerun
+against the baseline, since 0.127 is beyond its ±0.10 band. That is the risk the section
+above predicted: the gate failing an unchanged candidate.
+
+`estimate_noise` on the pair gives a standard deviation of 0.098 for the difference of two
+means and a 95% band of about ±0.23. The first pair gave 0.094 and ±0.22. Two pairs now
+agree, under two budgets and two rubrics. The gate's band is still the owner's value.
+
+The rerun was not made the baseline. It scored 0.127 lower for no reason but noise, so
+adopting it would have lowered the bar the gate holds candidates to.
+
+### Claim verdicts on these cases
+
+The rerun is the first with claims verified (ADR 0038). Of its 32 claims, 1 was SUPPORTED
+and 31 UNVERIFIABLE. Nineteen cited only filing text, 6 named no concept the rows held, 4
+were negated and 2 gave a cause or an outlook. The agent made 26 `search_knowledge` calls
+and 5 `get_financial_fact` calls. These cases were picked to need filing text, so the
+numeric verifier has almost nothing to check on them. Its bad-claim share rests on one
+claim, so `claim_bad_rate_noise_band` can't be measured here. That needs cases with
+figure questions.
+
 ## Not done here
 
 - The gate now treats a drop of up to 0.10 in the answer score, or one case in task
