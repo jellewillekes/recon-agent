@@ -5,7 +5,7 @@ Rows use real XBRL concept names with made-up values, so the data stays
 synthetic. No model, no network.
 """
 
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from pydantic import ValidationError
@@ -13,7 +13,13 @@ from pydantic import ValidationError
 from recon.contracts import Claim, ClaimFigure
 from recon.eval.claim_verifier import verifier_version
 from recon.eval.verification import verify_claims
+from recon.runtimes.answer import CLAIMS_SCHEMA, validate_answer
 from recon.runtimes.evidence import RowIndex, resolve_claims
+from recon.runtimes.langgraph import (
+    AnswerResponse,
+    ClaimResponse,
+    FigureResponse,
+)
 
 REVENUE = "RevenueFromContractWithCustomerExcludingAssessedTax"
 
@@ -394,3 +400,38 @@ def test_resolve_claims_keeps_a_valid_figure_and_drops_a_malformed_one() -> None
 @pytest.mark.unit
 def test_the_verifier_version_moves_with_figures() -> None:
     assert verifier_version() == "2:tol=0"
+
+
+@pytest.mark.unit
+def test_the_answer_schemas_offer_a_figure_with_the_contracts_values() -> None:
+    """The agent's claims may carry a figure (#148 PR 2). Its enums match
+    `ClaimFigure`, so a value the model picks from them is never dropped."""
+    item = CLAIMS_SCHEMA["items"]
+    figure = item["properties"]["figure"]
+    assert "figure" not in item["required"]
+    for field in ("kind", "scale"):
+        allowed = get_args(ClaimFigure.model_fields[field].annotation)
+        assert figure["properties"][field]["enum"] == list(allowed)
+        assert get_args(FigureResponse.model_fields[field].annotation) == allowed
+    assert ClaimResponse.model_fields["figure"].default is None
+    assert set(figure["required"]) == {"kind", "value", "scale"}
+
+
+@pytest.mark.unit
+def test_a_langgraph_claim_keeps_its_figure_through_resolution() -> None:
+    response = AnswerResponse(
+        answer="Revenue was $450 million.",
+        claims=[
+            ClaimResponse(
+                text="Revenue was $450 million.",
+                importance="key",
+                evidence_refs=[],
+                figure=FigureResponse(kind="level", value="450", scale="millions"),
+            )
+        ],
+        confidence="high",
+    )
+    answer = validate_answer(response.model_dump(), RowIndex())
+    assert answer.claims[0].figure == ClaimFigure(
+        kind="level", value="450", scale="millions"
+    )
