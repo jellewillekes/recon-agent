@@ -33,7 +33,8 @@ MAX_VERIFY_ROWS = 1000
 class VerifyRequest(BaseModel):
     """Body of `POST /verify`: an answer's claims and the tool rows they rest
     on. A claim that cites refs is checked against those rows only; one that
-    cites none, against every row. Rows are `get_financial_fact` output."""
+    cites none, against every row. A claim with a `figure` is checked only
+    against the rows it cites (#148). Rows are `get_financial_fact` output."""
 
     claims: list[Claim] = Field(default_factory=list, max_length=MAX_VERIFY_CLAIMS)
     evidence: list[dict[str, Any]] = Field(

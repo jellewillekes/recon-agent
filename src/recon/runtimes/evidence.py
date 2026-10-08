@@ -10,11 +10,16 @@ ends up in an excerpt.
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from recon.contracts import Claim, Evidence
+from pydantic import ValidationError
+
+from recon.contracts import Claim, ClaimFigure, Evidence
+
+logger = logging.getLogger(__name__)
 
 # A filing-text chunk is kept whole in `excerpt` up to this length.
 _MAX_EXCERPT_CHARS = 1500
@@ -170,6 +175,19 @@ def evidence_line(evidence: Evidence) -> str:
     return f"[{evidence.ref}] {evidence.source_type} ({source}): {evidence.excerpt}"
 
 
+def _figure(raw: Any) -> ClaimFigure | None:
+    """A claim's figure, or None when it has none or the model's is
+    malformed. A bad figure mustn't lose the answer: the claim is then read
+    from its text."""
+    if raw is None:
+        return None
+    try:
+        return ClaimFigure.model_validate(raw)
+    except ValidationError:
+        logger.warning("dropping a malformed claim figure: %r", raw)
+        return None
+
+
 def resolve_claims(
     raw_claims: list[dict[str, Any]], index: RowIndex
 ) -> tuple[list[Claim], list[Evidence], list[str]]:
@@ -183,7 +201,12 @@ def resolve_claims(
     for raw in raw_claims:
         refs = list(dict.fromkeys(str(ref) for ref in raw.get("evidence_refs", [])))
         claims.append(
-            Claim(text=raw["text"], importance=raw["importance"], evidence_refs=refs)
+            Claim(
+                text=raw["text"],
+                importance=raw["importance"],
+                evidence_refs=refs,
+                figure=_figure(raw.get("figure")),
+            )
         )
         for ref in refs:
             if ref not in evidence:

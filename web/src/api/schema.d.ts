@@ -406,6 +406,7 @@ export interface components {
         Claim: {
             /** Evidence Refs */
             evidence_refs: string[];
+            figure?: components["schemas"]["ClaimFigure"] | null;
             /**
              * Importance
              * @enum {string}
@@ -413,6 +414,28 @@ export interface components {
             importance: "key" | "supporting";
             /** Text */
             text: string;
+        };
+        /**
+         * ClaimFigure
+         * @description The one figure a claim states, as data (#148). The concept and the
+         *     periods come from the rows the claim cites, never from here. `value` is
+         *     the number as the claim writes it ("6,811", "-12.5"); its decimals set
+         *     the rounding allowance. A level cites one fact row, growth two periods of
+         *     one concept, and a ratio its numerator row, then its denominator row.
+         */
+        ClaimFigure: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "level" | "growth" | "ratio";
+            /**
+             * Scale
+             * @enum {string}
+             */
+            scale: "units" | "thousands" | "millions" | "billions" | "percent";
+            /** Value */
+            value: string;
         };
         /**
          * ClaimVerification
@@ -932,7 +955,8 @@ export interface components {
          * VerifyRequest
          * @description Body of `POST /verify`: an answer's claims and the tool rows they rest
          *     on. A claim that cites refs is checked against those rows only; one that
-         *     cites none, against every row. Rows are `get_financial_fact` output.
+         *     cites none, against every row. A claim with a `figure` is checked only
+         *     against the rows it cites (#148). Rows are `get_financial_fact` output.
          */
         VerifyRequest: {
             /** Claims */

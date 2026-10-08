@@ -112,7 +112,7 @@ def read_claim(text: str, rows: list[Row]) -> Reading:
         return Reading(
             "growth",
             concepts,
-            sorted(periods, key=_order),
+            sorted(periods, key=period_order),
             Figure(*percents[0]),
             sign,
             1.0,
@@ -131,7 +131,8 @@ def _one(periods: list[Period]) -> list[Period]:
     return periods
 
 
-def _order(period: Period) -> tuple[int, int]:
+def period_order(period: Period) -> tuple[int, int]:
+    """Sort key for periods: by year, then Q1 to Q4, then FY."""
     year, name = period
     return (year, 5 if name == "FY" else int(name[1]))
 

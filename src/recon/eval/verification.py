@@ -26,17 +26,26 @@ def verify_claims(
     when it cites none. A cited ref that matches no row leaves the claim with
     nothing to rest on, so it comes back UNSUPPORTED."""
     verified = [
-        verify_claim(f"claim-{n}", claim.text, _rows_for(claim, evidence), tolerance)
+        verify_claim(
+            f"claim-{n}",
+            claim.text,
+            _rows_for(claim, evidence),
+            tolerance,
+            claim.figure,
+        )
         for n, claim in enumerate(claims, start=1)
     ]
     return build_report(verified)
 
 
 def _rows_for(claim: Claim, evidence: list[Row]) -> list[Row]:
+    """The rows a claim is checked against. A figure is checked only against
+    the rows it cites, in the order it cites them: a ratio's numerator first."""
     if not claim.evidence_refs:
-        return evidence
-    cited = set(claim.evidence_refs)
-    return [row for row in evidence if row.get("ref") in cited]
+        return [] if claim.figure is not None else evidence
+    order = {ref: n for n, ref in enumerate(claim.evidence_refs)}
+    cited = [row for row in evidence if row.get("ref") in order]
+    return sorted(cited, key=lambda row: order[row["ref"]])
 
 
 def build_report(claims: list[ClaimVerification]) -> VerificationReport:
