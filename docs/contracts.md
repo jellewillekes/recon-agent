@@ -153,6 +153,11 @@ GET /evals/compare?baseline=&candidate=
                              metric, or comparable: false with the reasons (ADR 0018)
   404:      no eval run with that id
 
+POST /verify                 check an answer's claims against the tool rows they cite (ADR 0035)
+  body:     {claims?: Claim[] (max 100), evidence?: row[] (max 1000)}
+  200:      VerificationReport
+  400:      invalid input, with the offending field named
+
 GET /healthz   liveness  — process is up, no dependency checks
 GET /readyz    readiness — MCP server reachable AND Postgres reachable
 GET /metrics   Prometheus text format
@@ -163,6 +168,8 @@ GET /metrics   Prometheus text format
 Every answered `/investigate` is saved in Postgres (`research_runs`, ADR 0030) under its request ID, which is also `AgentResult.case_id`. A failed save is logged and the answer is still returned. No response carries environment values, keys or the database URL.
 
 `/healthz` must never check dependencies. A liveness probe that fails on a database blip restarts a healthy pod.
+
+`/verify` never calls a model and needs no Postgres. A claim that cites refs is checked against those rows only, and one that cites none against every row in `evidence`. A cited ref that matches no row leaves the claim UNSUPPORTED. Claims the numeric verifier can't read come back UNVERIFIABLE, and an answer with no claims is UNVERIFIABLE as a whole.
 
 The `/evals` endpoints only read result files (`RECON_EVAL_RESULTS_DIR`, default `evals/results`). They never start a run. `recon.cli compare` prints the same comparison (`eval/comparison.py`).
 
@@ -253,6 +260,7 @@ class CaseScore(BaseModel):
     trajectory: TrajectoryScore | None = None  # #116; None before this field existed
     failure_class: FailureClass | None = None  # the main reason the case failed, "none" when correct (ADR 0031); None when unscored
     failure_reason: str | None = None          # one line naming what the class rests on
+    verifications: list[ClaimVerification] | None = None  # every claim of the answer, verified (ADR 0035); None when not verified, and before this field existed
 
 class EvalRun(BaseModel):
     run_id: str
@@ -271,6 +279,7 @@ class EvalRun(BaseModel):
     tool_data_snapshot: str | None = None  # "<fetch date>-<content hash>" or "fixture-<hash>"; None before this field existed
     retrieval_labels_hash: str | None = None  # hash of evals/retrieval-labels.yaml when retrieval metrics were scored
     routing: bool = False              # decompose ran on the local model (step 14, ADR 0029); on vs off is gated like any change
+    verifier_version: str | None = None  # "<rules>:tol=<tolerance>" the claims were verified with (ADR 0035); None when not verified
 ```
 
 The gate doesn't use the retrieval metrics (`retrieval_*` in `aggregate`). Compare them by hand only between runs with the same `retrieval_labels_hash`, since a different label set changes them.
@@ -278,6 +287,32 @@ The gate doesn't use the retrieval metrics (`retrieval_*` in `aggregate`). Compa
 **`prompt_hashes` is not optional.** Without it a score is not reproducible and the promotion gate cannot work.
 
 Write to `evals/results/<run_id>.json` plus a markdown summary. Commit both — this replaces running evaluations in CI.
+
+Claims are verified with the numeric verifier (ADR 0034) and totalled into a `VerificationReport` (ADR 0035):
+
+```python
+Verdict = Literal["SUPPORTED", "PARTIALLY_SUPPORTED", "UNSUPPORTED", "CONTRADICTED", "STALE", "UNVERIFIABLE"]
+
+class ClaimVerification(BaseModel):
+    claim_id: str
+    text: str                          # the claim as written
+    verdict: Verdict
+    evidence_refs: list[str]           # refs of the rows the verdict rests on
+    claimed_value: float | None        # percentage points for growth and ratios, the row's unit for a level
+    recomputed_value: float | None
+    tolerance: float | None            # the largest difference still counted as a match
+    reasoning: str
+
+class VerificationReport(BaseModel):
+    claims: list[ClaimVerification]
+    counts: dict[str, int]             # claims per verdict, zero included
+    grounding_score: float | None      # claims tied to at least one row, among all claims
+    correctness_score: float | None    # SUPPORTED among the claims the verifier could read (not UNVERIFIABLE)
+    freshness_score: float | None      # readable claims that are not STALE
+    overall_verdict: Verdict           # the worst claim; UNVERIFIABLE with no claims
+```
+
+`overall_verdict` is CONTRADICTED, STALE or UNSUPPORTED if any claim has that verdict, in that order. Otherwise it is UNVERIFIABLE when no claim could be read, PARTIALLY_SUPPORTED when some could not, and SUPPORTED when all were.
 
 ---
 
@@ -316,6 +351,14 @@ The first two allow for run-to-run noise, measured in `docs/eval-noise.md` (#77,
 0028). A change inside them is reported as "same". The limits live in
 `config/thresholds.yaml`, with the correct-answer cutoff for
 `cost_per_correct_answer_eur` and the minimums the baseline must reach.
+
+When the baseline verified its claims (`verifier_version` is set), the gate also checks them (ADR 0035):
+
+- the candidate must have verified its claims too, with the same `verifier_version`, or the runs aren't comparable
+- the share of unsupported and contradicted claims, among those the verifier could read, rises by more than `claim_bad_rate_noise_band` (0 unless set in `config/thresholds.yaml`), or
+- a case that completed in the baseline has more contradicted claims, whatever the share
+
+A baseline that never verified claims is "not measured": the claim check is skipped, not passed.
 
 Baseline lives in `evals/baseline.json`. Replaced only through an explicit PR, never automatically.
 

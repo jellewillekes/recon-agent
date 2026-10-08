@@ -6,7 +6,7 @@ update `docs/contracts.md` in the same PR and state the reason.
 """
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -122,6 +122,48 @@ class Claim(BaseModel):
     evidence_refs: list[str]
 
 
+Verdict = Literal[
+    "SUPPORTED",
+    "PARTIALLY_SUPPORTED",
+    "UNSUPPORTED",
+    "CONTRADICTED",
+    "STALE",
+    "UNVERIFIABLE",
+]
+VERDICTS: tuple[Verdict, ...] = get_args(Verdict)
+
+
+class ClaimVerification(BaseModel):
+    """The verdict on one claim, with the rows it came from and the numbers
+    compared (ADR 0034). `claimed_value` and `recomputed_value` share a unit:
+    percentage points for growth and ratios, the row's unit for a level.
+    `tolerance` is the largest difference still counted as a match."""
+
+    claim_id: str
+    text: str
+    verdict: Verdict
+    evidence_refs: list[str]
+    claimed_value: float | None
+    recomputed_value: float | None
+    tolerance: float | None
+    reasoning: str
+
+
+class VerificationReport(BaseModel):
+    """Every claim of one answer checked, and what that adds up to (ADR 0035).
+
+    The scores are None when nothing could be measured. `overall_verdict` is
+    the worst claim's verdict, UNVERIFIABLE for an answer with no claims.
+    """
+
+    claims: list[ClaimVerification]
+    counts: dict[str, int]
+    grounding_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    correctness_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    freshness_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    overall_verdict: Verdict
+
+
 class AgentResult(BaseModel):
     """What every runtime produces, regardless of which one ran the case."""
 
@@ -233,6 +275,9 @@ class CaseScore(BaseModel):
     trajectory: TrajectoryScore | None = None
     failure_class: FailureClass | None = None
     failure_reason: str | None = None
+    # ADR 0035: every claim of the answer, verified. None when claims weren't
+    # verified, and on results recorded before this field existed.
+    verifications: list[ClaimVerification] | None = None
 
 
 class EvalRun(BaseModel):
@@ -262,6 +307,10 @@ class EvalRun(BaseModel):
     # ADR 0029). Recorded, not a comparability field: on against off is the
     # comparison routing is measured by.
     routing: bool = False
+    # Which verifier rules and tolerance checked the claims (ADR 0035). None
+    # when the run didn't verify claims. Verdicts are comparable only between
+    # runs with the same version.
+    verifier_version: str | None = None
 
     @model_validator(mode="after")
     def _prompt_hashes_required(self) -> "EvalRun":

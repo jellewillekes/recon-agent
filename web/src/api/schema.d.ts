@@ -258,6 +258,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify
+         * @description A verdict for each claim, and what they add up to. Claims the numeric
+         *     verifier can't read come back UNVERIFIABLE; an answer with no claims is
+         *     UNVERIFIABLE as a whole.
+         */
+        post: operations["verify_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -374,6 +396,8 @@ export interface components {
             /** Tool Path Exact */
             tool_path_exact: boolean;
             trajectory?: components["schemas"]["TrajectoryScore"] | null;
+            /** Verifications */
+            verifications?: components["schemas"]["ClaimVerification"][] | null;
         };
         /**
          * Claim
@@ -389,6 +413,34 @@ export interface components {
             importance: "key" | "supporting";
             /** Text */
             text: string;
+        };
+        /**
+         * ClaimVerification
+         * @description The verdict on one claim, with the rows it came from and the numbers
+         *     compared (ADR 0034). `claimed_value` and `recomputed_value` share a unit:
+         *     percentage points for growth and ratios, the row's unit for a level.
+         *     `tolerance` is the largest difference still counted as a match.
+         */
+        ClaimVerification: {
+            /** Claim Id */
+            claim_id: string;
+            /** Claimed Value */
+            claimed_value: number | null;
+            /** Evidence Refs */
+            evidence_refs: string[];
+            /** Reasoning */
+            reasoning: string;
+            /** Recomputed Value */
+            recomputed_value: number | null;
+            /** Text */
+            text: string;
+            /** Tolerance */
+            tolerance: number | null;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "SUPPORTED" | "PARTIALLY_SUPPORTED" | "UNSUPPORTED" | "CONTRADICTED" | "STALE" | "UNVERIFIABLE";
         };
         /**
          * Company
@@ -494,6 +546,8 @@ export interface components {
             tool_data_snapshot?: string | null;
             /** Total Cost Eur */
             total_cost_eur: number;
+            /** Verifier Version */
+            verifier_version?: string | null;
         };
         /**
          * EvalSummary
@@ -821,6 +875,46 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * VerificationReport
+         * @description Every claim of one answer checked, and what that adds up to (ADR 0035).
+         *
+         *     The scores are None when nothing could be measured. `overall_verdict` is
+         *     the worst claim's verdict, UNVERIFIABLE for an answer with no claims.
+         */
+        VerificationReport: {
+            /** Claims */
+            claims: components["schemas"]["ClaimVerification"][];
+            /** Correctness Score */
+            correctness_score?: number | null;
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Freshness Score */
+            freshness_score?: number | null;
+            /** Grounding Score */
+            grounding_score?: number | null;
+            /**
+             * Overall Verdict
+             * @enum {string}
+             */
+            overall_verdict: "SUPPORTED" | "PARTIALLY_SUPPORTED" | "UNSUPPORTED" | "CONTRADICTED" | "STALE" | "UNVERIFIABLE";
+        };
+        /**
+         * VerifyRequest
+         * @description Body of `POST /verify`: an answer's claims and the tool rows they rest
+         *     on. A claim that cites refs is checked against those rows only; one that
+         *     cites none, against every row. Rows are `get_financial_fact` output.
+         */
+        VerifyRequest: {
+            /** Claims */
+            claims?: components["schemas"]["Claim"][];
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            }[];
         };
     };
     responses: never;
@@ -1167,6 +1261,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationReport"];
                 };
             };
             /** @description Validation Error */

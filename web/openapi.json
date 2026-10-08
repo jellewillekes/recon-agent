@@ -277,6 +277,20 @@
                 "type": "null"
               }
             ]
+          },
+          "verifications": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ClaimVerification"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifications"
           }
         },
         "required": [
@@ -323,6 +337,87 @@
           "evidence_refs"
         ],
         "title": "Claim",
+        "type": "object"
+      },
+      "ClaimVerification": {
+        "description": "The verdict on one claim, with the rows it came from and the numbers\ncompared (ADR 0034). `claimed_value` and `recomputed_value` share a unit:\npercentage points for growth and ratios, the row's unit for a level.\n`tolerance` is the largest difference still counted as a match.",
+        "properties": {
+          "claim_id": {
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "claimed_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claimed Value"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "recomputed_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recomputed Value"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "tolerance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tolerance"
+          },
+          "verdict": {
+            "enum": [
+              "SUPPORTED",
+              "PARTIALLY_SUPPORTED",
+              "UNSUPPORTED",
+              "CONTRADICTED",
+              "STALE",
+              "UNVERIFIABLE"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_id",
+          "text",
+          "verdict",
+          "evidence_refs",
+          "claimed_value",
+          "recomputed_value",
+          "tolerance",
+          "reasoning"
+        ],
+        "title": "ClaimVerification",
         "type": "object"
       },
       "Company": {
@@ -540,6 +635,17 @@
           "total_cost_eur": {
             "title": "Total Cost Eur",
             "type": "number"
+          },
+          "verifier_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifier Version"
           }
         },
         "required": [
@@ -1408,6 +1514,107 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "VerificationReport": {
+        "description": "Every claim of one answer checked, and what that adds up to (ADR 0035).\n\nThe scores are None when nothing could be measured. `overall_verdict` is\nthe worst claim's verdict, UNVERIFIABLE for an answer with no claims.",
+        "properties": {
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimVerification"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "correctness_score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctness Score"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "freshness_score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness Score"
+          },
+          "grounding_score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grounding Score"
+          },
+          "overall_verdict": {
+            "enum": [
+              "SUPPORTED",
+              "PARTIALLY_SUPPORTED",
+              "UNSUPPORTED",
+              "CONTRADICTED",
+              "STALE",
+              "UNVERIFIABLE"
+            ],
+            "title": "Overall Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claims",
+          "counts",
+          "overall_verdict"
+        ],
+        "title": "VerificationReport",
+        "type": "object"
+      },
+      "VerifyRequest": {
+        "description": "Body of `POST /verify`: an answer's claims and the tool rows they rest\non. A claim that cites refs is checked against those rows only; one that\ncites none, against every row. Rows are `get_financial_fact` output.",
+        "properties": {
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/Claim"
+            },
+            "maxItems": 100,
+            "title": "Claims",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 1000,
+            "title": "Evidence",
+            "type": "array"
+          }
+        },
+        "title": "VerifyRequest",
+        "type": "object"
       }
     }
   },
@@ -1838,6 +2045,45 @@
           }
         },
         "summary": "Run Feedback"
+      }
+    },
+    "/verify": {
+      "post": {
+        "description": "A verdict for each claim, and what they add up to. Claims the numeric\nverifier can't read come back UNVERIFIABLE; an answer with no claims is\nUNVERIFIABLE as a whole.",
+        "operationId": "verify_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify"
       }
     }
   }

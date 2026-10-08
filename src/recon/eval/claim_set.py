@@ -12,7 +12,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from recon.eval.claim_verifier import VERDICTS, Verdict
+from recon.contracts import VERDICTS, Verdict
 
 DEFAULT_CLAIM_SET_PATH = Path("evals/verification-claims.yaml")
 MIN_PER_VERDICT = 5
