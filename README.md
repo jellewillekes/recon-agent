@@ -22,23 +22,31 @@ New to a term? See the [glossary](docs/glossary.md).
 
 - **Two [runtimes](docs/glossary.md#runtime), [two modes](docs/glossary.md#single-and-multi-mode).** The [Claude Agent SDK](docs/glossary.md#claude-agent-sdk) and [LangGraph](docs/glossary.md#langgraph) each run a single
   investigator or a [supervisor with two workers and a critic](docs/glossary.md#supervisor-worker-and-critic). All four combinations share
-  the same cases, tools and judge, so their scores compare directly
-  ([`docs/runtimes.md`](docs/runtimes.md)).
+  the same cases, tools and judge, and both runtimes answer with [claims that cite tool rows](docs/glossary.md#claim-ref-and-verified-evidence),
+  so their scores compare directly ([`docs/runtimes.md`](docs/runtimes.md)).
 - **Real tool data.** [MCP](docs/glossary.md#mcp) tools query [XBRL](docs/glossary.md#xbrl) facts and filings from SEC EDGAR through
   [DuckDB](docs/glossary.md#duckdb). For [RAG](docs/glossary.md#rag), [hybrid search](docs/glossary.md#hybrid-search) over earnings releases and 10-K sections ([pgvector](docs/glossary.md#pgvector), full-text
   search and a [reranker](docs/glossary.md#cross-encoder-reranker)) is granted to the single-mode investigator, the facts
   worker and the critic ([`docs/data-sources.md`](docs/data-sources.md)).
 - **Scores the path.** Each case gets an [answer score](docs/glossary.md#answer-score) from an [LLM judge](docs/glossary.md#llm-judge), weighted across
-  correctness, grounding and tool-efficiency [rubrics](docs/glossary.md#rubric). It also gets [tool-call accuracy](docs/glossary.md#tool-call-accuracy),
-  the share of tool calls that returned a usable result.
+  correctness, grounding and tool-efficiency [rubrics](docs/glossary.md#rubric). The server checks every cited row against what
+  the tools returned. Each case also gets a [run-path breakdown and one failure class](docs/glossary.md#run-path-and-failure-class)
+  (retrieval, reasoning, tool use, budget or runtime error), and labelled cases get retrieval
+  recall, precision, MRR and NDCG ([ADR 0031](docs/adr/0031-failure-classes.md)).
 - **A [promotion gate](docs/glossary.md#promotion-gate).** A candidate run is compared with the committed [baseline](docs/glossary.md#baseline). The gate
   refuses runs that [measured something different](docs/glossary.md#comparability): another rubric, dataset, data snapshot
   or case set. It fails a run whose [task completion](docs/glossary.md#task-completion), answer score or cost regressed.
 - **Guardrails.** Tools always return one of five statuses, never an exception. Runs
   have [budgets](docs/glossary.md#run-budget) for tool calls, tokens and time. The one [write path](docs/glossary.md#write-path) needs confirmation,
-  and [prompt-injection](docs/glossary.md#prompt-injection) tests check it's never triggered by tool data.
+  and [prompt-injection](docs/glossary.md#prompt-injection) tests plant instructions six ways (tool output, filing text, tool
+  descriptions, metadata, cross-tool escalation, data leaks) to check none is followed. An
+  eval run that hits the [session limit](docs/glossary.md#session-limit) or a failing judge keeps the cases it scored.
 - **Cost controls.** Eval runs are [capped at €1](docs/glossary.md#cost-cap) by default, and the judge runs on
   Haiku 4.5.
+- **A [workspace](docs/glossary.md#workspace).** A web page served by the API. Research: ask a question (pick a company
+  by ticker), then inspect each claim's source, the tool trace, time and cost, reopen saved
+  runs and rate them. Evaluation: the recorded runs, the gate's comparison of two runs, and
+  each run's per-case results ([`docs/demo.md`](docs/demo.md)).
 - **Production shape.** A [FastAPI](docs/glossary.md#fastapi) service with health, readiness and [Prometheus](docs/glossary.md#tempo-prometheus-and-grafana) metrics,
   [OpenTelemetry](docs/glossary.md#opentelemetry) tracing into Grafana, a Docker image scanned in CI, and a [Helm chart
   tested on k3d](docs/glossary.md#helm-and-k3d).
@@ -122,10 +130,13 @@ docker compose -f docker/compose.yaml up -d
 | Question | Doc |
 |---|---|
 | What does a term mean? | [`docs/glossary.md`](docs/glossary.md) |
+| What is it, on one page? | [`docs/brief/recon-agent-brief.pdf`](docs/brief/recon-agent-brief.pdf) |
 | How does it fit together? | [`docs/architecture.md`](docs/architecture.md) |
 | What crosses each module boundary? | [`docs/contracts.md`](docs/contracts.md) |
 | How do the runtimes differ? | [`docs/runtimes.md`](docs/runtimes.md) |
 | Where does the data come from? | [`docs/data-sources.md`](docs/data-sources.md) |
+| How do I demo the workspace? | [`docs/demo.md`](docs/demo.md) |
+| Where is the front end? | [`web/`](web/) (React, built into the API; ADR 0033) |
 | What runs in CI, and why evals don't? | [`docs/ci.md`](docs/ci.md) |
 | How do I deploy it? | [`docs/deployment.md`](docs/deployment.md) |
 | What do the traces show? | [`docs/observability.md`](docs/observability.md) |
