@@ -28,6 +28,7 @@ from claude_agent_sdk import (
 )
 
 from recon.contracts import Case
+from recon.eval.judge_failures import is_session_limit
 from recon.runtimes import agent_sdk
 from recon.tools.refs import row_ref
 
@@ -737,6 +738,47 @@ def test_a_result_error_without_the_result_message_uses_its_payload(
 
     assert result.cost_eur == pytest.approx(0.02 * 0.9)
     assert (result.tokens_in, result.tokens_out) == (1000, 10)
+
+
+@pytest.mark.unit
+def test_an_http_429_names_the_usage_limit_in_the_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#125 follow-up: AgentResult keeps only the error text, so the status
+    goes into it. The harness then stops the run however the CLI words it."""
+    _patch_options(monkeypatch)
+    _patch_failing_query(
+        monkeypatch,
+        [],
+        ResultError(
+            "Claude Code returned an error result: API Error: try again at 7pm",
+            data={"api_error_status": 429, "total_cost_usd": 0.0},
+            exit_code=1,
+        ),
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is not None
+    assert result.error.startswith("usage limit (HTTP 429): ")
+    assert is_session_limit(result.error)
+
+
+@pytest.mark.unit
+def test_an_http_429_without_an_exception_names_the_usage_limit_too(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review of #126: the CLI can report the error result and exit 0."""
+    _patch_options(monkeypatch)
+    _patch_query(
+        monkeypatch,
+        [_failed_result(api_error_status=429)],
+    )
+
+    result = agent_sdk.AgentSdkRuntime().run(CASE)
+
+    assert result.error is not None
+    assert result.error.startswith("usage limit (HTTP 429): ")
 
 
 @pytest.mark.unit

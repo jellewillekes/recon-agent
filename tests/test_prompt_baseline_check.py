@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from recon.eval.hashing import compute_prompt_hashes
+from recon.eval.hashing import compute_prompt_hashes, prompts_read
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "check_prompt_baseline.py"
@@ -63,13 +63,47 @@ def test_a_changed_prompt_without_a_new_baseline_fails(scored: Path) -> None:
     assert "critic" not in result.stdout
 
 
-def test_added_and_removed_prompts_fail(scored: Path) -> None:
-    (scored / "prompts" / "critic.md").unlink()
-    (scored / "prompts" / "worker.md").write_text("Look it up.\n")
+def test_removing_a_prompt_the_baseline_reads_fails(scored: Path) -> None:
+    (scored / "prompts" / "investigator.md").unlink()
     result = _check(scored)
     assert result.returncode == 1
-    assert "prompts/critic.md: removed since the baseline" in result.stdout
-    assert "prompts/worker.md: added since the baseline" in result.stdout
+    assert "prompts/investigator.md: removed since the baseline" in result.stdout
+
+
+def test_a_prompt_the_baselines_runtime_never_reads_may_change(scored: Path) -> None:
+    """ADR 0032: the baseline is a single-mode agent_sdk run, which reads only
+    the investigator prompt (and the judges'). Other prompts aren't pinned."""
+    (scored / "prompts" / "critic.md").write_text("Reject everything.\n")
+    (scored / "prompts" / "worker.md").write_text("Look it up.\n")
+    result = _check(scored)
+    assert result.returncode == 0, result.stdout
+    assert "Not read by the baseline's agent_sdk/single run" in result.stdout
+    assert "prompts/critic.md" in result.stdout
+
+
+def test_a_multi_mode_baseline_pins_its_roles_prompts(scored: Path) -> None:
+    baseline = json.loads((scored / "baseline.json").read_text())
+    baseline["mode"] = "multi"
+    (scored / "baseline.json").write_text(json.dumps(baseline))
+    (scored / "prompts" / "critic.md").write_text("Reject everything.\n")
+    result = _check(scored)
+    assert result.returncode == 1
+    assert "prompts/critic.md: changed since the baseline" in result.stdout
+
+
+def test_each_runtime_and_mode_reads_prompts_that_exist() -> None:
+    """The mapping names real files, so a renamed prompt can't drop out of
+    the check unnoticed."""
+    roles = ["supervisor", "worker_lookup", "worker_facts", "critic"]
+    existing = {path.stem for path in (ROOT / "prompts").glob("*.md")}
+    for runtime in ("agent_sdk", "langgraph"):
+        for mode in ("single", "multi"):
+            read = prompts_read(runtime, mode, roles)
+            assert read is not None and read <= existing, (runtime, mode)
+    langgraph_multi = prompts_read("langgraph", "multi", roles) or frozenset()
+    assert "supervisor_langgraph" in langgraph_multi
+    assert "supervisor" not in langgraph_multi
+    assert prompts_read("other", "single", roles) is None
 
 
 def test_no_baseline_yet_passes_with_a_notice(tmp_path: Path) -> None:

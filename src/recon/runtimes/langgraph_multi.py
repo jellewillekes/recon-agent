@@ -14,101 +14,55 @@ isn't configured. Same module split as `agent_sdk.py`/`multi_agent.py`
 imported here rather than duplicated.
 """
 
-import operator
-import os
-import time
 from pathlib import Path
-from typing import Annotated, Any, Literal, TypedDict, cast
+from typing import Any
 
 import yaml
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import Command, Send, interrupt
-from pydantic import BaseModel, Field
+from langgraph.types import Command
 
-from recon.contracts import Case, ToolCall
-from recon.runtimes.api_key import langgraph_api_key
-from recon.runtimes.langgraph import (
-    RUNTIME_NAME,
-    AnswerResponse,
+from recon.contracts import Case, Claim, Evidence, ToolCall
+from recon.runtimes.langgraph_flag import _confirm_flag_node, _route_after_critic
+from recon.runtimes.langgraph_nodes import (
+    _critic_node,
+    _decompose_node,
+    _route_to_workers,
+    _run_worker_task,
+    _synthesize_node,
+)
+from recon.runtimes.langgraph_run import (
     _BudgetExceeded,
-    _build_react_subgraph,
     _compute_cost_eur,
-    _Confidence,
-    _extract_tool_calls,
     _Outcome,
     _Paused,
     _run_graph,
-    _sum_usage,
+    new_thread_id,
 )
-from recon.tools.review_flag import flag_case_for_review
+from recon.runtimes.langgraph_state import (
+    AgentState,
+    CriticResponse,
+    DecomposeResponse,
+    WorkerResponse,
+    _Subtask,
+    _WorkerTask,
+)
+
+# Re-exported: the graph's schemas belong to this module's public surface.
+__all__ = [
+    "AgentState",
+    "CriticResponse",
+    "DecomposeResponse",
+    "WorkerResponse",
+    "_Subtask",
+    "_WorkerTask",
+    "resume_multi_async",
+    "run_multi_async",
+]
 
 DEFAULT_ROLES_CONFIG_PATH = Path("config/roles.yaml")
 DEFAULT_PROMPTS_DIR = Path("prompts")
-
-# See langgraph._CREATED_BY - same purpose, multi mode's value.
-_CREATED_BY = f"{RUNTIME_NAME}:multi"
-
-
-class _Subtask(BaseModel):
-    worker: Literal["worker_lookup", "worker_facts"]
-    instruction: str
-
-
-class DecomposeResponse(BaseModel):
-    """Mirrors `multi_agent._DECOMPOSE_SCHEMA`'s shape."""
-
-    subtasks: list[_Subtask] = Field(min_length=1, max_length=4)
-
-
-class WorkerResponse(BaseModel):
-    """Mirrors `multi_agent._WORKER_SCHEMA`'s shape."""
-
-    findings: str
-    evidence: list[str]
-
-
-class CriticResponse(BaseModel):
-    """Mirrors `multi_agent._CRITIC_SCHEMA`'s shape."""
-
-    accepted: bool
-    reason: str
-
-
-class AgentState(TypedDict):
-    """The multi-mode graph's shared state. `findings`/`tool_calls`/
-    `tokens_in`/`tokens_out`/`cost_eur` use reducers so parallel worker
-    branches (fanned out via `Send`) merge cleanly instead of one branch's
-    write clobbering another's.
-    """
-
-    case_id: str
-    question: str
-    subtasks: list[dict[str, str]]
-    findings: Annotated[list[str], operator.add]
-    tool_calls: Annotated[list[ToolCall], operator.add]
-    tokens_in: Annotated[int, operator.add]
-    tokens_out: Annotated[int, operator.add]
-    cost_eur: Annotated[float, operator.add]
-    answer: str
-    evidence: list[str]
-    confidence: _Confidence
-    flag_reason: str | None
-
-
-class _WorkerTask(TypedDict):
-    """`Send`'s own `arg` for one worker node invocation - deliberately not
-    `AgentState`: `Send` lets a target node's input differ from the main
-    graph state (see `langgraph.types.Send`'s docstring), and a worker only
-    ever needs these three fields.
-    """
-
-    case_id: str
-    worker: str
-    instruction: str
 
 
 def _load_roles_config(path: Path) -> dict[str, Any]:
@@ -127,324 +81,6 @@ def _state_telemetry(state: dict[str, Any]) -> tuple[list[ToolCall], int, int]:
         state.get("tokens_in", 0),
         state.get("tokens_out", 0),
     )
-
-
-async def _structured_call(
-    model: ChatAnthropic, messages: list[Any], schema: type[BaseModel]
-) -> tuple[BaseModel, int, int]:
-    """The decompose/synthesize/critic primitive: one non-tool-calling model
-    call producing schema-validated structured output - the same
-    `with_structured_output` primitive `create_react_agent` already uses
-    internally for the final-answer step (`langgraph.py`'s single mode),
-    called directly here since there's no tool loop to wrap it in
-    (`config/roles.yaml`'s supervisor/critic entries have no `tools:` key -
-    this module never binds `flag_case_for_review` as a tool at all, see
-    this module's docstring).
-
-    `include_raw=True` is what surfaces `AIMessage.usage_metadata` - without
-    it, `with_structured_output` returns only the parsed schema instance and
-    every decompose/synthesize/critic call would be invisible to
-    `AgentResult.tokens_in`/`tokens_out`.
-    """
-    structured_model = model.with_structured_output(schema, include_raw=True)
-    # with_structured_output's return-type stub doesn't vary on include_raw
-    # (always dict[Any, Any] | BaseModel) - a stub gap, not a real type
-    # error: include_raw=True always returns the {'raw','parsed',
-    # 'parsing_error'} dict shape, confirmed against langchain_core's own
-    # docstring for this method.
-    result = cast("dict[str, Any]", await structured_model.ainvoke(messages))
-    parsed = result["parsed"]
-    if parsed is None:
-        raise TypeError(
-            f"structured call for {schema.__name__} produced no parsed output "
-            f"(parsing_error={result['parsing_error']!r})."
-        )
-    raw = result["raw"]
-    tokens_in = tokens_out = 0
-    if isinstance(raw, AIMessage) and raw.usage_metadata:
-        tokens_in = raw.usage_metadata.get("input_tokens", 0)
-        tokens_out = raw.usage_metadata.get("output_tokens", 0)
-    return parsed, tokens_in, tokens_out
-
-
-async def _run_worker_task(
-    task: _WorkerTask,
-    *,
-    roles_config: dict[str, Any],
-    model_config: dict[str, Any],
-    prompts_dir: Path,
-) -> dict[str, Any]:
-    """One worker's routed subtask: its own `create_react_agent` subgraph
-    (`langgraph.py`'s `_build_react_subgraph`, reused unchanged from single
-    mode), restricted to `config/roles.yaml`'s tool subset for that role
-    (ADR-0010's Python-side filter). Invoked directly with `.ainvoke()`, not
-    through `_run_graph` - no thread/interrupt needs of its own, so no
-    checkpointer either.
-    """
-    worker = task["worker"]
-    role_config = roles_config[worker]
-    model_name = role_config["model"]
-    prompt = (prompts_dir / f"{worker}.md").read_text(encoding="utf-8")
-    graph = await _build_react_subgraph(
-        model_name=model_name,
-        prompt=prompt,
-        response_format=WorkerResponse,
-        created_by=_CREATED_BY,
-        tool_names=tuple(role_config["tools"]),
-    )
-    # Without this, LangGraph falls back to its own default recursion limit
-    # instead of this role's config/roles.yaml max_turns - the same
-    # investigator.max_turns -> recursion_limit mapping _run_graph applies
-    # for single mode's own graph, just read from this worker's own role
-    # entry rather than the investigator's.
-    result = await graph.ainvoke(
-        {"messages": [("user", task["instruction"])]},
-        config={"recursion_limit": role_config["max_turns"]},
-    )
-    structured = result["structured_response"]
-    if not isinstance(structured, WorkerResponse):
-        raise TypeError(
-            f"worker {worker!r} produced no structured findings "
-            f"(got {type(structured)!r})."
-        )
-    messages = result["messages"]
-    tool_calls = _extract_tool_calls(messages)
-    tokens_in, tokens_out = _sum_usage(messages)
-    finding = (
-        f"[{worker}] findings: {structured.findings}\nevidence: {structured.evidence}"
-    )
-    return {
-        "findings": [finding],
-        "tool_calls": tool_calls,
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
-        "cost_eur": _compute_cost_eur(model_config, model_name, tokens_in, tokens_out),
-    }
-
-
-async def _decompose_node(
-    state: AgentState,
-    *,
-    roles_config: dict[str, Any],
-    model_config: dict[str, Any],
-    supervisor_prompt: str,
-) -> dict[str, Any]:
-    role_config = roles_config["supervisor"]
-    model_name = role_config["model"]
-    model = ChatAnthropic(model=model_name, api_key=langgraph_api_key())  # type: ignore[call-arg]
-    parsed, tokens_in, tokens_out = await _structured_call(
-        model,
-        [
-            SystemMessage(content=supervisor_prompt),
-            HumanMessage(
-                content=(
-                    f"Case ID: {state['case_id']}\n\n"
-                    "Decompose this question into subtasks for your workers: "
-                    f"{state['question']}"
-                )
-            ),
-        ],
-        DecomposeResponse,
-    )
-    assert isinstance(parsed, DecomposeResponse)
-    subtasks = [
-        {"worker": subtask.worker, "instruction": subtask.instruction}
-        for subtask in parsed.subtasks
-    ]
-    cost_eur = _compute_cost_eur(model_config, model_name, tokens_in, tokens_out)
-    return {
-        "subtasks": subtasks,
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
-        "cost_eur": cost_eur,
-    }
-
-
-def _route_to_workers(state: AgentState) -> list[Send]:
-    return [
-        Send(
-            "worker",
-            _WorkerTask(
-                case_id=state["case_id"],
-                worker=subtask["worker"],
-                instruction=subtask["instruction"],
-            ),
-        )
-        for subtask in state["subtasks"]
-    ]
-
-
-async def _synthesize_node(
-    state: AgentState,
-    *,
-    roles_config: dict[str, Any],
-    model_config: dict[str, Any],
-    supervisor_prompt: str,
-) -> dict[str, Any]:
-    role_config = roles_config["supervisor"]
-    model_name = role_config["model"]
-    model = ChatAnthropic(model=model_name, api_key=langgraph_api_key())  # type: ignore[call-arg]
-    findings_text = "\n\n".join(state["findings"])
-    parsed, tokens_in, tokens_out = await _structured_call(
-        model,
-        [
-            SystemMessage(content=supervisor_prompt),
-            HumanMessage(
-                content=(
-                    f"Case ID: {state['case_id']}\n\n"
-                    f"Original question: {state['question']}\n\n"
-                    f"Worker findings:\n{findings_text}\n\n"
-                    "Synthesize a final answer from these findings only."
-                )
-            ),
-        ],
-        AnswerResponse,
-    )
-    assert isinstance(parsed, AnswerResponse)
-    cost_eur = _compute_cost_eur(model_config, model_name, tokens_in, tokens_out)
-    return {
-        "answer": parsed.answer,
-        "evidence": parsed.evidence,
-        "confidence": parsed.confidence,
-        "flag_reason": parsed.flag_reason,
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
-        "cost_eur": cost_eur,
-    }
-
-
-async def _critic_node(
-    state: AgentState,
-    *,
-    roles_config: dict[str, Any],
-    model_config: dict[str, Any],
-    critic_prompt: str,
-) -> dict[str, Any]:
-    role_config = roles_config["critic"]
-    model_name = role_config["model"]
-    model = ChatAnthropic(model=model_name, api_key=langgraph_api_key())  # type: ignore[call-arg]
-    parsed, tokens_in, tokens_out = await _structured_call(
-        model,
-        [
-            SystemMessage(content=critic_prompt),
-            HumanMessage(
-                content=(
-                    f"Question: {state['question']}\n\n"
-                    f"Proposed answer: {state['answer']}\n\n"
-                    f"Cited evidence: {state['evidence']}\n\n"
-                    "Does the evidence support the answer?"
-                )
-            ),
-        ],
-        CriticResponse,
-    )
-    assert isinstance(parsed, CriticResponse)
-    confidence = state["confidence"]
-    if not parsed.accepted:
-        # No retry loop on rejection - matches ADR-0007's no-retry stance,
-        # which multi_agent.py's own critic step already carries.
-        confidence = "low"
-    cost_eur = _compute_cost_eur(model_config, model_name, tokens_in, tokens_out)
-    return {
-        "confidence": confidence,
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
-        "cost_eur": cost_eur,
-    }
-
-
-async def _confirm_flag_node(state: AgentState) -> dict[str, Any]:
-    """Reached only when the supervisor set `flag_reason` (the conditional
-    edge below). Everything before `interrupt()` is read-only - two
-    `flag_case_for_review` calls (`dry_run=True` for the preview, then
-    unconfirmed for a `preview_token`) that never touch Postgres - so this
-    node is safe to replay from the start if it's ever interrupted more than
-    once (`langgraph.types.interrupt`'s "resume re-executes the whole node"
-    caveat only bites when something before the interrupt has a side
-    effect). The actual write, if approved, happens once, after the human
-    decision `interrupt()` returns.
-    """
-    case_id = state["case_id"]
-    reason = state["flag_reason"]
-    if reason is None:
-        raise RuntimeError(
-            "_confirm_flag_node reached with flag_reason=None - "
-            "_route_after_critic should have routed to END instead."
-        )
-    idempotency_key = f"review-{case_id}"
-    database_url = os.environ.get("DATABASE_URL")
-    arguments = {
-        "case_id": case_id,
-        "reason": reason,
-        "idempotency_key": idempotency_key,
-    }
-
-    start = time.monotonic()
-    preview_arguments = {**arguments, "dry_run": True}
-    preview = await flag_case_for_review(
-        database_url, case_id, reason, idempotency_key, _CREATED_BY, dry_run=True
-    )
-    tool_calls = [
-        ToolCall(
-            tool="flag_case_for_review",
-            arguments=preview_arguments,
-            status=preview.status,
-            elapsed_ms=int((time.monotonic() - start) * 1000),
-        )
-    ]
-
-    start = time.monotonic()
-    unconfirmed_arguments = {**arguments, "confirmed": False}
-    unconfirmed = await flag_case_for_review(
-        database_url, case_id, reason, idempotency_key, _CREATED_BY
-    )
-    tool_calls.append(
-        ToolCall(
-            tool="flag_case_for_review",
-            arguments=unconfirmed_arguments,
-            status=unconfirmed.status,
-            elapsed_ms=int((time.monotonic() - start) * 1000),
-        )
-    )
-
-    approved = interrupt(
-        {
-            "case_id": case_id,
-            "reason": reason,
-            "preview": preview.model_dump(mode="json"),
-        }
-    )
-
-    if approved:
-        confirmed_arguments = {
-            **arguments,
-            "confirmed": True,
-            "preview_token": unconfirmed.preview_token,
-        }
-        start = time.monotonic()
-        confirmed = await flag_case_for_review(
-            database_url,
-            case_id,
-            reason,
-            idempotency_key,
-            _CREATED_BY,
-            confirmed=True,
-            preview_token=unconfirmed.preview_token,
-        )
-        tool_calls.append(
-            ToolCall(
-                tool="flag_case_for_review",
-                arguments=confirmed_arguments,
-                status=confirmed.status,
-                elapsed_ms=int((time.monotonic() - start) * 1000),
-            )
-        )
-
-    return {"tool_calls": tool_calls}
-
-
-def _route_after_critic(state: AgentState) -> str:
-    return "confirm_flag" if state.get("flag_reason") else END
 
 
 def _build_multi_graph(
@@ -522,8 +158,11 @@ def _initial_state(case: Case) -> AgentState:
         tokens_in=0,
         tokens_out=0,
         cost_eur=0.0,
+        rows=[],
         answer="",
         evidence=[],
+        claims=[],
+        evidence_items=[],
         confidence="low",
         flag_reason=None,
     )
@@ -538,6 +177,10 @@ def _outcome_from_state(state: dict[str, Any]) -> _Outcome:
         tokens_in=state.get("tokens_in", 0),
         tokens_out=state.get("tokens_out", 0),
         cost_eur=state.get("cost_eur", 0.0),
+        claims=[Claim.model_validate(c) for c in state.get("claims", [])],
+        evidence_items=[
+            Evidence.model_validate(e) for e in state.get("evidence_items", [])
+        ],
     )
 
 
@@ -563,6 +206,7 @@ async def run_multi_async(
     prompts_dir = prompts_dir or DEFAULT_PROMPTS_DIR
     roles_config = _load_roles_config(roles_config_path)
     graph = _build_multi_graph(roles_config, model_config, prompts_dir, checkpointer)
+    thread_id = new_thread_id(case)
 
     try:
         result = await _run_graph(
@@ -573,6 +217,7 @@ async def run_multi_async(
             max_tool_calls,
             input_state=_initial_state(case),
             telemetry_fn=_state_telemetry,
+            thread_id=thread_id,
         )
     except _BudgetExceeded as exc:
         # _run_graph doesn't know per-role models - re-raise enriched with a
@@ -596,7 +241,7 @@ async def run_multi_async(
         ) from exc
 
     if "__interrupt__" in result:
-        raise _Paused(case.case_id, _outcome_from_state(result))
+        raise _Paused(thread_id, _outcome_from_state(result))
 
     return _outcome_from_state(result)
 

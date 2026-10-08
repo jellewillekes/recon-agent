@@ -697,7 +697,37 @@ def test_a_faithfulness_judge_failure_keeps_the_rubric_score(
 
     assert score.rubric_scores == {"answer_correctness": 0.8}
     assert score.judge_failed is False
+    assert score.faithfulness_judge_failed is True
     assert "faithfulness judge failed: " in score.notes
+
+
+@pytest.mark.unit
+def test_the_run_counts_failed_faithfulness_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#125 follow-up: faithfulness_mean then rests on fewer cases, and the
+    run says how many calls failed rather than leaving it to the notes."""
+    _patch_judge(monkeypatch, {"answer_correctness": 1.0})
+
+    def failing_faithfulness(*args: object, **kwargs: object) -> None:
+        raise _result_error("API Error: overloaded")
+
+    monkeypatch.setattr(
+        scoring.faithfulness, "judge_faithfulness", failing_faithfulness
+    )
+
+    run = harness.run_evaluation(
+        [_case("c1"), _case("c2")],
+        _FakeRuntime({cid: _agent_result(case_id=cid) for cid in ("c1", "c2")}),
+        rubrics_dir=REPO_RUBRICS_DIR,
+        prompts_dir=REPO_PROMPTS_DIR,
+        models_config_path=REPO_MODELS_CONFIG,
+        passages=lambda query, top_k, company_id: [],
+    )
+
+    assert run.aggregate["cases_faithfulness_judge_failed"] == 2.0
+    # Faithfulness isn't gated, so the run stays comparable.
+    assert gate.incomplete_reasons(run) == []
 
 
 @pytest.mark.unit

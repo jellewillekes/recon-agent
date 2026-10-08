@@ -12,10 +12,13 @@ import argparse
 import sys
 from pathlib import Path
 
+import yaml
+
 from recon.contracts import EvalRun
-from recon.eval.hashing import DEFAULT_PROMPTS_DIR, compute_prompt_hashes
+from recon.eval.hashing import DEFAULT_PROMPTS_DIR, compute_prompt_hashes, prompts_read
 
 DEFAULT_BASELINE = Path("evals/baseline.json")
+DEFAULT_ROLES_CONFIG = Path("config/roles.yaml")
 
 
 def prompt_drift(recorded: dict[str, str], current: dict[str, str]) -> list[str]:
@@ -36,15 +39,31 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     parser.add_argument("--prompts-dir", type=Path, default=DEFAULT_PROMPTS_DIR)
+    parser.add_argument("--roles-config", type=Path, default=DEFAULT_ROLES_CONFIG)
     args = parser.parse_args(argv)
 
     if not args.baseline.exists():
         print(f"{args.baseline} doesn't exist yet; prompt hashes not checked.")
         return 0
     baseline = EvalRun.model_validate_json(args.baseline.read_text(encoding="utf-8"))
-    drift = prompt_drift(
-        baseline.prompt_hashes, compute_prompt_hashes(args.prompts_dir)
-    )
+    roles = yaml.safe_load(args.roles_config.read_text(encoding="utf-8")) or {}
+    pinned = prompts_read(baseline.runtime, baseline.mode, roles)
+    recorded, current = baseline.prompt_hashes, compute_prompt_hashes(args.prompts_dir)
+    unpinned = []
+    if pinned is not None:
+        # ADR 0032: only the prompts the baseline's run read are pinned.
+        unpinned = prompt_drift(
+            {r: h for r, h in recorded.items() if r not in pinned},
+            {r: h for r, h in current.items() if r not in pinned},
+        )
+        recorded = {r: h for r, h in recorded.items() if r in pinned}
+        current = {r: h for r, h in current.items() if r in pinned}
+    if unpinned:
+        print(
+            f"Not read by the baseline's {baseline.runtime}/{baseline.mode} run, "
+            "so not pinned:\n" + "\n".join(unpinned)
+        )
+    drift = prompt_drift(recorded, current)
     if not drift:
         return 0
     print("\n".join(drift))

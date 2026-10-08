@@ -37,7 +37,7 @@ from recon.runtimes.agent_sdk import (
 )
 from recon.runtimes.answer import Answer, validate_answer
 from recon.runtimes.api_key import without_api_keys
-from recon.runtimes.evidence import RowIndex, evidence_for, evidence_line
+from recon.runtimes.evidence import RowIndex, worker_report
 from recon.runtimes.providers import local_provider, routes
 
 DEFAULT_ROLES_CONFIG_PATH = Path("config/roles.yaml")
@@ -176,13 +176,6 @@ def _validate_worker(structured: dict[str, Any]) -> tuple[str, list[str]]:
     return structured["findings"], [str(ref) for ref in structured["evidence_refs"]]
 
 
-def _worker_report(worker: str, findings: str, refs: list[str], rows: RowIndex) -> str:
-    """A worker's findings for the synthesis, with each cited ref resolved, so
-    the supervisor cites refs it can see the content of."""
-    lines = [evidence_line(evidence_for(ref, rows)) for ref in dict.fromkeys(refs)]
-    return f"[{worker}] findings: {findings}\nevidence:\n" + "\n".join(lines)
-
-
 def _validate_critic(structured: dict[str, Any]) -> tuple[bool, str]:
     return bool(structured["accepted"]), structured["reason"]
 
@@ -307,7 +300,7 @@ async def run_multi_async(
         _accumulate(worker_result)
         rows.merge(worker_result.rows)
         worker_findings, worker_refs = _validate_worker(worker_result.structured)
-        findings.append(_worker_report(worker, worker_findings, worker_refs, rows))
+        findings.append(worker_report(worker, worker_findings, worker_refs, rows))
 
     synthesize_options = _build_role_options(
         "supervisor", roles_config["supervisor"], prompts_dir, _ANSWER_SCHEMA

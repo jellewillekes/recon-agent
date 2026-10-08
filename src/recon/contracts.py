@@ -226,6 +226,8 @@ class CaseScore(BaseModel):
     # The rubric judge call failed, so answer_score and rubric_scores are
     # placeholders, not measurements (#123).
     judge_failed: bool = False
+    # The faithfulness judge call failed, so faithfulness is unscored (#123).
+    faithfulness_judge_failed: bool = False
     # #116: the run path scored step by step, and the main reason a case
     # failed (ADR 0031). None on results recorded before these fields existed.
     trajectory: TrajectoryScore | None = None

@@ -9,6 +9,7 @@ actually produces, not a guessed one.
 """
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -172,7 +173,7 @@ async def test_run_success_parses_tool_calls_and_cost(
                         "name": "AnswerResponse",
                         "args": {
                             "answer": "Industrials",
-                            "evidence": ["FIRM-001 is in Industrials"],
+                            "claims": [],
                             "confidence": "high",
                         },
                         "id": "r1",
@@ -186,7 +187,8 @@ async def test_run_success_parses_tool_calls_and_cost(
 
     assert result.error is None
     assert result.answer == "Industrials"
-    assert result.evidence == ["FIRM-001 is in Industrials"]
+    # No claims, so nothing cited: see the citing test below for evidence.
+    assert result.claims == [] and result.evidence == []
     assert result.confidence == "high"
     assert len(result.tool_calls) == 1
     assert result.tool_calls[0].tool == "list_companies"
@@ -200,6 +202,83 @@ async def test_run_success_parses_tool_calls_and_cost(
     assert result.cost_eur == pytest.approx(expected_cost_usd * 0.92)
     assert result.runtime == "langgraph"
     assert result.mode == "single"
+
+
+class _CitingModel(_FakeToolCallingModel):
+    """Answers with a claim citing the first ref a tool returned in the run,
+    plus one ref no tool returned - what #118's claims look like."""
+
+    def with_structured_output(  # type: ignore[override]
+        self, schema: type[BaseModel], **kwargs: Any
+    ) -> Any:
+        model = self
+
+        class _Citing:
+            async def ainvoke(
+                self, messages: Any, config: Any = None, **kw: Any
+            ) -> BaseModel:
+                model._idx += 1
+                seen = [
+                    row["ref"]
+                    for message in messages
+                    if isinstance(message, ToolMessage)
+                    for row in (_payload(message.content) or {}).get("data", [])
+                ]
+                return schema(
+                    answer="Industrials",
+                    claims=[
+                        {
+                            "text": "FIRM-001 is in Industrials",
+                            "importance": "key",
+                            "evidence_refs": [seen[0], "Enot-returned"],
+                        }
+                    ],
+                    confidence="high",
+                )
+
+        return _Citing()
+
+
+def _payload(content: Any) -> dict[str, Any] | None:
+    text = content if isinstance(content, str) else content[0]["text"]
+    loaded = json.loads(text)
+    return loaded if isinstance(loaded, dict) else None
+
+
+@pytest.mark.anyio
+async def test_run_answers_with_claims_resolved_against_the_runs_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#118: LangGraph cites row refs like the Agent SDK runtime (ADR 0030)."""
+    model = _CitingModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "list_companies_tool",
+                        "args": {"sector": "Industrials"},
+                        "id": "c1",
+                    }
+                ],
+            ),
+            AIMessage(content="Industrials."),
+            AIMessage(content=""),
+        ]
+    )
+    monkeypatch.setattr(lg, "ChatAnthropic", lambda **kwargs: model)
+
+    result = await lg.LangGraphRuntime().run_async(CASE)
+
+    assert result.error is None
+    [claim] = result.claims
+    assert claim.importance == "key"
+    verified, unverified = result.evidence_items
+    assert verified.ref == claim.evidence_refs[0]
+    assert verified.verified and verified.source_type == "company"
+    assert verified.company_id is not None
+    assert unverified.ref == "Enot-returned" and not unverified.verified
+    assert result.evidence[1].startswith("[Enot-returned] unverified")
 
 
 @pytest.mark.anyio
@@ -221,7 +300,7 @@ async def test_run_excludes_structured_response_tool_from_tool_calls(
                         "name": "AnswerResponse",
                         "args": {
                             "answer": "unknown",
-                            "evidence": [],
+                            "claims": [],
                             "confidence": "low",
                         },
                         "id": "r1",
@@ -258,7 +337,7 @@ async def test_run_malformed_structured_output_populates_error_not_raise(
                         "name": "AnswerResponse",
                         "args": {
                             "answer": "x",
-                            "evidence": [],
+                            "claims": [],
                             "confidence": "not-a-real-value",
                         },
                         "id": "r1",
@@ -475,7 +554,7 @@ async def test_run_reports_token_budget_breach_after_the_fact(
                         "name": "AnswerResponse",
                         "args": {
                             "answer": "Industrials",
-                            "evidence": ["FIRM-001 is in Industrials"],
+                            "claims": [],
                             "confidence": "high",
                         },
                         "id": "r1",
