@@ -1,22 +1,25 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { api, type Capabilities } from "./api/client";
+import { ArchitectureView } from "./architecture/ArchitectureView";
 import { EvaluationView } from "./evaluation/EvaluationView";
 import { ResearchView } from "./research/ResearchView";
 
-export type View = "research" | "evaluation";
+export type View = "research" | "evaluation" | "architecture";
 const VIEWS: { id: View; label: string }[] = [
   { id: "research", label: "Research" },
   { id: "evaluation", label: "Evaluation" },
+  { id: "architecture", label: "Architecture" },
 ];
 
 function viewFromHash(hash: string): View {
-  return hash === "#evaluation" ? "evaluation" : "research";
+  if (hash === "#evaluation") return "evaluation";
+  return hash === "#architecture" ? "architecture" : "research";
 }
 
 export function App({ initialView }: { initialView?: View }) {
   const [view, setView] = useState<View>(initialView ?? viewFromHash(globalThis.location?.hash ?? ""));
   const [capabilities, setCapabilities] = useState<Capabilities | "unavailable" | null>(null);
-  const tabs = useRef<Record<View, HTMLButtonElement | null>>({ research: null, evaluation: null });
+  const tabs = useRef<Record<View, HTMLButtonElement | null>>({ research: null, evaluation: null, architecture: null });
 
   useEffect(() => {
     api.capabilities().then(setCapabilities, () => setCapabilities("unavailable"));
@@ -76,6 +79,9 @@ export function App({ initialView }: { initialView?: View }) {
         </div>
         <div id="evaluation-view" role="tabpanel" aria-labelledby="tab-evaluation" hidden={view !== "evaluation"}>
           <EvaluationView active={view === "evaluation"} />
+        </div>
+        <div id="architecture-view" role="tabpanel" aria-labelledby="tab-architecture" hidden={view !== "architecture"}>
+          <ArchitectureView />
         </div>
         <footer className="page-footer">
           <span>RECON RESEARCH AGENT</span>

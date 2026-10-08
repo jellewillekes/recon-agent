@@ -14,6 +14,15 @@ describe("App", () => {
     expect(html).toMatch(/id="tab-research"[^>]*aria-selected="true"/);
   });
 
+  it("adds the architecture view as a third tab panel", () => {
+    const html = renderToStaticMarkup(<App initialView="architecture" />);
+
+    expect(html).toContain('id="architecture-view"');
+    expect(html).toMatch(/id="tab-architecture"[^>]*aria-selected="true"/);
+    expect(html).toMatch(/id="research-view"[^>]*hidden/);
+    expect(html).not.toMatch(/id="architecture-view"[^>]*hidden/);
+  });
+
   it("hides the view that isn't selected", () => {
     const html = renderToStaticMarkup(<App initialView="evaluation" />);
 

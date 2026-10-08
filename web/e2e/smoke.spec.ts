@@ -166,3 +166,40 @@ test("the tabs work from the keyboard", async ({ page }) => {
   await expect(page.getByRole("tabpanel", { name: "Evaluation" })).toBeVisible();
   await expect(page.getByRole("tabpanel", { name: "Research" })).toBeHidden();
 });
+
+test("the architecture view shows four sections and links into the repo", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Architecture" }).click();
+
+  const panel = page.getByRole("tabpanel", { name: "Architecture" });
+  await expect(panel).toBeVisible();
+  await expect(page.getByRole("tabpanel", { name: "Research" })).toBeHidden();
+  for (const heading of [
+    "How a question becomes an answer",
+    "From claim to verdict",
+    "How a version is judged",
+    "How it runs",
+  ]) {
+    await expect(panel.getByRole("heading", { name: heading })).toBeVisible();
+  }
+  await expect(panel.getByRole("img")).toHaveCount(4);
+  await expect(panel.getByRole("img", { name: "Claim to verdict" })).toBeVisible();
+
+  const links = panel.locator("a[href*='github.com']");
+  expect(await links.count()).toBeGreaterThan(10);
+  for (const href of await links.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("href")))) {
+    expect(href).toMatch(/^https:\/\/github\.com\/jellewillekes\/recon-agent\/blob\/main\/docs\/.+\.md$/);
+  }
+  expect(new URL(page.url()).hash).toBe("#architecture");
+});
+
+test("the architecture tab is reachable from the keyboard and by link", async ({ page }) => {
+  await page.goto("/#architecture");
+  await expect(page.getByRole("tabpanel", { name: "Architecture" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Evaluation" }).click();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Architecture" })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Research" })).toBeFocused();
+});

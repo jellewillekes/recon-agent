@@ -269,3 +269,29 @@ textarea:focus { border-color: #64a78d; box-shadow: 0 0 0 3px rgba(8, 123, 91, .
 .run-filters select { font: inherit; text-transform: none; letter-spacing: 0; padding: 4px 8px; border: 1px solid #d9dfdb; border-radius: 6px; background: #fff; color: inherit; }
 /* Keyboard focus stays visible on every control. */
 :focus-visible { outline: 2px solid var(--green-dark); outline-offset: 2px; }
+
+/* Architecture view */
+.arch-card {
+  margin-bottom: 18px; padding: 26px; border: 1px solid rgba(30, 41, 38, .08);
+  border-radius: 15px; background: var(--white); box-shadow: 0 9px 30px rgba(30, 41, 38, .035);
+}
+.arch-summary { max-width: 700px; margin: 10px 0 18px; color: #65736d; font-size: 14px; line-height: 1.65; }
+.arch-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; margin-top: 22px; }
+.arch-columns h3 { margin: 0 0 8px; font: 500 10px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.arch-columns h3:not(:first-child) { margin-top: 18px; }
+.arch-columns ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.65; }
+.arch-columns li + li { margin-top: 6px; }
+.arch-missing { color: var(--amber); }
+.arch-links { list-style: none; padding-left: 0 !important; }
+.arch-links a { color: var(--green-dark); }
+.dg-scroll { overflow-x: auto; }
+.dg { display: block; width: 100%; min-width: 620px; height: auto; }
+.dg-box rect { fill: var(--white); stroke: #cbd5cf; stroke-width: 1.2; }
+.dg-accent rect { fill: var(--green-soft); stroke: var(--green); }
+.dg-absent rect { fill: transparent; stroke: var(--amber); stroke-dasharray: 5 4; }
+.dg-title { fill: var(--ink); font: 600 13px var(--sans); }
+.dg-sub { fill: var(--muted); font: 11px var(--mono); }
+.dg-line { stroke: var(--muted); stroke-width: 1.3; fill: none; }
+.dg-dashed { stroke: var(--amber); stroke-dasharray: 5 4; }
+.dg-head { fill: var(--muted); }
+@media (max-width: 760px) { .arch-columns { grid-template-columns: 1fr; } }
