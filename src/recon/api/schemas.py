@@ -130,3 +130,16 @@ class EvalList(BaseModel):
     """Body of `GET /evals`, newest first."""
 
     runs: list[EvalSummary]
+
+
+class Company(BaseModel):
+    """A company the tools have data for."""
+
+    company_id: str
+    name: str
+
+
+class CompanyList(BaseModel):
+    """Body of `GET /companies`, sorted by ticker."""
+
+    companies: list[Company]

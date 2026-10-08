@@ -325,6 +325,42 @@
         "title": "Claim",
         "type": "object"
       },
+      "Company": {
+        "description": "A company the tools have data for.",
+        "properties": {
+          "company_id": {
+            "title": "Company Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "company_id",
+          "name"
+        ],
+        "title": "Company",
+        "type": "object"
+      },
+      "CompanyList": {
+        "description": "Body of `GET /companies`, sorted by ticker.",
+        "properties": {
+          "companies": {
+            "items": {
+              "$ref": "#/components/schemas/Company"
+            },
+            "title": "Companies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "companies"
+        ],
+        "title": "CompanyList",
+        "type": "object"
+      },
       "Comparison": {
         "description": "`candidate` judged against `baseline`.",
         "properties": {
@@ -1398,6 +1434,25 @@
           }
         },
         "summary": "Capabilities"
+      }
+    },
+    "/companies": {
+      "get": {
+        "description": "Every company the tools know, by ticker.",
+        "operationId": "companies_companies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Companies"
       }
     },
     "/evals": {

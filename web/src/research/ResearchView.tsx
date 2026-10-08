@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type AgentResult, type Capabilities, type RunSummary } from "../api/client";
+import { withTicker } from "../lib/question";
 import { DATA_NOTES, EXAMPLES } from "./examples";
 import { HistoryCard } from "./History";
 import { ResultView, type SavedRun } from "./ResultView";
@@ -32,6 +33,22 @@ export function ResearchView({ capabilities, onOpenRun }: Props) {
   const [runState, setRunState] = useState<RunState>({ state: "ready", label: "Ready" });
   const [output, setOutput] = useState<Output>({ kind: "empty" });
   const [runs, setRuns] = useState<RunSummary[] | string | null>(null);
+  const [tickers, setTickers] = useState<string[]>([]);
+  const [ticker, setTicker] = useState("");
+
+  // The companies the tools have data for. Without the list the dropdown
+  // just stays hidden: the question box still takes any company.
+  useEffect(() => {
+    api.companies().then(
+      (list) => setTickers(list.companies.map((c) => c.company_id)),
+      () => setTickers([]),
+    );
+  }, []);
+
+  function pickTicker(next: string) {
+    setTicker(next);
+    setQuestion((current) => withTicker(current, next, tickers));
+  }
 
   const loadHistory = useCallback(() => {
     if (!historyOn) return;
@@ -118,6 +135,15 @@ export function ResearchView({ capabilities, onOpenRun }: Props) {
               />
               <div className="form-footer">
                 <span>{question.length} / {MAX_QUESTION}</span>
+                {tickers.length > 0 && (
+                  <label className="mode-picker" htmlFor="company">
+                    Company
+                    <select id="company" value={ticker} onChange={(event) => pickTicker(event.target.value)}>
+                      <option value="">Any company</option>
+                      {tickers.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </label>
+                )}
                 <label className="mode-picker" htmlFor="mode">
                   Mode
                   <select id="mode" value={mode} onChange={(event) => setMode(event.target.value)}>
