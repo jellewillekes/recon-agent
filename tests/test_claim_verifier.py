@@ -167,3 +167,17 @@ def test_negated_claims_are_not_read_as_their_positive(text: str) -> None:
     back CONTRADICTED."""
     result = verify_claim("c", text, [_row(450.0)])
     assert result.verdict == "UNVERIFIABLE"
+
+
+@pytest.mark.parametrize(
+    ("text", "verdict"),
+    [
+        ("Margin was 10.9% in FY2024.", "SUPPORTED"),
+        ("Margin was 12.0% in FY2024.", "CONTRADICTED"),
+    ],
+)
+def test_a_pure_ratio_row_is_read_as_a_percentage(text: str, verdict: str) -> None:
+    """EDGAR files rates such as an effective tax rate as a fraction in unit
+    `pure`: 0.109 is 10.9%."""
+    rows = [_row(0.109, concept="margin", unit="pure")]
+    assert verify_claim("c", text, rows).verdict == verdict

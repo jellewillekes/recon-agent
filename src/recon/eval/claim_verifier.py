@@ -28,7 +28,8 @@ _UNIT_DOLLARS = {"USD": 1.0, "USD_M": 1e6}
 _EPSILON = 1e-9
 # Bump when a rule changes what a claim's verdict is (ADR 0034, 0035).
 # "2": claims can state their figure as data (#148).
-VERIFIER_RULES = "2"
+# "3": a row in unit `pure` is read as a percentage (#145).
+VERIFIER_RULES = "3"
 
 
 def verifier_version(tolerance: float = 0.0) -> str:
@@ -64,7 +65,7 @@ def _verify(
     figure: ClaimFigure | None,
 ) -> ClaimVerification:
     """`verify_claim` before the claim text is attached to the result."""
-    usable = [row for row in rows if _is_usable(row)]
+    usable = [_as_percent(row) for row in rows if _is_usable(row)]
     try:
         if (why := needs_judgement(text)) is not None:
             raise Unreadable(why)
@@ -78,6 +79,14 @@ def _verify(
         return _check(claim_id, reading, usable, tolerance)
     except Unreadable as unreadable:
         return _result(claim_id, "UNVERIFIABLE", str(unreadable))
+
+
+def _as_percent(row: Row) -> Row:
+    """EDGAR files rates as a fraction in unit `pure` (0.109), where claims
+    state a percentage (10.9%). Such a row is read as `PCT`."""
+    if row.get("unit") != "pure":
+        return row
+    return {**row, "unit": "PCT", "value": row["value"] * 100}
 
 
 def _is_usable(row: Row) -> bool:

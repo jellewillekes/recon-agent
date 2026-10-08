@@ -1,0 +1,12 @@
+# 6 cases whose answers rest on figures the fact rows hold, each about a
+# different company (#145). From the cases tagged "Simple retrieval -
+# Quantitative", "Numerical Reasoning", "Trends" or "Beat or Miss", kept where
+# the snapshot has the concepts the answer needs. Picked by case-id order,
+# blind to scores. A baseline over this file is compared only with runs over
+# this file (ADR 0018).
+finance-agent-bench:135cf3369c99
+finance-agent-bench:1e6fcc9bda5d
+finance-agent-bench:9e7e8a3f7139
+finance-agent-bench:caf4be73b29f
+finance-agent-bench:ed95ff9ff29c
+finance-agent-bench:fd98327e142d

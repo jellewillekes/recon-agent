@@ -393,4 +393,11 @@ def test_resolve_claims_keeps_a_valid_figure_and_drops_a_malformed_one() -> None
 
 @pytest.mark.unit
 def test_the_verifier_version_moves_with_figures() -> None:
-    assert verifier_version() == "2:tol=0"
+    assert verifier_version() == "3:tol=0"
+
+
+@pytest.mark.unit
+def test_a_figure_on_a_pure_ratio_row_is_a_percentage() -> None:
+    row = _row("EffectiveIncomeTaxRateContinuingOperations", 0.109, unit="pure")
+    figure = {"kind": "level", "value": "10.9", "scale": "percent"}
+    assert _verdict(figure, [row]) == "SUPPORTED"
