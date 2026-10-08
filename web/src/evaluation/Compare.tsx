@@ -34,6 +34,10 @@ export function Compare({ runs }: { runs: EvalSummary[] }) {
     compare(initial.baseline, initial.candidate);
   }, [runs, compare]);
 
+  // With one recorded run both sides start on it, and a run compared with
+  // itself says nothing (review of #127).
+  const samePair = pair.baseline === pair.candidate;
+
   function submit(event: FormEvent) {
     event.preventDefault();
     compare(pair.baseline, pair.candidate);
@@ -54,8 +58,9 @@ export function Compare({ runs }: { runs: EvalSummary[] }) {
             {runs.map((run) => <option key={run.run_id} value={run.run_id}>{runLabel(run)}</option>)}
           </select>
         </label>
-        <button type="submit" className="secondary-button">Compare</button>
+        <button type="submit" className="secondary-button" disabled={samePair}>Compare</button>
       </form>
+      {samePair && <p className="compare-note">Pick two different runs to compare.</p>}
       <div id="compare-result">
         {typeof result === "string" && <div className="error-box">{result}</div>}
         {result && typeof result === "object" && <ComparisonTable result={result} />}

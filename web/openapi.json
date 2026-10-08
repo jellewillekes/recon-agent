@@ -221,6 +221,11 @@
             ],
             "title": "Failure Reason"
           },
+          "faithfulness_judge_failed": {
+            "default": false,
+            "title": "Faithfulness Judge Failed",
+            "type": "boolean"
+          },
           "judge_failed": {
             "default": false,
             "title": "Judge Failed",

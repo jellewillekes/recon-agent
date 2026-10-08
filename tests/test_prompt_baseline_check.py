@@ -70,6 +70,20 @@ def test_removing_a_prompt_the_baseline_reads_fails(scored: Path) -> None:
     assert "prompts/investigator.md: removed since the baseline" in result.stdout
 
 
+def test_a_pinned_prompt_missing_from_the_baseline_fails(scored: Path) -> None:
+    """A prompt the baseline's run reads but didn't record, e.g. a role added
+    after it was scored (review of #126)."""
+    baseline = json.loads((scored / "baseline.json").read_text())
+    del baseline["prompt_hashes"]["investigator"]
+    baseline["prompt_hashes"]["critic"] = compute_prompt_hashes(scored / "prompts")[
+        "critic"
+    ]
+    (scored / "baseline.json").write_text(json.dumps(baseline))
+    result = _check(scored)
+    assert result.returncode == 1
+    assert "prompts/investigator.md: added since the baseline" in result.stdout
+
+
 def test_a_prompt_the_baselines_runtime_never_reads_may_change(scored: Path) -> None:
     """ADR 0032: the baseline is a single-mode agent_sdk run, which reads only
     the investigator prompt (and the judges'). Other prompts aren't pinned."""

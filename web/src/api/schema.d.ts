@@ -325,6 +325,11 @@ export interface components {
             /** Failure Reason */
             failure_reason?: string | null;
             /**
+             * Faithfulness Judge Failed
+             * @default false
+             */
+            faithfulness_judge_failed: boolean;
+            /**
              * Judge Failed
              * @default false
              */

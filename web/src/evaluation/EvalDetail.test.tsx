@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { comparison, evalRun } from "../../e2e/fixtures";
-import { ComparisonTable } from "./Compare";
+import { comparison, evalRun, evals } from "../../e2e/fixtures";
+import { Compare, ComparisonTable } from "./Compare";
 import { RunDetail } from "./EvalDetail";
 
 describe("RunDetail", () => {
@@ -32,5 +32,23 @@ describe("ComparisonTable", () => {
 
     expect(html).toContain("The gate won&#x27;t compare these runs.");
     expect(html).toContain("rubric_version differs");
+  });
+});
+
+describe("Compare", () => {
+  it("won't compare a run with itself", () => {
+    // Review of #127: with one recorded run, both sides preselect it.
+    const [only] = evals.runs;
+    const html = renderToStaticMarkup(<Compare runs={only ? [only] : []} />);
+
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Compare<\/button>/);
+    expect(html).toContain("Pick two different runs to compare.");
+  });
+
+  it("allows a comparison of two different runs", () => {
+    const html = renderToStaticMarkup(<Compare runs={evals.runs} />);
+
+    expect(html).not.toContain("disabled");
+    expect(html).not.toContain("Pick two different runs");
   });
 });
