@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from recon.contracts import AgentResult, Case, Claim, ToolCall
+from recon.contracts import AgentResult, Case, Claim, Evidence, ToolCall
 from recon.eval import claim_replay, harness, scoring
 from recon.eval.claim_verifier import verifier_version
 from recon.eval.judge import JudgeResult
@@ -237,3 +237,30 @@ def test_a_run_without_replay_leaves_claims_unverified(
 
     assert run.case_scores[0].verifications is None
     assert run.verifier_version is None
+
+
+def _text_evidence(ref: str) -> Evidence:
+    return Evidence(ref=ref, verified=True, source_type="filing_text", excerpt="text")
+
+
+@pytest.mark.unit
+def test_a_claim_citing_only_filing_text_is_unverifiable_not_unsupported(
+    facts: claim_replay.Facts,
+) -> None:
+    """Eval review of #139: the numeric verifier can't read a text row, so a
+    claim resting on one isn't a bad claim. Counting it as UNSUPPORTED would
+    make the bad-claim share measure how often the agent cites text."""
+    fact_ref = _revenue_ref(facts)
+    result = _agent_result(
+        tool_calls=[_fact_call(REVENUE_2024)],
+        claims=[
+            _claim("Backlog was $200 million in FY2024", ["Etext0000001"]),
+            _claim("Revenue was $600 million in FY2024", [fact_ref, "Etext0000001"]),
+            _claim("Revenue was $550 million in FY2024", ["E000000000000"]),
+        ],
+        evidence_items=[_text_evidence("Etext0000001")],
+    )
+
+    verdicts = [v.verdict for v in claim_replay.verify_answer(result, facts)]
+
+    assert verdicts == ["UNVERIFIABLE", "CONTRADICTED", "UNSUPPORTED"]

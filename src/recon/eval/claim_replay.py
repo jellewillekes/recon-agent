@@ -38,8 +38,39 @@ def replayed_rows(agent_result: AgentResult, facts: Facts) -> list[Row]:
 
 def verify_answer(agent_result: AgentResult, facts: Facts) -> list[ClaimVerification]:
     """Each claim of the answer, verified against the replayed fact rows.
-    Empty when the answer has no claims."""
+    Empty when the answer has no claims.
+
+    A claim that cites only rows the numeric verifier can't read (filing
+    text, filings, companies) is UNVERIFIABLE, not UNSUPPORTED: it rests on
+    real rows, just not numeric ones. Otherwise the bad-claim share would
+    measure how often the agent cites text rather than how often it is wrong.
+    """
     if not agent_result.claims:
         return []
     rows = replayed_rows(agent_result, facts)
-    return verify_claims(agent_result.claims, rows).claims
+    report = verify_claims(agent_result.claims, rows)
+    not_numeric = _verified_non_fact_refs(agent_result)
+    return [
+        _unverifiable(verification)
+        if claim.evidence_refs and set(claim.evidence_refs) <= not_numeric
+        else verification
+        for claim, verification in zip(agent_result.claims, report.claims, strict=True)
+    ]
+
+
+def _verified_non_fact_refs(agent_result: AgentResult) -> set[str]:
+    return {
+        item.ref
+        for item in agent_result.evidence_items
+        if item.verified and item.source_type != "financial_fact"
+    }
+
+
+def _unverifiable(verification: ClaimVerification) -> ClaimVerification:
+    return verification.model_copy(
+        update={
+            "verdict": "UNVERIFIABLE",
+            "reasoning": "The claim cites only rows the numeric verifier can't "
+            "read, such as filing text.",
+        }
+    )

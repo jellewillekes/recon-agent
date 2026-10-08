@@ -30,10 +30,14 @@ the calls, as ADR 0026 does for searches.
 
 - No contract change on `ToolCall`. The replay is faithful only while the tool data is the
   data the run used, which `tool_data_snapshot` already pins.
-- Only fact rows are replayed. A claim citing a filing-text, filing or company row has no
-  numeric row to check and comes back UNSUPPORTED or UNVERIFIABLE.
+- Only fact rows are replayed. A claim that cites only verified filing-text, filing or
+  company rows is UNVERIFIABLE: it rests on real rows the numeric verifier can't read.
+  Counting it as UNSUPPORTED would make the bad-claim share track how often the agent
+  cites text, which is most of the baseline's qualitative cases. A claim that cites
+  nothing, or a ref no tool returned, stays UNSUPPORTED.
 - The committed baseline can't be verified after the fact. It keeps tool names, not the
-  claims or the call arguments. It must be regenerated through its own PR, which costs a
-  paid run. Until then the gate skips the claim check (ADR 0035).
+  claims or the call arguments. It must be regenerated through its own PR. Its 7 cases
+  cost about €1.42 a run, above the €1 default `--max-cost-eur`, so the cap is raised
+  only with the user's go-ahead. Until then the gate skips the claim check (ADR 0035).
 - `claim_bad_rate_noise_band` stays at its default of 0 until run-to-run noise in the
   bad-claim share is measured. The value is the user's to set.
