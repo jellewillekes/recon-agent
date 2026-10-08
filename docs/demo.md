@@ -65,7 +65,7 @@ runs. Nothing in the rest of the story needs a live call.
 3. **Compare**, noise first. Pick baseline `eval-20261006T204756Z` and candidate `eval-20261006T210553Z`: the same agent run twice on the 7 text cases. Every verdict is "same". The scores moved a little, but within the measured run-to-run noise (ADR 0028), so we don't call that an improvement.
 4. A real comparison: baseline `eval-20261007T081821Z` (single mode) against candidate `eval-20261007T084001Z` (multi mode). Multi mode's answer score is worse, and it isn't cheaper. That's an honest finding: more agents isn't automatically better.
 5. Baseline `eval-20261007T081821Z` (rubric 3) against candidate `eval-20261007T175852Z` (rubric 4). The gate refuses and lists why: the scoring changed, so the numbers aren't evidence of better or worse.
-6. Click `eval-20261007T175852Z` in the table to show its per-case results: the failure class and run path per case, including the cases that didn't complete and why.
+6. Click `eval-20261007T081821Z` in the table to show its per-case results: the failure class and run path per case, including the one case that didn't complete and why (a token-budget runtime error).
 
 The panel opens on multi mode with routing off against routing on once a
 routing-on run is recorded. Until then it opens on the two newest runs, which
