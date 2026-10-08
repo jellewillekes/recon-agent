@@ -92,6 +92,16 @@ def test_the_texts_concept_isnt_read_when_a_figure_is_given() -> None:
 
 
 @pytest.mark.unit
+def test_a_figure_that_looks_like_a_year_isnt_stripped_as_a_period() -> None:
+    """A bare year is only a period when nothing marks it as a dollar figure
+    instead, so a figure that happens to fall in 1900-2099 still reads."""
+    row = _row(REVENUE, 2024e6)
+    figure = {"kind": "level", "value": "2024", "scale": "millions"}
+    text = "Revenue was $2024 million in FY2024."
+    assert _verdict(figure, [row], text=text) == "SUPPORTED"
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("text", "value"),
     [
