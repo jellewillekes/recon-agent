@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from recon.contracts import CaseScore, ClaimVerification, EvalRun, Verdict
+from recon.eval.claim_gate import skip_note
 from recon.eval.gate import check_gate
 from recon.eval.thresholds import GateThresholds
 
@@ -183,3 +184,32 @@ def test_old_runs_load_without_the_new_fields() -> None:
     loaded = EvalRun.model_validate(dumped)
     assert loaded.verifier_version is None
     assert loaded.case_scores[0].verifications is None
+
+
+def test_a_candidate_with_nothing_checkable_fails_when_the_baseline_had_some() -> None:
+    """#145: a candidate whose claims the verifier can't read would otherwise
+    pass the claim rule with nothing checked."""
+    baseline = _run([_case("a", GOOD)])
+    candidate = _run([_case("a", ["UNVERIFIABLE", "UNVERIFIABLE"])])
+
+    failures = check_gate(candidate, baseline, LIMITS)
+
+    assert len(failures) == 1
+    assert "none of the candidate's claims could be checked" in failures[0]
+
+
+def test_nothing_checkable_on_both_sides_passes() -> None:
+    baseline = _run([_case("a", ["UNVERIFIABLE"])])
+    candidate = _run([_case("a", ["UNVERIFIABLE"])])
+    assert check_gate(candidate, baseline, LIMITS) == []
+
+
+def test_the_skip_note_names_an_unverified_baseline() -> None:
+    candidate = _run([_case("a", GOOD)])
+    unverified = _run([_case("a", None)], verifier_version=None)
+
+    note = skip_note(unverified)
+
+    assert note is not None
+    assert "claim check not run" in note
+    assert skip_note(candidate) is None

@@ -365,3 +365,26 @@ def test_run_bounded_times_out_as_unavailable(
 
     assert result.status == "unavailable"
     assert "timeout" in result.message
+
+
+@pytest.mark.unit
+def test_get_financial_fact_orders_restated_rows_by_filing(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """#145: restated rows share a period. Without a tiebreak, a result cut at
+    MAX_ROWS could keep different rows when the harness replays the call."""
+    for filed, accession, value in (
+        ("2025-02-14", "ACC-B", 392.0),
+        ("2024-02-14", "ACC-A", 400.0),
+    ):
+        conn.execute(
+            "INSERT INTO financial_facts (company_id, fiscal_year, fiscal_period, "
+            "concept, value, unit, period_end, filed, accession) "
+            "VALUES ('FIRM-001', 2023, 'FY', 'restated', ?, 'USD_M', "
+            "'2023-12-31', ?, ?)",
+            [value, filed, accession],
+        )
+
+    result = server.get_financial_fact(conn, "FIRM-001", "restated")
+
+    assert [row["accession"] for row in result.data] == ["ACC-A", "ACC-B"]

@@ -42,6 +42,17 @@ def verdict_counts(run: EvalRun) -> dict[str, int] | None:
     return counts
 
 
+def skip_note(baseline: EvalRun) -> str | None:
+    """Why the claim check didn't run against `baseline`, or None when it ran.
+    The gate skips it silently, so the caller prints this (#145)."""
+    if measured(baseline):
+        return None
+    return (
+        "claim check not run: the baseline has no verified claims. Regenerate "
+        "the baseline with claims verified to gate on them (ADR 0035, 0038)."
+    )
+
+
 def _contradicted(case: CaseScore | None) -> list[ClaimVerification]:
     return (
         [v for v in (case.verifications or []) if v.verdict == "CONTRADICTED"]
@@ -87,6 +98,13 @@ def claim_failures(
         return []
     failures: list[str] = []
     before, after = bad_rate(baseline), bad_rate(candidate)
+    if before is not None and after is None:
+        failures.append(
+            "none of the candidate's claims could be checked, while "
+            f"{before:.1%} of the baseline's were bad. A run the verifier can't "
+            "read can't pass the claim rule; check the run's claims "
+            "(UNVERIFIABLE reasons are in its summary)."
+        )
     if (
         before is not None
         and after is not None

@@ -132,7 +132,7 @@ def _facts_query(validated: GetFinancialFactInput) -> tuple[str, list[Any]]:
     sql = (
         "SELECT fiscal_year, fiscal_period, period_start, period_end, concept, value, "
         f"unit, form, filed, accession FROM financial_facts WHERE {where} "
-        "ORDER BY fiscal_year NULLS LAST, period_end, fiscal_period"
+        "ORDER BY fiscal_year NULLS LAST, period_end, fiscal_period, filed, accession"
     )
     return sql, params
 
