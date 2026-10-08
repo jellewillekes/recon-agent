@@ -9,11 +9,31 @@ refs are resolved against the rows the run's tools returned
 from dataclasses import dataclass
 from typing import Any, Literal, cast, get_args
 
-from recon.contracts import Claim, Evidence
+from recon.contracts import Claim, ClaimFigure, Evidence
 from recon.runtimes.evidence import RowIndex, resolve_claims
 
 Confidence = Literal["high", "medium", "low"]
 _CONFIDENCE_VALUES = set(get_args(Confidence))
+
+# A claim's figure as data (#148, ADR 0040). Optional: a claim from filing
+# text has none. `value` has no pattern here, so a malformed one is dropped by
+# `resolve_claims` instead of failing the whole answer.
+FIGURE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": list(get_args(ClaimFigure.model_fields["kind"].annotation)),
+        },
+        "value": {"type": "string"},
+        "scale": {
+            "type": "string",
+            "enum": list(get_args(ClaimFigure.model_fields["scale"].annotation)),
+        },
+    },
+    "required": ["kind", "value", "scale"],
+    "additionalProperties": False,
+}
 
 CLAIMS_SCHEMA: dict[str, Any] = {
     "type": "array",
@@ -23,6 +43,7 @@ CLAIMS_SCHEMA: dict[str, Any] = {
             "text": {"type": "string"},
             "importance": {"type": "string", "enum": ["key", "supporting"]},
             "evidence_refs": {"type": "array", "items": {"type": "string"}},
+            "figure": FIGURE_SCHEMA,
         },
         "required": ["text", "importance", "evidence_refs"],
         "additionalProperties": False,
