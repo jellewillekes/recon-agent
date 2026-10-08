@@ -1,6 +1,7 @@
 """Markdown summary for an `EvalRun`, written alongside its JSON record."""
 
 from recon.contracts import EvalRun
+from recon.eval import claim_gate
 from recon.eval.gate import incomplete_reasons
 from recon.eval.intervals import run_interval
 
@@ -40,6 +41,37 @@ def _uncertainty(run: EvalRun, correct_answer_score: float | None) -> list[str]:
     return lines
 
 
+def _claims(run: EvalRun) -> list[str]:
+    """How the run's claims were verified (#139, ADR 0038)."""
+    counts = claim_gate.verdict_counts(run)
+    if counts is None:
+        return ["", "## Claims", "", "Not verified in this run."]
+    rate = claim_gate.bad_rate(run)
+    share = "no claim could be checked" if rate is None else f"{rate:.1%}"
+    lines = [
+        "",
+        "## Claims",
+        "",
+        (
+            f"Verifier: {run.verifier_version}. Unsupported or contradicted: "
+            f"{share} of the claims checked."
+        ),
+        "",
+        "| Verdict | Claims |",
+        "|---|---|",
+        *[f"| {verdict} | {count} |" for verdict, count in counts.items()],
+    ]
+    contradicted = [
+        f'- {case.case_id}: "{v.text}"'
+        for case in run.case_scores
+        for v in case.verifications or []
+        if v.verdict == "CONTRADICTED"
+    ]
+    if contradicted:
+        lines += ["", "Contradicted claims:", "", *contradicted]
+    return lines
+
+
 def render_markdown(run: EvalRun, correct_answer_score: float | None = None) -> str:
     lines = [
         f"# Evaluation run {run.run_id}",
@@ -70,6 +102,7 @@ def render_markdown(run: EvalRun, correct_answer_score: float | None = None) -> 
         lines.append(f"| {key} | {run.aggregate[key]:.3f} |")
 
     lines += _uncertainty(run, correct_answer_score)
+    lines += _claims(run)
     lines += [
         "",
         "## Per-case",

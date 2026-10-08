@@ -36,7 +36,8 @@ from recon.runtimes import api_key, providers
 from recon.runtimes.agent_sdk import DEFAULT_MODELS_CONFIG_PATH, AgentSdkRuntime
 from recon.runtimes.base import Runtime
 from recon.runtimes.langgraph import LangGraphRuntime
-from recon.tools.data_source import tool_data_snapshot_id
+from recon.tools.data_source import open_tool_data, tool_data_snapshot_id
+from recon.tools.fact_replay import replay_facts
 from recon.tracing import ENDPOINT_ENV, configure_tracing, shutdown_tracing
 
 # Filename carries the pinned commit, so bumping the pin in the adapter also
@@ -236,6 +237,7 @@ def _cmd_eval(args: argparse.Namespace) -> None:
             tool_data_snapshot=tool_data_snapshot,
             max_cost_eur=args.max_cost_eur,
             correct_answer_score=thresholds.correct_answer_score,
+            facts=replay_facts(open_tool_data()),
             **cli_retrieval.scoring_inputs(search_index),
         )
     finally:

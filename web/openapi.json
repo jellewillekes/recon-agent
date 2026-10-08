@@ -697,6 +697,20 @@
             "title": "Case Count",
             "type": "integer"
           },
+          "claim_verdicts": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Verdicts"
+          },
           "cost_per_correct_answer_eur": {
             "anyOf": [
               {

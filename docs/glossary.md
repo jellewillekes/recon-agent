@@ -223,6 +223,16 @@ the rows the tools really returned in that run. A match is verified evidence, re
 the row itself. A ref no tool returned stays unverified and is shown as such
 ([ADR 0030](adr/0030-claims-cite-tool-rows-by-ref.md)).
 
+### Claim verdict
+
+What the numeric verifier concludes about one claim after recomputing it from the rows it
+cites: SUPPORTED, CONTRADICTED, STALE, UNSUPPORTED or UNVERIFIABLE
+([ADR 0034](adr/0034-numeric-claim-verification.md)). Every evaluation run replays the
+agent's fact calls to get those rows back and stores a verdict per claim. The promotion
+gate fails a candidate whose share of unsupported and contradicted claims rises
+([ADR 0035](adr/0035-verification-report-and-claim-gate.md),
+[ADR 0038](adr/0038-verify-claims-by-replaying-fact-calls.md)).
+
 ### Faithfulness
 
 Whether the answer's claims from filing text are backed by the passages the agent

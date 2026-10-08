@@ -6,7 +6,7 @@ baseline's. Runs that never verified claims are "not measured": they neither
 pass nor fail here.
 """
 
-from recon.contracts import CaseScore, ClaimVerification, EvalRun
+from recon.contracts import VERDICTS, CaseScore, ClaimVerification, EvalRun
 from recon.eval.thresholds import GateThresholds
 
 _BAD = ("UNSUPPORTED", "CONTRADICTED")
@@ -29,6 +29,17 @@ def bad_rate(run: EvalRun) -> float | None:
     if not checked:
         return None
     return sum(1 for v in checked if v.verdict in _BAD) / len(checked)
+
+
+def verdict_counts(run: EvalRun) -> dict[str, int] | None:
+    """How many of the run's claims got each verdict. None when the run
+    didn't verify claims."""
+    if not measured(run):
+        return None
+    counts: dict[str, int] = dict.fromkeys(VERDICTS, 0)
+    for verification in _verified(run):
+        counts[verification.verdict] += 1
+    return counts
 
 
 def _contradicted(case: CaseScore | None) -> list[ClaimVerification]:

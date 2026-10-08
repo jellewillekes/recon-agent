@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient, Response
 
 from recon.api import evals as api_evals
 from recon.api import main as api_main
-from recon.contracts import CaseScore, EvalRun
+from recon.contracts import CaseScore, ClaimVerification, EvalRun
 
 pytestmark = [pytest.mark.unit, pytest.mark.anyio]
 
@@ -152,3 +152,38 @@ async def test_compare_with_an_unknown_run_is_a_404(results: Path) -> None:
     resp = await _get("/evals/compare", baseline="eval-off", candidate="eval-nope")
 
     assert resp.status_code == 404
+
+
+async def test_the_summary_counts_claim_verdicts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#139: verdict counts per run, or null when the run didn't verify."""
+    monkeypatch.setattr(api_evals, "RESULTS_DIR", tmp_path)
+    case = _run("x").case_scores[0]
+    verified = case.model_copy(
+        update={
+            "verifications": [
+                ClaimVerification(
+                    claim_id="claim-1",
+                    text="t",
+                    verdict="STALE",
+                    evidence_refs=[],
+                    claimed_value=None,
+                    recomputed_value=None,
+                    tolerance=None,
+                    reasoning="r",
+                )
+            ]
+        }
+    )
+    for run in (
+        _run("eval-verified", case_scores=[verified], verifier_version="1:tol=0"),
+        _run("eval-plain", timestamp_utc=T0 - timedelta(hours=1)),
+    ):
+        (tmp_path / f"{run.run_id}.json").write_text(run.model_dump_json())
+
+    runs = (await _get("/evals")).json()["runs"]
+
+    assert runs[0]["claim_verdicts"]["STALE"] == 1
+    assert runs[0]["claim_verdicts"]["SUPPORTED"] == 0
+    assert runs[1]["claim_verdicts"] is None

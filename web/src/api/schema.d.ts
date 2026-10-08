@@ -568,6 +568,10 @@ export interface components {
             answer_score_mean: number | null;
             /** Case Count */
             case_count: number;
+            /** Claim Verdicts */
+            claim_verdicts?: {
+                [key: string]: number;
+            } | null;
             /** Cost Per Correct Answer Eur */
             cost_per_correct_answer_eur: number | null;
             /** Dataset */

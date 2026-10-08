@@ -262,7 +262,7 @@ class CaseScore(BaseModel):
     trajectory: TrajectoryScore | None = None  # #116; None before this field existed
     failure_class: FailureClass | None = None  # the main reason the case failed, "none" when correct (ADR 0031); None when unscored
     failure_reason: str | None = None          # one line naming what the class rests on
-    verifications: list[ClaimVerification] | None = None  # every claim of the answer, verified (ADR 0035); None when not verified, and before this field existed
+    verifications: list[ClaimVerification] | None = None  # every claim of the answer, verified against its replayed fact calls (ADR 0035, 0038); [] when it made no claims; None when not verified, and before this field existed
 
 class EvalRun(BaseModel):
     run_id: str

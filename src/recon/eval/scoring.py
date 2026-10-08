@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from recon.contracts import AgentResult, Case, CaseScore
-from recon.eval import faithfulness, metrics, trajectory
+from recon.eval import claim_replay, faithfulness, metrics, trajectory
 from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH, JudgeResult, judge_case
 from recon.eval.judge_failures import (
     JUDGE_ERRORS,
@@ -38,13 +38,15 @@ def score_case(
     passages: faithfulness.Passages | None = None,
     retrieval_labels: dict[str, list[str]] | None = None,
     correct_answer_score: float | None = None,
+    facts: claim_replay.Facts | None = None,
 ) -> tuple[CaseScore, AgentResult]:
     """Run, judge and score one case, under an `eval.case` trace span.
 
     With `passages`, an answer that used filing-text search is also scored
     for faithfulness to what the search returned, and on cases in
     `retrieval_labels` its retrieval is scored too. `correct_answer_score` is
-    the cutoff the failure class judges the answer by (#116).
+    the cutoff the failure class judges the answer by (#116). With `facts`,
+    the answer's claims are verified against its replayed fact calls (#139).
 
     Raises `SessionLimitReached`, carrying the scored case, when the case ran
     into the subscription's session limit (#123)."""
@@ -55,6 +57,7 @@ def score_case(
             rubrics,
             models_config_path=models_config_path,
             passages=passages,
+            facts=facts,
         )
         score = _with_diagnosis(
             score,
@@ -96,6 +99,7 @@ def _score_case(
     *,
     models_config_path: Path,
     passages: faithfulness.Passages | None,
+    facts: claim_replay.Facts | None,
 ) -> tuple[CaseScore, AgentResult, bool]:
     """Score one case. The bool says whether it ran into the session limit."""
     with span("invoke_agent") as agent_span:
@@ -157,6 +161,11 @@ def _score_case(
         citation_precision=metrics.citation_precision(agent_result),
         judge_failed=judged.failed,
         faithfulness_judge_failed=judged.faithfulness_failed,
+        verifications=(
+            claim_replay.verify_answer(agent_result, facts)
+            if facts is not None
+            else None
+        ),
     )
     session_limit = judged.session_limit or is_session_limit(agent_result.error)
     return score, agent_result, session_limit

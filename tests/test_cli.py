@@ -150,6 +150,29 @@ def test_cmd_eval_writes_json_and_markdown(
 
 
 @pytest.mark.unit
+def test_cmd_eval_replays_fact_calls_to_verify_claims(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#139: the harness gets the fact replay, on the tool data the run uses."""
+    _patch_dataset_loading(monkeypatch)
+    captured: dict[str, Any] = {}
+
+    def fake_run_evaluation(*_: object, facts: Any, **__: object) -> EvalRun:
+        captured["facts"] = facts
+        return _eval_run()
+
+    monkeypatch.setattr(cli, "run_evaluation", fake_run_evaluation)
+    monkeypatch.chdir(tmp_path)
+
+    args = build_parser().parse_args(["eval", "--limit", "1"])
+    args.func(args)
+
+    rows = captured["facts"]({"company_id": "FIRM-001", "concept": "revenue"})
+    assert rows
+    assert all(row["ref"].startswith("E") for row in rows)
+
+
+@pytest.mark.unit
 def test_cmd_eval_mode_flag_reaches_runtime(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -637,6 +660,7 @@ def _capture_cases(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
         tool_data_snapshot: object,
         max_cost_eur: object,
         passages: object,
+        facts: object,
         **options: object,
     ) -> EvalRun:
         seen["ids"] = [case.case_id for case in cases]

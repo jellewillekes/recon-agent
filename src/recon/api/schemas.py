@@ -139,6 +139,9 @@ class EvalSummary(BaseModel):
     # What the run left unmeasured (#123): its answer_score_mean then includes
     # placeholder zeros, and the gate refuses it. Empty for a complete run.
     incomplete: list[str] = []
+    # How many claims got each verdict (#139, ADR 0038). None when the run
+    # didn't verify its claims.
+    claim_verdicts: dict[str, int] | None = None
 
 
 class EvalList(BaseModel):
