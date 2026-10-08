@@ -24,12 +24,12 @@ _NUMBER = re.compile(r"^([+-]?)(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?$")
 _SCALE_DOLLARS = {"units": 1.0, "thousands": 1e3, "millions": 1e6, "billions": 1e9}
 _TEXT_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
 # Periods name rows, not figures, so their digits aren't compared. A bare
-# year only counts as a period when nothing marks it as a dollar figure
-# instead: a preceding "$" or a following scale word, as in "$2024 million".
+# year counts as a period only when no "$", scale word or % marks it as an
+# amount: "$2024 million" is a figure.
 _TEXT_PERIOD = re.compile(
-    r"\b(?:Q[1-4]|H[12])\b"
-    r"|\b(?:FY|fiscal(?:\s+year)?)\s*\d{4}\b"
-    r"|(?<!\$)\b(?:19|20)\d{2}\b(?!\s*(?:%|million|billion|thousand|units?)\b)",
+    r"\b(?:Q[1-4]|H[12])\b|\b(?:FY|fiscal(?:\s+year)?)\s*\d{4}\b"
+    r"|(?<![$\d.,])\b(?:19|20)\d{2}\b"
+    r"(?!\s*(?:%|(?:percent|trillion|billion|million|thousand|units?|bn|mm|[kmb])\b))(?![.,]\d)",
     re.IGNORECASE,
 )
 

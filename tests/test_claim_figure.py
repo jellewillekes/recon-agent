@@ -124,6 +124,28 @@ def test_a_text_stating_another_number_than_its_figure_is_unverifiable(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "text",
+    [
+        "In 2024 revenue was 2024 million.",
+        "In 2024 revenue was 2024m.",
+        "Revenue was 2,024 million in 2024.",
+        "Revenue grew 2000% in 2024.",
+    ],
+)
+def test_a_figure_that_looks_like_a_year_is_still_read(text: str) -> None:
+    """Only a year that names a period is skipped, not an amount."""
+    if "%" in text:
+        rows = [_row(REVENUE, 2_100e6), _row(REVENUE, 100e6, year=2023)]
+        figure = {"kind": "growth", "value": "2000", "scale": "percent"}
+    else:
+        rows = [_row(REVENUE, 2_024e6)]
+        value = "2,024" if "2,024" in text else "2024"
+        figure = {"kind": "level", "value": value, "scale": "millions"}
+    assert _verdict(figure, rows, text=text) == "SUPPORTED"
+
+
+@pytest.mark.unit
 def test_a_falling_growth_figure_matches_unsigned_text() -> None:
     rows = [_row(REVENUE, 360e6), _row(REVENUE, 400e6, year=2023)]
     figure = {"kind": "growth", "value": "-10.0", "scale": "percent"}
