@@ -122,7 +122,7 @@ class ClaimFigure(BaseModel):
     one concept, and a ratio its numerator row, then its denominator row."""
 
     kind: Literal["level", "growth", "ratio"]
-    value: str
+    value: str = Field(pattern=r"^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$")
     scale: Literal["units", "thousands", "millions", "billions", "percent"]
 
 

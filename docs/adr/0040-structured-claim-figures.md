@@ -21,12 +21,19 @@ structured figures instead (#148).
 - The figure becomes the verifier's `Reading`, and the existing check runs on it. So
   rounding to the stated decimals, STALE for a restated row and CONTRADICTED are the
   same as for text claims.
+- The claim's text must state the figure's value and no other number. Periods such
+  as FY2024 or Q3 don't count. Otherwise the claim is UNVERIFIABLE, so it can't pass
+  on a figure its text doesn't say. This is the one thing still read from the text.
 - A figure is checked only against the rows it cites. A figure that cites nothing is
-  UNSUPPORTED, unlike a text claim, which is then checked against every row.
+  UNSUPPORTED, unlike a text claim, which is then checked against every row. So is a
+  figure citing a ref that is neither a row nor a known non-fact source.
+- Figures the text reader also refuses are UNVERIFIABLE: growth in a percentage
+  concept (points or relative?), growth from a quarter to a full year, and a ratio of
+  rows in different units or of percentages.
 - The text's cause and outlook rules still apply. A claim that gives a reason isn't
   passed on its number.
-- A malformed figure from the model is dropped with a warning, and the claim is read
-  from its text. A bad figure mustn't lose the answer.
+- A malformed figure from the model, including a `value` that isn't a plain number,
+  is dropped with a warning, and the claim is read from its text. A bad figure mustn't lose the answer.
 - `VERIFIER_RULES` becomes "2".
 
 ## Consequences
@@ -35,4 +42,7 @@ structured figures instead (#148).
   the wrong number, which is what the verifier should catch.
 - Nothing changes for the agent until its answer schema and prompts ask for figures.
   That is a separate, paid step, since the prompts are pinned by the baseline.
-- Text claims are read exactly as before, so the labelled claim set is unaffected.
+- Text claims are read exactly as before, from their rows in evidence order, so the
+  labelled claim set is unaffected.
+- A ratio is the first cited row over the second. A correct ratio cited in the wrong
+  order is CONTRADICTED. The prompts in the next step must say which row comes first.

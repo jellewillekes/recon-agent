@@ -40,10 +40,10 @@ def _row(
 
 
 def _claim(
-    figure: dict[str, str], rows: list[dict[str, Any]], text: str = "See the figure."
+    figure: dict[str, str], rows: list[dict[str, Any]], text: str | None = None
 ) -> Claim:
     return Claim(
-        text=text,
+        text=text or f"The figure is {figure['value'].lstrip('+-')}.",
         importance="key",
         evidence_refs=[row["ref"] for row in rows],
         figure=ClaimFigure(**figure),  # type: ignore[arg-type]
@@ -55,7 +55,7 @@ def _verdict(
     cited: list[dict[str, Any]],
     *,
     evidence: list[dict[str, Any]] | None = None,
-    text: str = "See the figure.",
+    text: str | None = None,
 ) -> str:
     claim = _claim(figure, cited, text)
     [verification] = verify_claims([claim], evidence or cited).claims
@@ -83,12 +83,131 @@ def test_a_level_is_checked_against_its_one_row(
 
 
 @pytest.mark.unit
-def test_the_text_isnt_read_when_a_figure_is_given() -> None:
-    """The text names no concept the reader knows and states other numbers."""
+def test_the_texts_concept_isnt_read_when_a_figure_is_given() -> None:
+    """The text names no concept the reader knows. Its periods aren't figures."""
     row = _row(REVENUE, 6_811e6, period="Q3")
     figure = {"kind": "level", "value": "6,811", "scale": "millions"}
-    text = "Q3 came in at 6.8bn, about 4% above the 6.5bn guided."
+    text = "Q3 FY2024 sales came in at $6,811 million."
     assert _verdict(figure, [row], text=text) == "SUPPORTED"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("text", "value"),
+    [
+        ("Revenue was $700 million in FY2024.", "450"),
+        ("Revenue was $450 million in FY2024, up 80%.", "450"),
+        ("Q3 came in at 450m, about 4% above the 430m expected.", "450"),
+        ("Revenue was $6.8 billion in FY2024.", "6,811"),
+    ],
+)
+def test_a_text_stating_another_number_than_its_figure_is_unverifiable(
+    text: str, value: str
+) -> None:
+    """The figure is checked only when it is the one number the text states,
+    so a claim can't pass on a figure its text doesn't say."""
+    row = _row(REVENUE, 450e6 if value == "450" else 6_811e6)
+    figure = {"kind": "level", "value": value, "scale": "millions"}
+    [verification] = verify_claims([_claim(figure, [row], text)], [row]).claims
+    assert verification.verdict == "UNVERIFIABLE"
+    assert "text" in verification.reasoning
+
+
+@pytest.mark.unit
+def test_a_falling_growth_figure_matches_unsigned_text() -> None:
+    rows = [_row(REVENUE, 360e6), _row(REVENUE, 400e6, year=2023)]
+    figure = {"kind": "growth", "value": "-10.0", "scale": "percent"}
+    text = "Revenue fell 10.0% from FY2023 to FY2024."
+    assert _verdict(figure, rows, text=text) == "SUPPORTED"
+
+
+@pytest.mark.unit
+def test_growth_in_a_percentage_concept_is_unverifiable() -> None:
+    """A change in a margin may be meant in points or relative terms. The text
+    reader refuses it too."""
+    rows = [
+        _row("GrossMarginPct", 44.0, unit="PCT"),
+        _row("GrossMarginPct", 40.0, year=2023, unit="PCT"),
+    ]
+    figure = {"kind": "growth", "value": "4.0", "scale": "percent"}
+    [verification] = verify_claims([_claim(figure, rows)], rows).claims
+    assert verification.verdict == "UNVERIFIABLE"
+    assert "percentage" in verification.reasoning
+
+
+@pytest.mark.unit
+def test_growth_between_a_quarter_and_a_year_is_unverifiable() -> None:
+    rows = [_row(REVENUE, 120e6, period="Q3"), _row(REVENUE, 400e6, year=2023)]
+    figure = {"kind": "growth", "value": "-70.0", "scale": "percent"}
+    [verification] = verify_claims([_claim(figure, rows)], rows).claims
+    assert verification.verdict == "UNVERIFIABLE"
+    assert "quarter" in verification.reasoning
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("numerator", "denominator"),
+    [
+        (_row("NetIncomeLoss", 36e6), _row(REVENUE, 450.0, unit="USD_M")),
+        (
+            _row("GrossMarginPct", 40.0, unit="PCT"),
+            _row("OpMarginPct", 8.0, unit="PCT"),
+        ),
+    ],
+)
+def test_a_ratio_of_rows_in_other_units_or_percentages_is_unverifiable(
+    numerator: dict[str, Any], denominator: dict[str, Any]
+) -> None:
+    figure = {"kind": "ratio", "value": "8.0", "scale": "percent"}
+    rows = [numerator, denominator]
+    [verification] = verify_claims([_claim(figure, rows)], rows).claims
+    assert verification.verdict == "UNVERIFIABLE"
+    assert "unit" in verification.reasoning
+
+
+@pytest.mark.unit
+def test_a_figure_citing_a_ref_with_no_row_is_unsupported() -> None:
+    """A made-up ref is unsupported, as for a text claim that cites only it."""
+    rows = [_row(REVENUE, 440e6, ref="E2024"), _row(REVENUE, 400e6, year=2023)]
+    claim = Claim(
+        text="Revenue grew 10%.",
+        importance="key",
+        evidence_refs=["E2024", "Ebogus"],
+        figure=ClaimFigure(kind="growth", value="10", scale="percent"),
+    )
+    [verification] = verify_claims([claim], rows).claims
+    assert verification.verdict == "UNSUPPORTED"
+    assert "Ebogus" in verification.reasoning
+
+
+@pytest.mark.unit
+def test_a_figure_may_also_cite_filing_text() -> None:
+    """A ref known to be a non-fact source isn't a missing row."""
+    row = _row(REVENUE, 450e6, ref="E1")
+    claim = Claim(
+        text="Revenue was $450 million.",
+        importance="key",
+        evidence_refs=["E1", "K7"],
+        figure=ClaimFigure(kind="level", value="450", scale="millions"),
+    )
+    [verification] = verify_claims([claim], [row], non_fact_refs={"K7"}).claims
+    assert verification.verdict == "SUPPORTED"
+
+
+@pytest.mark.unit
+def test_a_text_claim_reads_its_rows_in_evidence_order() -> None:
+    """Two versions filed the same day: the later one in the evidence is
+    current, whatever order the claim cites them in."""
+    first = _row("revenue", 400e6, ref="Ea")
+    second = _row("revenue", 392e6, ref="Eb")
+    claim = Claim(
+        text="Revenue was $392 million in FY2024.",
+        importance="key",
+        evidence_refs=["Eb", "Ea"],
+    )
+    [verification] = verify_claims([claim], [first, second]).claims
+    assert verification.verdict == "SUPPORTED"
+    assert verification.evidence_refs == ["Eb"]
 
 
 @pytest.mark.unit
@@ -157,11 +276,6 @@ def test_a_figure_matching_the_first_filing_is_stale() -> None:
             [_row(REVENUE, 440e6), _row(REVENUE, 400e6, year=2023)],
             "scale",
         ),
-        (
-            {"kind": "level", "value": "about 450", "scale": "millions"},
-            [_row(REVENUE, 450e6)],
-            "number",
-        ),
     ],
 )
 def test_a_figure_its_rows_dont_fit_is_unverifiable(
@@ -213,6 +327,9 @@ def test_figure_fields_are_validated() -> None:
         ClaimFigure(kind="average", value="1", scale="millions")  # type: ignore[arg-type]
     with pytest.raises(ValidationError):
         ClaimFigure(kind="level", value="1", scale="dozens")  # type: ignore[arg-type]
+    for value in ("about 450", "12.5%", "$6,811", "\u221212.5", "1,23"):
+        with pytest.raises(ValidationError):
+            ClaimFigure(kind="level", value=value, scale="millions")
 
 
 @pytest.mark.unit

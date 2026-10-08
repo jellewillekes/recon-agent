@@ -4,7 +4,8 @@
 The model says only what kind of figure it states and the number. The
 concept and the periods come from the rows the claim cites, so nothing is
 read from the claim's text. A figure its rows don't fit raises `Unreadable`
-with the reason.
+with the reason. So does a text that doesn't state the figure, or states
+another number: a claim mustn't pass on a figure its text doesn't say.
 """
 
 import re
@@ -21,12 +22,19 @@ from recon.eval.claim_reader import (
 
 _NUMBER = re.compile(r"^([+-]?)(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?$")
 _SCALE_DOLLARS = {"units": 1.0, "thousands": 1e3, "millions": 1e6, "billions": 1e9}
+_TEXT_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+# Periods name rows, not figures, so their digits aren't compared.
+_TEXT_PERIOD = re.compile(
+    r"\b(?:Q[1-4]|H[12])\b|\b(?:FY|fiscal(?:\s+year)?)\s*\d{4}\b|\b(?:19|20)\d{2}\b",
+    re.IGNORECASE,
+)
 
 
-def reading_from_figure(figure: ClaimFigure, rows: list[Row]) -> Reading:
+def reading_from_figure(figure: ClaimFigure, rows: list[Row], text: str) -> Reading:
     """The `Reading` of `figure` over `rows`, the claim's cited rows in the
-    order it cites them."""
+    order it cites them. `text` must state the figure and no other number."""
     number = _parse(figure.value)
+    _check_text(figure.value, number, text)
     keys = list(dict.fromkeys(_key(row) for row in rows))
     concepts = list(dict.fromkeys(concept for concept, _ in keys))
     periods = list(dict.fromkeys(period for _, period in keys))
@@ -36,14 +44,26 @@ def reading_from_figure(figure: ClaimFigure, rows: list[Row]) -> Reading:
         return _level(figure, number, concepts, periods, rows)
     if figure.scale != "percent":
         raise Unreadable(f"A {figure.kind} figure needs the percent scale.")
+    units = {row.get("unit") for row in rows}
     if figure.kind == "growth":
         if len(concepts) != 1 or len(periods) != 2:
             raise Unreadable("A growth figure must cite one concept in two periods.")
+        if "PCT" in units:
+            raise Unreadable(
+                "A change in a percentage concept isn't read: it may be meant in "
+                "points or in relative terms."
+            )
+        if [period == "FY" for _, period in periods].count(True) == 1:
+            raise Unreadable("Growth from a quarter to a full year isn't checked.")
         sign = -1 if number.value < 0 else 1
         ordered = sorted(periods, key=period_order)
         return Reading("growth", concepts, ordered, _abs(number), sign, 1.0)
     if len(concepts) != 2 or len(periods) != 1:
         raise Unreadable("A ratio must cite two concepts in one period.")
+    if len(units) != 1 or "PCT" in units:
+        raise Unreadable(
+            f"A ratio needs both rows in one currency unit; they are in {sorted(map(str, units))}."
+        )
     return Reading("ratio", concepts, periods, number, 1, 1.0)
 
 
@@ -71,6 +91,19 @@ def _parse(value: str) -> Figure:
     sign, whole, fraction = match.groups()
     number = float(whole.replace(",", "") + "." + (fraction or "0"))
     return Figure(-number if sign == "-" else number, len(fraction or ""))
+
+
+def _check_text(value: str, number: Figure, text: str) -> None:
+    stated = [
+        float(match.group().rstrip(",").replace(",", ""))
+        for match in _TEXT_NUMBER.finditer(_TEXT_PERIOD.sub(" ", text))
+    ]
+    if abs(number.value) not in stated:
+        raise Unreadable(f"The claim's text doesn't state its figure {value!r}.")
+    if any(n != abs(number.value) for n in stated):
+        raise Unreadable(
+            f"The claim's text states numbers other than its figure {value!r}."
+        )
 
 
 def _abs(number: Figure) -> Figure:

@@ -73,7 +73,7 @@ def _verify(
         reading = (
             read_claim(text, usable)
             if figure is None
-            else reading_from_figure(figure, usable)
+            else reading_from_figure(figure, usable, text)
         )
         return _check(claim_id, reading, usable, tolerance)
     except Unreadable as unreadable:

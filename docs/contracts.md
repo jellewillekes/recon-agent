@@ -99,7 +99,7 @@ class Evidence(BaseModel):
 
 class ClaimFigure(BaseModel):        # the claim's one figure as data (#148); concept and periods come from the cited rows
     kind: Literal["level", "growth", "ratio"]  # level: one row; growth: two periods of one concept; ratio: numerator row, then denominator row
-    value: str                         # as the claim writes it, e.g. "6,811" or "-12.5"; its decimals set the rounding allowance
+    value: str                         # a plain number as the claim writes it, e.g. "6,811" or "-12.5"; its decimals set the rounding allowance; the text must state it and no other number
     scale: Literal["units", "thousands", "millions", "billions", "percent"]  # percent for growth, ratios and percentage rows
 
 class Claim(BaseModel):
@@ -177,7 +177,7 @@ Every answered `/investigate` is saved in Postgres (`research_runs`, ADR 0030) u
 
 `/healthz` must never check dependencies. A liveness probe that fails on a database blip restarts a healthy pod.
 
-`/verify` never calls a model and needs no Postgres. A claim that cites refs is checked against those rows only, and one that cites none against every row in `evidence`. A claim with a `figure` is checked against its cited rows only, without reading its text (ADR 0040). A cited ref that matches no row leaves the claim UNSUPPORTED. Claims the numeric verifier can't read come back UNVERIFIABLE, and an answer with no claims is UNVERIFIABLE as a whole.
+`/verify` never calls a model and needs no Postgres. A claim that cites refs is checked against those rows only, and one that cites none against every row in `evidence`. A claim with a `figure` is checked against its cited rows only (ADR 0040). Its text must state the figure's value and no other number, or the claim is UNVERIFIABLE. A cited ref that matches no row leaves the claim UNSUPPORTED. For a claim with a `figure`, one such ref is enough. Claims the numeric verifier can't read come back UNVERIFIABLE, and an answer with no claims is UNVERIFIABLE as a whole.
 
 The `/evals` endpoints only read result files (`RECON_EVAL_RESULTS_DIR`, default `evals/results`). They never start a run. `recon.cli compare` prints the same comparison (`eval/comparison.py`).
 
