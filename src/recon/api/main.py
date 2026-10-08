@@ -27,6 +27,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from recon.api import run_store
+from recon.api.companies import router as companies_router
 from recon.api.evals import router as evals_router
 from recon.api.health import check_mcp_server, check_postgres
 from recon.api.metrics import (
@@ -130,6 +131,7 @@ class _RequestIDMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(_RequestIDMiddleware)
 app.include_router(evals_router)
+app.include_router(companies_router)
 
 
 @app.exception_handler(RequestValidationError)

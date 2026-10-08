@@ -24,6 +24,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/companies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Companies
+         * @description Every company the tools know, by ticker.
+         */
+        get: operations["companies_companies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/evals": {
         parameters: {
             query?: never;
@@ -369,6 +389,24 @@ export interface components {
             importance: "key" | "supporting";
             /** Text */
             text: string;
+        };
+        /**
+         * Company
+         * @description A company the tools have data for.
+         */
+        Company: {
+            /** Company Id */
+            company_id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * CompanyList
+         * @description Body of `GET /companies`, sorted by ticker.
+         */
+        CompanyList: {
+            /** Companies */
+            companies: components["schemas"]["Company"][];
         };
         /**
          * Comparison
@@ -809,6 +847,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Capabilities"];
+                };
+            };
+        };
+    };
+    companies_companies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyList"];
                 };
             };
         };

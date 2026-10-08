@@ -7,6 +7,16 @@ import { capabilities, comparison, evalRun, evals, result, run, run2, runs } fro
 async function stubApi(page: Page) {
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   await page.route("**/capabilities", (route) => route.fulfill(json(capabilities)));
+  await page.route("**/companies", (route) =>
+    route.fulfill(
+      json({
+        companies: [
+          { company_id: "FIRM-001", name: "Firm One" },
+          { company_id: "FIRM-002", name: "Firm Two" },
+        ],
+      }),
+    ),
+  );
   await page.route("**/runs?limit=20", (route) => route.fulfill(json(runs)));
   await page.route("**/runs/api-saved1", (route) => route.fulfill(json(run)));
   await page.route("**/runs/api-saved2", (route) => route.fulfill(json(run2)));
@@ -40,6 +50,22 @@ test("ask a question and open a citation", async ({ page }) => {
   await source.locator("summary").click();
   await expect(source.getByText("Revenue FY2024 = 120000000")).toBeVisible();
   await expect(page.getByText("No tool returned E000000000bb2 in this run.")).toBeHidden();
+});
+
+test("pick a company by ticker from the dropdown", async ({ page }) => {
+  await page.goto("/");
+  const company = page.getByLabel("Company");
+  await expect(company.locator("option")).toHaveText(["Any company", "FIRM-001", "FIRM-002"]);
+
+  await company.selectOption("FIRM-001");
+  await expect(page.getByLabel("Research question")).toHaveValue("FIRM-001: ");
+  await page.getByLabel("Research question").pressSequentially("What was revenue?");
+  await company.selectOption("FIRM-002");
+
+  await expect(page.getByLabel("Research question")).toHaveValue("FIRM-002: What was revenue?");
+  const request = page.waitForRequest("**/investigate");
+  await page.getByRole("button", { name: /Run research/ }).click();
+  expect((await request).postDataJSON().question).toBe("FIRM-002: What was revenue?");
 });
 
 test("reopen a saved run without a new agent call", async ({ page }) => {

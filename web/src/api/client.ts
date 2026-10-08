@@ -10,6 +10,7 @@ export type Claim = Schemas["Claim"];
 export type Evidence = Schemas["Evidence"];
 export type ToolCall = Schemas["ToolCall"];
 export type Capabilities = Schemas["Capabilities"];
+export type Company = Schemas["Company"];
 export type RunSummary = Schemas["RunSummary"];
 export type RunList = Schemas["RunList"];
 export type ResearchRun = Schemas["ResearchRun"];
@@ -45,6 +46,7 @@ const id = encodeURIComponent;
 
 export const api = {
   capabilities: () => request<Capabilities>("/capabilities", "Couldn't load capabilities"),
+  companies: () => request<{ companies: Company[] }>("/companies", "Couldn't load the company list"),
   investigate: (question: string, mode: string) =>
     post<AgentResult>("/investigate", { question, context: {}, mode }, "The request failed. Try again"),
   runs: () => request<RunList>("/runs?limit=20", "Couldn't load saved runs"),

@@ -76,6 +76,7 @@ def test_the_committed_openapi_schema_matches_the_api() -> None:
         ("/evals/{run_id}", "get", "EvalRun"),
         ("/evals/compare", "get", "Comparison"),
         ("/capabilities", "get", "Capabilities"),
+        ("/companies", "get", "CompanyList"),
     ],
 )
 def test_every_endpoint_the_page_reads_documents_its_response(
