@@ -26,8 +26,8 @@ New to a term? See the [glossary](docs/glossary.md).
   ([`docs/runtimes.md`](docs/runtimes.md)).
 - **Real tool data.** [MCP](docs/glossary.md#mcp) tools query [XBRL](docs/glossary.md#xbrl) facts and filings from SEC EDGAR through
   [DuckDB](docs/glossary.md#duckdb). For [RAG](docs/glossary.md#rag), [hybrid search](docs/glossary.md#hybrid-search) over earnings releases and 10-K sections ([pgvector](docs/glossary.md#pgvector), full-text
-  search and a [reranker](docs/glossary.md#cross-encoder-reranker)) is built but not yet granted to any agent role
-  ([`docs/data-sources.md`](docs/data-sources.md)).
+  search and a [reranker](docs/glossary.md#cross-encoder-reranker)) is granted to the single-mode investigator, the facts
+  worker and the critic ([`docs/data-sources.md`](docs/data-sources.md)).
 - **Scores the path.** Each case gets an [answer score](docs/glossary.md#answer-score) from an [LLM judge](docs/glossary.md#llm-judge), weighted across
   correctness, grounding and tool-efficiency [rubrics](docs/glossary.md#rubric). It also gets [tool-call accuracy](docs/glossary.md#tool-call-accuracy),
   the share of tool calls that returned a usable result.

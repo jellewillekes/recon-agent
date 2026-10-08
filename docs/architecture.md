@@ -220,8 +220,8 @@ flowchart LR
 
 Nothing filed after [`filed_cutoff`](glossary.md#snapshot-and-cutoff) in [`config/sec_edgar.yaml`](../config/sec_edgar.yaml)
 is kept, so the tools can't see data newer than the questions. Everything under `data/`
-is gitignored. `search_knowledge`, the [RAG](glossary.md#rag) tool, ships in the MCP server but isn't granted to any role
-yet. The grants, prompt changes and a new baseline land together in #18 part 2
+is gitignored. `search_knowledge`, the [RAG](glossary.md#rag) tool, is granted to the single-mode investigator, the
+facts worker and the critic (`config/roles.yaml`), with the baseline recorded on the text cases
 ([ADR 0025](adr/0025-retrieval-over-filing-text.md)). Sources and licensing:
 [`data-sources.md`](data-sources.md).
 
