@@ -169,6 +169,17 @@ def check_gate(
     return failures
 
 
+def noise_rule(limits: GateThresholds) -> str:
+    """Which noise rule the gate applies, in words (ADR 0028, 0036). It is the
+    fixed band from the thresholds file, not one derived from the data."""
+    return (
+        f"answer score: fixed band ±{limits.answer_score_noise_band:.2f}; "
+        f"task completion: {limits.task_completion_max_case_drop} case(s); "
+        f"cost: ±{limits.cost_max_relative_rise:.0%}. "
+        "Set in config/thresholds.yaml, not derived from the data (ADR 0028)."
+    )
+
+
 def _change(delta: float, tolerance: float, higher_is_better: bool) -> str:
     # The epsilon keeps a drop of exactly the tolerance, such as one case of
     # seven, from failing on float rounding.

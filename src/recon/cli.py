@@ -22,6 +22,7 @@ from recon.eval.gate import (
     check_gate,
     comparability_failures,
     incomplete_reasons,
+    noise_rule,
     verdicts,
 )
 from recon.eval.harness import (
@@ -157,7 +158,9 @@ def _refuse_over_cap(case_count: int, max_cost_eur: float) -> None:
         )
 
 
-def _write_run(run: EvalRun, max_cost_eur: float) -> None:
+def _write_run(
+    run: EvalRun, max_cost_eur: float, correct_answer_score: float | None = None
+) -> None:
     """Write the run's JSON and markdown, print its summary, and exit non-zero
     when it didn't measure every case, since the gate would refuse it."""
     results_dir = Path("evals/results")
@@ -166,7 +169,7 @@ def _write_run(run: EvalRun, max_cost_eur: float) -> None:
     md_path = results_dir / f"{run.run_id}.md"
     # Trailing newline, so pre-commit's end-of-file fixer leaves results alone.
     json_path.write_text(run.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    md_path.write_text(render_markdown(run), encoding="utf-8")
+    md_path.write_text(render_markdown(run, correct_answer_score), encoding="utf-8")
 
     print(f"Wrote {json_path} and {md_path}")
     print(
@@ -243,9 +246,10 @@ def _cmd_eval(args: argparse.Namespace) -> None:
     if search_index is not None:
         run = cli_retrieval.with_retrieval_metrics(run, cases, search_index)
 
-    _write_run(run, args.max_cost_eur)
+    _write_run(run, args.max_cost_eur, thresholds.correct_answer_score)
 
     if baseline is not None:
+        print(f"Gate noise rule: {noise_rule(thresholds.gate)}")
         for metric, verdict in verdicts(run, baseline, thresholds.gate).items():
             print(f"Gate: {metric} {verdict} against the baseline")
         failures = check_gate(run, baseline, thresholds.gate)

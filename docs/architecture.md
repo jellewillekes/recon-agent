@@ -294,3 +294,4 @@ tooling, not the agent under evaluation. See [`github-agents.md`](github-agents.
 | [0033](adr/0033-react-front-end-built-into-the-api.md) | A React front end, built into the API image |
 | [0034](adr/0034-numeric-claim-verification.md) | Numeric claims are verified by recomputation, against labelled claims |
 | [0035](adr/0035-verification-report-and-claim-gate.md) | A verification report, a /verify endpoint and a claim check in the gate |
+| [0036](adr/0036-intervals-and-the-noise-rule.md) | Intervals report uncertainty; the gate's noise band stays the owner's |

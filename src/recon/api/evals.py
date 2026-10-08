@@ -82,7 +82,14 @@ async def compare(baseline: str, candidate: str) -> Comparison | JSONResponse:
     for run_id in (baseline, candidate):
         if run_id not in runs:
             return _no_such_eval(run_id)
-    return compare_runs(runs[baseline], runs[candidate], load_thresholds().gate)
+    thresholds = load_thresholds()
+    return compare_runs(
+        runs[baseline],
+        runs[candidate],
+        thresholds.gate,
+        correct_answer_score=thresholds.correct_answer_score,
+        history=list(runs.values()),
+    )
 
 
 @router.get("/evals/{run_id}", response_model=None, responses={200: {"model": EvalRun}})
