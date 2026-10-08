@@ -44,6 +44,7 @@ data/              gitignored except README
 docker/            Dockerfile, compose.yaml
 charts/            Helm chart
 docs/              contracts.md, deployment.md, adr/
+web/               React front end (Vite, TypeScript); builds into src/recon/api/static
 evals/results/     evaluation artifacts — these ARE committed
 tests/
 .claude/           Claude Code settings, hooks, path-scoped rules, subagents
@@ -69,6 +70,9 @@ make fix                            # format + safe autofix
 uv run pytest                       # all tests, including llm-marked ones that spend credit
 uv run python -m recon.cli eval --cases evals/smoke-cases.txt   # evaluation — consumes credit, capped at €1
 uv run uvicorn recon.api.main:app --reload
+make web                            # build the front end the API serves (Node 22+)
+make web-check                      # front-end lint, types, Vitest and Playwright (what CI runs)
+uv run python scripts/export_openapi.py && npm --prefix web run api:types   # after an API contract change
 cp docker/.env.example docker/.env  # once, then fill in the passwords
 docker compose -f docker/compose.yaml up -d
 helm lint charts/recon-agent

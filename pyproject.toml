@@ -32,6 +32,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/recon"]
+# The built front end is gitignored (ADR 0033), which hatchling would skip.
+artifacts = ["src/recon/api/static/"]
 
 [tool.ruff]
 extend-exclude = ["*.md"]

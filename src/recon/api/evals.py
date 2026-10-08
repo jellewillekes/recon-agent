@@ -72,7 +72,9 @@ async def evals() -> EvalList:
     return EvalList(runs=[_summary(run) for run in runs])
 
 
-@router.get("/evals/compare", response_model=None)
+@router.get(
+    "/evals/compare", response_model=None, responses={200: {"model": Comparison}}
+)
 async def compare(baseline: str, candidate: str) -> Comparison | JSONResponse:
     """`candidate` judged against `baseline` by the gate. Runs it refuses come
     back with `comparable: false` and the reasons, not as an error."""
@@ -83,7 +85,7 @@ async def compare(baseline: str, candidate: str) -> Comparison | JSONResponse:
     return compare_runs(runs[baseline], runs[candidate], load_thresholds().gate)
 
 
-@router.get("/evals/{run_id}", response_model=None)
+@router.get("/evals/{run_id}", response_model=None, responses={200: {"model": EvalRun}})
 async def get_eval(run_id: str) -> EvalRun | JSONResponse:
     """One eval run with its per-case scores."""
     run = _load_runs().get(run_id)

@@ -14,3 +14,7 @@ data/*
 # Claude Code: personal approvals and notes stay local
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Built by `make web` from web/ (ADR 0033)
+src/recon/api/static/
+web/node_modules/

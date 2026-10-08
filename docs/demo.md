@@ -12,6 +12,7 @@ meeting.
 docker compose -f docker/compose.yaml up -d postgres   # run store and filing-text search
 export DATABASE_URL=postgresql://recon:<POSTGRES_PASSWORD>@localhost:55432/recon
 unset ANTHROPIC_API_KEY                                 # the API refuses to start with it (ADR 0027)
+make web                                                # build the page the API serves
 uv run uvicorn recon.api.main:app --port 8000
 ```
 

@@ -262,3 +262,10 @@ textarea:focus { border-color: #64a78d; box-shadow: 0 0 0 3px rgba(8, 123, 91, .
   .topbar { flex-wrap: wrap; height: auto; gap: 10px; padding: 14px 0; }
   .history-card, .eval-card { padding: 19px; }
 }
+
+/* Run filters on the evaluation view (#121). */
+.run-filters { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 12px; }
+.run-filters label { display: grid; gap: 4px; font: 600 10px var(--mono); color: #5c6a64; text-transform: uppercase; letter-spacing: 0.04em; }
+.run-filters select { font: inherit; text-transform: none; letter-spacing: 0; padding: 4px 8px; border: 1px solid #d9dfdb; border-radius: 6px; background: #fff; color: inherit; }
+/* Keyboard focus stays visible on every control. */
+:focus-visible { outline: 2px solid var(--green-dark); outline-offset: 2px; }

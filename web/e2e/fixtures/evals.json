@@ -1,0 +1,51 @@
+{
+  "runs": [
+    {
+      "run_id": "eval-on",
+      "timestamp_utc": "2026-10-07T12:00:00Z",
+      "runtime": "agent_sdk",
+      "mode": "multi",
+      "routing": true,
+      "rubric_version": "4",
+      "dataset": "finance-agent-bench@pin",
+      "case_count": 2,
+      "task_completion_rate": 1.0,
+      "answer_score_mean": 0.62,
+      "total_cost_eur": 0.4,
+      "cost_per_correct_answer_eur": 0.2,
+      "incomplete": []
+    },
+    {
+      "run_id": "eval-off",
+      "timestamp_utc": "2026-10-07T11:00:00Z",
+      "runtime": "agent_sdk",
+      "mode": "multi",
+      "routing": false,
+      "rubric_version": "4",
+      "dataset": "finance-agent-bench@pin",
+      "case_count": 2,
+      "task_completion_rate": 1.0,
+      "answer_score_mean": 0.62,
+      "total_cost_eur": 0.4,
+      "cost_per_correct_answer_eur": 0.2,
+      "incomplete": []
+    },
+    {
+      "run_id": "eval-old",
+      "timestamp_utc": "2026-10-06T11:00:00Z",
+      "runtime": "agent_sdk",
+      "mode": "single",
+      "routing": false,
+      "rubric_version": "3",
+      "dataset": "finance-agent-bench@pin",
+      "case_count": 2,
+      "task_completion_rate": 1.0,
+      "answer_score_mean": 0.62,
+      "total_cost_eur": 0.4,
+      "cost_per_correct_answer_eur": 0.2,
+      "incomplete": [
+        "has 1 case(s) the judge couldn't score"
+      ]
+    }
+  ]
+}

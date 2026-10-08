@@ -17,7 +17,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from functools import cache
-from pathlib import Path
 from typing import Any, Literal
 
 import asyncpg
@@ -26,7 +25,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.staticfiles import StaticFiles
 
 from recon.api import run_store
 from recon.api.evals import router as evals_router
@@ -46,6 +44,7 @@ from recon.api.schemas import (
     RunList,
     RuntimeCapability,
 )
+from recon.api.web import mount_web
 from recon.contracts import AgentResult, Case
 from recon.runtimes import api_key
 from recon.runtimes.agent_sdk import AgentSdkRuntime
@@ -176,7 +175,7 @@ def _unprocessable(field: str, message: str) -> JSONResponse:
     )
 
 
-@app.post("/investigate")
+@app.post("/investigate", responses={200: {"model": AgentResult}})
 async def investigate(request: Request, body: InvestigateRequest) -> Response:
     request_id: str = request.state.request_id
 
@@ -291,7 +290,7 @@ async def capabilities() -> Capabilities:
     )
 
 
-@app.get("/runs", response_model=None)
+@app.get("/runs", response_model=None, responses={200: {"model": RunList}})
 async def runs(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -305,7 +304,7 @@ async def runs(
     return RunList(runs=found, limit=limit, offset=offset)
 
 
-@app.get("/runs/{run_id}", response_model=None)
+@app.get("/runs/{run_id}", response_model=None, responses={200: {"model": ResearchRun}})
 async def get_run(run_id: str) -> ResearchRun | JSONResponse:
     """One saved run: the question, settings, answer, claims, evidence and
     tool calls."""
@@ -370,8 +369,4 @@ async def metrics() -> PlainTextResponse:
     return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-app.mount(
-    "/",
-    StaticFiles(directory=Path(__file__).parent / "static", html=True),
-    name="web",
-)
+mount_web(app)

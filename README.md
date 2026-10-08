@@ -106,9 +106,12 @@ Run one evaluation. This spends model credit, capped at €1:
 uv run python -m recon.cli eval --runtime sdk --mode single --cases evals/smoke-cases.txt
 ```
 
-Serve the API, or the whole stack with Postgres and the observability tools:
+Serve the API, or the whole stack with Postgres and the observability tools. The
+workspace page is a React app in `web/`, built into the API with `make web` (Node 22
+or later). `make dev` runs the API and a reloading front end together:
 
 ```bash
+make web
 uv run uvicorn recon.api.main:app --reload
 cp docker/.env.example docker/.env  # once, then fill in the passwords
 docker compose -f docker/compose.yaml up -d
