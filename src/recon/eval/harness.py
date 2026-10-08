@@ -7,8 +7,9 @@ from pathlib import Path
 
 from recon.adapters.finance_agent_bench import ATTRIBUTION, DATASET_ID, LICENSE
 from recon.contracts import Case, CaseScore, EvalRun
-from recon.eval import faithfulness, hashing, metrics
+from recon.eval import claim_replay, faithfulness, hashing, metrics
 from recon.eval.aggregate import aggregate_scores
+from recon.eval.claim_verifier import verifier_version
 from recon.eval.gate import SKIPPED_AT_COST_CAP, SKIPPED_AT_SESSION_LIMIT
 from recon.eval.judge import DEFAULT_MODELS_CONFIG_PATH
 from recon.eval.judge_failures import (
@@ -79,6 +80,9 @@ def run_evaluation(
     # The answer_score a correct answer reaches, from config/thresholds.yaml.
     # None leaves judged cases without a failure class.
     correct_answer_score: float | None = None,
+    # Replays the agent's fact calls to verify its claims (#139, ADR 0038).
+    # Passed in, like `passages`. None leaves claims unverified.
+    facts: claim_replay.Facts | None = None,
 ) -> EvalRun:
     if limit is not None:
         cases = cases[:limit]
@@ -97,6 +101,7 @@ def run_evaluation(
             passages=passages,
             retrieval_labels=retrieval_labels,
             correct_answer_score=correct_answer_score,
+            facts=facts,
         )
         run_span.set_attributes(_run_attributes(run))
     return run
@@ -122,6 +127,7 @@ def _run_cases(
     passages: faithfulness.Passages | None,
     retrieval_labels: dict[str, list[str]] | None,
     correct_answer_score: float | None,
+    facts: claim_replay.Facts | None,
 ) -> tuple[list[CaseScore], float, str, str, bool]:
     """Score cases until done, the cost cap is near, or the session limit is
     hit. Returns the scores, the agent's share of the cost, the runtime and
@@ -143,6 +149,7 @@ def _run_cases(
                 passages=passages,
                 retrieval_labels=retrieval_labels,
                 correct_answer_score=correct_answer_score,
+                facts=facts,
             )
         except SessionLimitReached as reached:
             score, agent_result = reached.score, reached.agent_result
@@ -175,6 +182,7 @@ def _evaluate(
     passages: faithfulness.Passages | None,
     retrieval_labels: dict[str, list[str]] | None,
     correct_answer_score: float | None,
+    facts: claim_replay.Facts | None,
 ) -> EvalRun:
     case_scores, agent_cost_eur, runtime_name, mode, session_limit = _run_cases(
         cases,
@@ -185,6 +193,7 @@ def _evaluate(
         passages=passages,
         retrieval_labels=retrieval_labels,
         correct_answer_score=correct_answer_score,
+        facts=facts,
     )
     aggregate = {
         **aggregate_scores(cases[: len(case_scores)], case_scores, agent_cost_eur),
@@ -210,6 +219,7 @@ def _evaluate(
         aggregate=aggregate,
         total_cost_eur=sum(s.cost_eur for s in case_scores),
         tool_data_snapshot=tool_data_snapshot,
+        verifier_version=verifier_version() if facts is not None else None,
     )
 
 

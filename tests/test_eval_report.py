@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from recon.contracts import CaseScore, EvalRun
+from recon.contracts import CaseScore, ClaimVerification, EvalRun
 from recon.eval.report import render_markdown
 
 
@@ -108,3 +108,49 @@ def test_render_markdown_lists_each_cases_failure_class() -> None:
     run = _run(case_scores=[_case_score(failure_class="tool_use")])
 
     assert "| tool_use |" in render_markdown(run)
+
+
+def _verification(verdict: str, text: str = "claim") -> ClaimVerification:
+    return ClaimVerification(
+        claim_id="claim-1",
+        text=text,
+        verdict=verdict,  # type: ignore[arg-type]
+        evidence_refs=["E1"],
+        claimed_value=None,
+        recomputed_value=None,
+        tolerance=None,
+        reasoning="r",
+    )
+
+
+@pytest.mark.unit
+def test_render_markdown_counts_claim_verdicts_and_quotes_contradictions() -> None:
+    """#139: the summary shows how the run's claims were verified."""
+    cases = [
+        _case_score(
+            case_id="c1",
+            verifications=[
+                _verification("SUPPORTED"),
+                _verification("CONTRADICTED", "Revenue was $600 million"),
+            ],
+        ),
+        _case_score(case_id="c2", verifications=[]),
+    ]
+
+    md = render_markdown(_run(case_scores=cases, verifier_version="1:tol=0"))
+
+    assert "## Claims" in md
+    assert "Verifier: 1:tol=0" in md
+    assert "| SUPPORTED | 1 |" in md
+    assert "| CONTRADICTED | 1 |" in md
+    assert "| UNSUPPORTED | 0 |" in md
+    assert "50.0% of the claims checked" in md
+    assert '- c1: "Revenue was $600 million"' in md
+
+
+@pytest.mark.unit
+def test_render_markdown_says_when_claims_were_not_verified() -> None:
+    md = render_markdown(_run())
+
+    assert "## Claims" in md
+    assert "Not verified in this run." in md
