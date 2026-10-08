@@ -321,6 +321,7 @@ def test_cmd_eval_gate_passes_prints_message(
 
     out = capsys.readouterr().out
     assert "Gate: answer_score_mean same" in out
+    assert "claim check not run" in out
     assert "Gate passed." in out
 
 

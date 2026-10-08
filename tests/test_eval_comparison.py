@@ -119,3 +119,9 @@ def test_an_incomplete_candidate_is_refused_like_in_the_gate() -> None:
         "the candidate run stopped at the session limit" in r for r in result.reasons
     )
     assert all(metric.verdict is None for metric in result.metrics)
+
+
+def test_compare_warns_when_the_claim_check_is_skipped() -> None:
+    """#145: an unverified baseline skips the claim check; say so."""
+    result = compare_runs(_run(), _run(run_id="eval-new"), LIMITS)
+    assert any("claim check not run" in warning for warning in result.warnings)

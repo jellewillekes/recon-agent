@@ -42,6 +42,17 @@ def verdict_counts(run: EvalRun) -> dict[str, int] | None:
     return counts
 
 
+def skip_note(baseline: EvalRun) -> str | None:
+    """Why the claim check didn't run against `baseline`, or None when it ran.
+    The gate skips it silently, so the caller prints this (#145)."""
+    if measured(baseline):
+        return None
+    return (
+        "claim check not run: the baseline has no verified claims. Regenerate "
+        "the baseline with claims verified to gate on them (ADR 0035, 0038)."
+    )
+
+
 def _contradicted(case: CaseScore | None) -> list[ClaimVerification]:
     return (
         [v for v in (case.verifications or []) if v.verdict == "CONTRADICTED"]
@@ -87,6 +98,8 @@ def claim_failures(
         return []
     failures: list[str] = []
     before, after = bad_rate(baseline), bad_rate(candidate)
+    if before is not None and after is None:
+        failures.append(_nothing_checkable(candidate, baseline))
     if (
         before is not None
         and after is not None
@@ -100,6 +113,26 @@ def claim_failures(
         )
     failures.extend(_new_contradictions(candidate, baseline))
     return failures
+
+
+def _readable(run: EvalRun) -> str:
+    claims = _verified(run)
+    readable = sum(1 for v in claims if v.verdict != "UNVERIFIABLE")
+    return f"{readable} of {len(claims)}"
+
+
+def _nothing_checkable(candidate: EvalRun, baseline: EvalRun) -> str:
+    """Why a candidate with nothing to check fails (ADR 0039)."""
+    cause = (
+        "the candidate made no claims"
+        if not _verified(candidate)
+        else "none of the candidate's claims could be checked"
+    )
+    return (
+        f"{cause}: claims checked, baseline {_readable(baseline)}, candidate "
+        f"{_readable(candidate)}. A run the verifier can't read doesn't pass the "
+        "claim rule. The UNVERIFIABLE reasons are in the run's summary."
+    )
 
 
 def _cases_with_more_bad_claims(candidate: EvalRun, baseline: EvalRun) -> list[str]:

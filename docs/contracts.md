@@ -358,9 +358,10 @@ When the baseline verified its claims (`verifier_version` is set), the gate also
 
 - the candidate must have verified its claims too, with the same `verifier_version`, or the runs aren't comparable
 - the share of unsupported and contradicted claims, among those the verifier could read, rises by more than `claim_bad_rate_noise_band` (0 unless set in `config/thresholds.yaml`), or
-- a case that completed in the baseline has more contradicted claims, whatever the share
+- a case that completed in the baseline has more contradicted claims, whatever the share, or
+- the verifier could read none of the candidate's claims while it read some of the baseline's (ADR 0039)
 
-A baseline that never verified claims is "not measured": the claim check is skipped, not passed.
+A baseline that never verified claims is "not measured": the claim check is skipped, not passed. `eval` and `compare` say so when it happens.
 
 Baseline lives in `evals/baseline.json`. Replaced only through an explicit PR, never automatically.
 

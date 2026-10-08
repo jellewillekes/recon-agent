@@ -17,6 +17,7 @@ from recon.adapters.finance_agent_bench import (
 )
 from recon.contracts import Case, EvalRun
 from recon.eval import case_selection
+from recon.eval.claim_gate import skip_note
 from recon.eval.gate import (
     SKIPPED_AT_COST_CAP,
     check_gate,
@@ -252,6 +253,8 @@ def _cmd_eval(args: argparse.Namespace) -> None:
 
     if baseline is not None:
         print(f"Gate noise rule: {noise_rule(thresholds.gate)}")
+        if (note := skip_note(baseline)) is not None:
+            print(f"Gate: {note}")
         for metric, verdict in verdicts(run, baseline, thresholds.gate).items():
             print(f"Gate: {metric} {verdict} against the baseline")
         failures = check_gate(run, baseline, thresholds.gate)

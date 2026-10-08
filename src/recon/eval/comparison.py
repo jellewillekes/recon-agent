@@ -8,6 +8,7 @@ the reasons instead of verdicts (ADR 0018).
 from pydantic import BaseModel
 
 from recon.contracts import EvalRun
+from recon.eval.claim_gate import skip_note
 from recon.eval.gate import (
     comparability_failures,
     incomplete_run_failures,
@@ -123,6 +124,13 @@ def noise_warnings(
     ]
 
 
+def _warnings(
+    baseline: EvalRun, history: list[EvalRun], limits: GateThresholds
+) -> list[str]:
+    note = skip_note(baseline)
+    return noise_warnings(baseline, history, limits) + ([note] if note else [])
+
+
 def compare_runs(
     baseline: EvalRun,
     candidate: EvalRun,
@@ -173,5 +181,5 @@ def compare_runs(
         ],
         metrics=metrics,
         noise_rule=noise_rule(limits),
-        warnings=noise_warnings(baseline, history or [], limits),
+        warnings=_warnings(baseline, history or [], limits),
     )
