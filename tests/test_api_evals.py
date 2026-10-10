@@ -187,3 +187,5 @@ async def test_the_summary_counts_claim_verdicts(
     assert runs[0]["claim_verdicts"]["STALE"] == 1
     assert runs[0]["claim_verdicts"]["SUPPORTED"] == 0
     assert runs[1]["claim_verdicts"] is None
+    assert runs[0]["verifier_version"] == "1:tol=0"
+    assert runs[1]["verifier_version"] is None

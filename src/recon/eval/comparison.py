@@ -8,7 +8,7 @@ the reasons instead of verdicts (ADR 0018).
 from pydantic import BaseModel
 
 from recon.contracts import EvalRun
-from recon.eval.claim_gate import skip_note
+from recon.eval.claim_gate import skip_note, version_failures
 from recon.eval.gate import (
     comparability_failures,
     incomplete_run_failures,
@@ -19,7 +19,14 @@ from recon.eval.intervals import Interval, run_interval
 from recon.eval.noise import estimate_noise, settings_key
 from recon.eval.thresholds import GateThresholds
 
-SETTINGS = ("runtime", "mode", "routing", "rubric_version", "model_config_hash")
+SETTINGS = (
+    "runtime",
+    "mode",
+    "routing",
+    "rubric_version",
+    "model_config_hash",
+    "verifier_version",
+)
 # The metrics `gate.verdicts` judges.
 _GATED = ("answer_score_mean", "task_completion_rate", "total_cost_eur")
 # Shown next to the gated metrics, without a verdict: the gate doesn't judge them.
@@ -152,6 +159,9 @@ def compare_runs(
         case_ids=[score.case_id for score in candidate.case_scores],
         baseline=baseline,
     ) + incomplete_run_failures(candidate, "candidate")
+    # The gate refuses claim verdicts from two verifier versions, so compare
+    # does too, or it would call a pair comparable that the gate refuses.
+    reasons += version_failures(candidate, baseline)
     judged = {} if reasons else verdicts(candidate, baseline, limits)
     bands = _bands(limits)
     metrics = [

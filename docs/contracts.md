@@ -152,11 +152,13 @@ POST /runs/{run_id}/feedback body {rating: "up" | "down", note?: str}; replaces 
   404:      no saved run with that id
   503:      run history is off: DATABASE_URL isn't set
 
-GET /evals                   eval runs from evals/results/, newest first: settings, completion, score, cost
+GET /evals                   eval runs from evals/results/, newest first: settings, completion, score, cost,
+                             claim verdict counts and the verifier_version that gave them
 GET /evals/{run_id}          one EvalRun with its per-case scores
 GET /evals/compare?baseline=&candidate=
                              settings and metrics side by side; the gate's verdict per gated
-                             metric, or comparable: false with the reasons (ADR 0018). Also each run's 95%
+                             metric, or comparable: false with the reasons (ADR 0018), the gate's reasons
+                             for two verifier versions included (ADR 0035). Also each run's 95%
                              interval per metric, the gate's noise rule, and warnings from stored repeat
                              runs (ADR 0036). None of these changes a verdict
   404:      no eval run with that id

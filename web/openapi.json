@@ -820,6 +820,17 @@
           "total_cost_eur": {
             "title": "Total Cost Eur",
             "type": "number"
+          },
+          "verifier_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifier Version"
           }
         },
         "required": [

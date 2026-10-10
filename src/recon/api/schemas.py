@@ -143,6 +143,9 @@ class EvalSummary(BaseModel):
     # How many claims got each verdict (#139, ADR 0038). None when the run
     # didn't verify its claims.
     claim_verdicts: dict[str, int] | None = None
+    # Which verifier rules gave those verdicts. Counts from two versions
+    # aren't comparable (ADR 0035). None when the run didn't verify its claims.
+    verifier_version: str | None = None
 
 
 class EvalList(BaseModel):

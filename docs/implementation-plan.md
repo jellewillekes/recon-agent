@@ -315,6 +315,14 @@ Covers *CI/CD pipelines, production deployment*.
 
 **Verify:** `uv run python -m recon.cli eval --routing on --limit 3` shows lower cost; the effect on task completion goes in the README.
 
+**Routing done (#114):** multi mode's decompose step runs on the local model with `--routing on` (ADR 0029). The measured comparison, routing on against off on rubric 4, is in the final paid batch (#152).
+
+---
+
+## After step 14: claim verification (done)
+
+Not in the original plan. Every claim cites the tool rows it rests on (#115, ADR 0030). A deterministic verifier recomputes numeric claims from those rows (#138, ADR 0034). The harness verifies every run's claims by replaying fact calls (#143, ADR 0038), and the gate fails a candidate whose bad-claim share rises (#140, #147). Claims state their figure as data (#149, #151, ADR 0040). The baseline moved to 6 cases answered from fact rows, where the verifier can check what the agent states (#150, #151, ADR 0041).
+
 ---
 
 ## Overview
@@ -350,7 +358,7 @@ And this project is cloud-ready without cloud: the Helm chart, OTLP export and t
 
 ## Order
 
-Steps 1 through 10 are done. Next is the baseline run, then step 11, whose CI check needs that baseline.
+All steps are done (2026-10-11). The one open item is the final paid batch (#152): the prompt wording from the #151 review, verifier version 4, and the measured routing comparison for step 14.
 
 Steps 1 through 5 are the core. Start there and do not stop until `eval` runs. After that, steps 6 and 10 together are the cheapest jump in coverage: 2.5 hours for three requirements.
 
