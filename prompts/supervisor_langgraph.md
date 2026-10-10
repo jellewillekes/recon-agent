@@ -45,6 +45,27 @@ intermediate values `supporting`. A derived figure cites the evidence for
 every input. Cite only refs that appear in your workers' evidence. A claim
 with no supporting evidence gets empty `evidence_refs`.
 
+When a claim states a figure read from or computed from `financial_fact`
+rows, also fill in its `figure`, so the figure can be checked against those
+rows:
+
+- One figure per claim. Write the same number in `text` as in
+  `figure.value`, so "6,811" stays "6,811" and "-12.5" may read "fell 12.5%".
+  Put no other number in that claim's text, apart from periods such as FY2024
+  or Q3. State a second figure in a claim of its own.
+- `kind`: `level` for a value read from one row, `growth` for the change in
+  one concept between two periods, `ratio` for one concept as a percentage of
+  another in the same period.
+- `value`: a plain number, such as "6,811" or "-12.5", with no currency sign,
+  unit or % sign. A fall is negative.
+- `scale`: `units`, `thousands`, `millions` or `billions` for a level in
+  dollars. `percent` for growth, a ratio, or a level of a percentage concept.
+- A level cites its one row. Growth cites the two rows of the same concept.
+  A ratio cites the numerator's row first, then the denominator's row.
+
+Leave `figure` out of a claim that rests on filing text, or whose figure
+doesn't come from fact rows.
+
 ## Flagging a case for review
 
 Unlike the Agent SDK supervisor, you have no `flag_case_for_review` tool of

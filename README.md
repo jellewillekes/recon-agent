@@ -53,37 +53,37 @@ New to a term? See the [glossary](docs/glossary.md).
 
 ## Results
 
-The baseline ([`evals/baseline.json`](evals/baseline.json)) is recorded on 7 cases that need
-filing text ([`evals/text-cases.txt`](evals/text-cases.txt)), with `search_knowledge` granted.
-It's on rubric version 4: the agent cites the tool rows its claims rest on, and the server
-checks each citation against what the tools returned (ADR 0030).
+The baseline ([`evals/baseline.json`](evals/baseline.json)) is recorded on 6 cases whose
+answers rest on figures the fact rows hold ([`evals/numeric-cases.txt`](evals/numeric-cases.txt)).
+There, the claim verifier can check what the agent states (ADR 0041). It's on rubric version 4:
+the agent cites the tool rows its claims rest on, and states each figure it read from fact
+rows as data the verifier checks against them (ADR 0030, ADR 0040).
 
-| Runtime | Mode | Task completion | Answer score | Cited rows returned | Key claims citing a returned row | Total cost (€) | Cases |
+| Runtime | Mode | Task completion | Answer score | Claims checked | Bad claims | Total cost (€) | Cases |
 |---|---|---|---|---|---|---|---|
-| sdk | single | 1.000 | 0.772 | 1.000 | 0.786 | 1.42 | 7 (text cases) |
+| sdk | single | 1.000 | 0.801 | 16 of 31 | 0 | 0.69 | 6 (numeric cases) |
 | sdk | multi | not run on rubric 4 | | | | | — |
 | langgraph | single | not run | | | | | — |
 | langgraph | multi | not run | | | | | — |
 
-On 7 cases the numbers are wide. The 95% interval on the answer score is 0.63 to 0.91, and
-on task completion 0.65 to 1.00 (ADR 0036). The interval says how far the scores could move
-on other cases, not how much a rerun of these moves (see `docs/eval-noise.md`).
+On 6 cases the numbers are wide. The 95% interval on the answer score is 0.67 to 0.93, and
+on task completion 0.61 to 1.00 (ADR 0036). The interval says how far the scores could move
+on other cases, not how much a rerun of these moves. Three runs of the same agent scored
+0.801, 0.797 and 0.789 (see `docs/eval-noise.md`).
 
-The sdk single row is the baseline, run `eval-20261007T175852Z`, judged on Haiku 4.5, with
-a 450k-token and 150 s budget per case. All 7 cases completed, in 58 s per case on average.
+The sdk single row is the baseline, run `eval-20261010T205308Z`, judged on Haiku 4.5, with
+a 450k-token and 150 s budget per case. All 6 cases completed, in 31 s per case on average.
 Task completion means a non-empty answer without a runtime error, not a right one. The answer
-score blends answer correctness (mean 0.659) with tool efficiency and evidence grounding.
-The cost is €0.81 for the agent and €0.62 for the judges. That's €0.20 per case scoring at
-least 0.5 on the answer score, judge cost included; all 7 cases reached it.
+score blends answer correctness (mean 0.653) with tool efficiency and evidence grounding.
+The cost is €0.55 for the agent and €0.15 for the judges, so €0.12 per case scoring at
+least 0.5, judge cost included.
 
-The two citation columns are checked by the server, not by a model. "Cited rows returned"
-is the share of cited refs that a tool really returned in that run. "Key claims citing a
-returned row" is the share of key claims with at least one such ref. Neither checks that the
-row supports the claim. Case `731403050270` shows the gap: it scored 0.944, and the grounding
-judge rated its evidence 1.0, but none of its key claims cites a returned row, and its
-filing-text faithfulness is 0.0. Faithfulness was scored on the 5 cases that made a
-filing-text claim: 4 at 1.0 and this one at 0.0. The single row's tool-call accuracy is 1.000
-by default, since none of these cases has an expected tool path to check.
+"Claims checked" counts the claims the numeric verifier could recompute from the fact rows
+they cite. The rest cite filing text, or state a figure no single kind can check, such as a
+free-cash-flow margin built from three rows. Two of the six cases are answered from filing
+text in every run, so they add no checked claims. The previous baseline, on 7 cases that need
+filing text (`evals/text-cases.txt`, run `eval-20261007T175852Z`), scored 0.772 at €1.42. On a
+rerun of those cases the verifier could check 1 of 32 claims (#144).
 
 Multi mode and the routing comparison (#113) aren't measured on rubric 4 yet. The rubric-3
 records (single `eval-20261007T081821Z`: 0.857 completion, 0.660 answer score; multi
