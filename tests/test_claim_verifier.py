@@ -212,3 +212,21 @@ def test_a_growth_claim_over_a_concept_with_one_non_fraction_row_stays_consisten
     ]
     result = verify_claim("c", "Tax rate fell from FY2023 to FY2024 by 92.7%.", rows)
     assert result.verdict == "SUPPORTED"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Margin fell 27.3% from FY2023 to FY2024.",
+        "Margin fell 4.1% from FY2023 to FY2024.",
+    ],
+)
+def test_a_change_in_a_rate_filed_as_pure_is_not_read(text: str) -> None:
+    """A rate from 15% to 10.9% fell 4.1 points or 27.3% relative. The claim
+    doesn't say which, so it is UNVERIFIABLE, as for any percentage concept
+    (ADR 0034), rather than CONTRADICTED under one reading."""
+    rows = [
+        _row(0.15, year=2023, concept="margin", unit="pure"),
+        _row(0.109, concept="margin", unit="pure"),
+    ]
+    assert verify_claim("c", text, rows).verdict == "UNVERIFIABLE"
