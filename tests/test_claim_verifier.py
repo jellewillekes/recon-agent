@@ -167,3 +167,66 @@ def test_negated_claims_are_not_read_as_their_positive(text: str) -> None:
     back CONTRADICTED."""
     result = verify_claim("c", text, [_row(450.0)])
     assert result.verdict == "UNVERIFIABLE"
+
+
+@pytest.mark.parametrize(
+    ("text", "verdict"),
+    [
+        ("Margin was 10.9% in FY2024.", "SUPPORTED"),
+        ("Margin was 12.0% in FY2024.", "CONTRADICTED"),
+    ],
+)
+def test_a_pure_ratio_row_is_read_as_a_percentage(text: str, verdict: str) -> None:
+    """EDGAR files rates such as an effective tax rate as a fraction in unit
+    `pure`: 0.109 is 10.9%."""
+    rows = [_row(0.109, concept="margin", unit="pure")]
+    assert verify_claim("c", text, rows).verdict == verdict
+
+
+def test_a_pure_row_that_isnt_a_fraction_is_not_converted() -> None:
+    """`pure` also holds multiples such as a leverage ratio of 3.5."""
+    rows = [_row(3.5, concept="leverage", unit="pure")]
+    result = verify_claim("c", "Leverage was 350% in FY2024.", rows)
+    assert result.verdict == "UNVERIFIABLE"
+
+
+def test_a_text_ratio_of_rows_in_different_units_is_unverifiable() -> None:
+    rows = [
+        _row(0.109, concept="margin", unit="pure"),
+        _row(450.0, concept="revenue", unit="USD_M"),
+    ]
+    result = verify_claim("c", "Margin was 2.4% of revenue in FY2024.", rows)
+    assert result.verdict == "UNVERIFIABLE"
+
+
+def test_a_growth_claim_over_a_concept_with_one_non_fraction_row_stays_consistent() -> (
+    None
+):
+    """A tax rate of 1.5 in FY2023 isn't a fraction, so it stays `pure`. The
+    0.109 row for FY2024 must then also stay `pure` rather than convert to
+    `PCT`, or the growth would divide mismatched scales and read a true claim
+    as CONTRADICTED."""
+    rows = [
+        _row(1.5, year=2023, concept="tax_rate", unit="pure"),
+        _row(0.109, year=2024, concept="tax_rate", unit="pure"),
+    ]
+    result = verify_claim("c", "Tax rate fell from FY2023 to FY2024 by 92.7%.", rows)
+    assert result.verdict == "SUPPORTED"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Margin fell 27.3% from FY2023 to FY2024.",
+        "Margin fell 4.1% from FY2023 to FY2024.",
+    ],
+)
+def test_a_change_in_a_rate_filed_as_pure_is_not_read(text: str) -> None:
+    """A rate from 15% to 10.9% fell 4.1 points or 27.3% relative. The claim
+    doesn't say which, so it is UNVERIFIABLE, as for any percentage concept
+    (ADR 0034), rather than CONTRADICTED under one reading."""
+    rows = [
+        _row(0.15, year=2023, concept="margin", unit="pure"),
+        _row(0.109, concept="margin", unit="pure"),
+    ]
+    assert verify_claim("c", text, rows).verdict == "UNVERIFIABLE"

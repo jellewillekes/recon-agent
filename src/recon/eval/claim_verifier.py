@@ -28,7 +28,8 @@ _UNIT_DOLLARS = {"USD": 1.0, "USD_M": 1e6}
 _EPSILON = 1e-9
 # Bump when a rule changes what a claim's verdict is (ADR 0034, 0035).
 # "2": claims can state their figure as data (#148).
-VERIFIER_RULES = "2"
+# "3": a row in unit `pure` is read as a percentage (#145).
+VERIFIER_RULES = "3"
 
 
 def verifier_version(tolerance: float = 0.0) -> str:
@@ -64,7 +65,7 @@ def _verify(
     figure: ClaimFigure | None,
 ) -> ClaimVerification:
     """`verify_claim` before the claim text is attached to the result."""
-    usable = [row for row in rows if _is_usable(row)]
+    usable = _as_percent([row for row in rows if _is_usable(row)])
     try:
         if (why := needs_judgement(text)) is not None:
             raise Unreadable(why)
@@ -78,6 +79,25 @@ def _verify(
         return _check(claim_id, reading, usable, tolerance)
     except Unreadable as unreadable:
         return _result(claim_id, "UNVERIFIABLE", str(unreadable))
+
+
+def _as_percent(rows: list[Row]) -> list[Row]:
+    """EDGAR files rates as a fraction in unit `pure` (0.109), where claims
+    state a percentage (10.9%). A concept is read as `PCT` only when every
+    one of its `pure` rows is within ±1; one outlying row (a multiple or a
+    count, not a fraction) keeps the whole concept in `pure`, so a growth or
+    ratio over it never mixes a converted period with an unconverted one."""
+    not_fractional = {
+        row["concept"]
+        for row in rows
+        if row.get("unit") == "pure" and abs(row["value"]) > 1
+    }
+    return [
+        {**row, "unit": "PCT", "value": row["value"] * 100}
+        if row.get("unit") == "pure" and row["concept"] not in not_fractional
+        else row
+        for row in rows
+    ]
 
 
 def _is_usable(row: Row) -> bool:
@@ -221,6 +241,15 @@ def _judge(
         )
         return _result(
             claim_id, "STALE", reasoning, refs=then_refs, recomputed=now, **numbers
+        )
+    if reading.kind == "ratio" and abs(now / 100 - claimed) <= allowed + _EPSILON:
+        # A turnover of 6.49 times is the quotient itself, not 6.49%. It
+        # can't be checked as a percentage, but it isn't wrong either.
+        return _result(
+            claim_id,
+            "UNVERIFIABLE",
+            f"The claim states the ratio as a multiple ({claimed:.4g}), not as a "
+            f"percentage ({now:.4g}%).",
         )
     reasoning = f"The rows give {now:.4g}, the claim says {claimed:.4g}."
     reasoning += _elsewhere(reading, rows, claimed, allowed)

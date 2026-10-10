@@ -44,7 +44,10 @@ Rules:
 - A level that is missing for its own period but equals another period's value is
   `CONTRADICTED` (wrong period). With no such match it is `UNSUPPORTED`.
 - Rows in a unit other than `USD` or `USD_M`, or a percentage concept with a change
-  ("rose 1 point to 42%"), are `UNVERIFIABLE`.
+  ("rose 1 point to 42%"), are `UNVERIFIABLE`. Since #145, a row in unit `pure`
+  (EDGAR's fraction, 0.109) is read as a percentage (10.9%). A change in such a rate is
+  then UNVERIFIABLE like any percentage concept. Before, "fell 4.1%" for a rate from 15%
+  to 10.9% was read as relative change and came back CONTRADICTED though it is 4.1 points.
 
 The labelled set is `evals/verification-claims.yaml`: claims with inline rows, a scope
 (`numeric` or `llm`) and the expected verdict. Claims in the `llm` scope must come back

@@ -414,4 +414,31 @@ def test_resolve_claims_keeps_a_valid_figure_and_drops_a_malformed_one() -> None
 
 @pytest.mark.unit
 def test_the_verifier_version_moves_with_figures() -> None:
-    assert verifier_version() == "2:tol=0"
+    assert verifier_version() == "3:tol=0"
+
+
+@pytest.mark.unit
+def test_a_figure_on_a_pure_ratio_row_is_a_percentage() -> None:
+    row = _row("EffectiveIncomeTaxRateContinuingOperations", 0.109, unit="pure")
+    figure = {"kind": "level", "value": "10.9", "scale": "percent"}
+    assert _verdict(figure, [row]) == "SUPPORTED"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("value", "verdict"), [("6.49", "UNVERIFIABLE"), ("7.5", "CONTRADICTED")]
+)
+def test_a_ratio_stated_as_a_multiple_isnt_contradicted(
+    value: str, verdict: str
+) -> None:
+    """A turnover of 6.49 times is the quotient as a multiple, not 6.49%.
+    It can't be checked as a percentage, but it isn't wrong either."""
+    cogs = _row("CostOfGoodsAndServicesSold", 14_060e6)
+    inventory = _row("InventoryNet", 2_168e6)
+    figure = {"kind": "ratio", "value": value, "scale": "percent"}
+    [verification] = verify_claims(
+        [_claim(figure, [cogs, inventory])], [cogs, inventory]
+    ).claims
+    assert verification.verdict == verdict
+    if verdict == "UNVERIFIABLE":
+        assert "multiple" in verification.reasoning
