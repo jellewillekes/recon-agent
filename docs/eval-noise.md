@@ -139,7 +139,7 @@ figure prompts (ADR 0040). The first run was declared the baseline before any ra
 | `eval-20261010T210644Z` | 0.789 | 38 | 21 | 1 | 0.05 (0.01 to 0.23) | 0.70 |
 
 The answer score moved by 0.012 across the three runs, far less than on the text cases.
-Per case it moved by up to 0.30, on two cases.
+Per case it moved by up to 0.30, on `caf4be73b29f`, and by 0.25 on `1e6fcc9bda5d`.
 
 The one bad claim is not a real error. The agent gave an inventory turnover of 6.49 times
 as a ratio figure. The verifier read a ratio as a percentage and compared 6.49 with 648.5.

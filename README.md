@@ -82,8 +82,9 @@ least 0.5, judge cost included.
 they cite. The rest cite filing text, or state a figure no single kind can check, such as a
 free-cash-flow margin built from three rows. Two of the six cases are answered from filing
 text in every run, so they add no checked claims. The previous baseline, on 7 cases that need
-filing text (`evals/text-cases.txt`, run `eval-20261007T175852Z`), scored 0.772 at €1.42. On a
-rerun of those cases the verifier could check 1 of 32 claims (#144).
+filing text (`evals/text-cases.txt`, run `eval-20261007T175852Z`), scored 0.772 at €1.42. With the
+figure prompts those cases scored 0.496, and none of their 17 claims could be checked
+(`eval-20261008T190759Z`). That drop isn't gated (ADR 0041).
 
 Multi mode and the routing comparison (#113) aren't measured on rubric 4 yet. The rubric-3
 records (single `eval-20261007T081821Z`: 0.857 completion, 0.660 answer score; multi

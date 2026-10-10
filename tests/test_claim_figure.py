@@ -450,6 +450,7 @@ def test_a_ratio_stated_as_a_multiple_isnt_contradicted(
         assert "multiple" in verification.reasoning
 
 
+@pytest.mark.unit
 def test_the_answer_schemas_offer_a_figure_with_the_contracts_values() -> None:
     """The agent's claims may carry a figure (#148 PR 2). Its enums match
     `ClaimFigure`, so a value the model picks from them is never dropped."""

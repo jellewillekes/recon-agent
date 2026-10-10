@@ -69,7 +69,8 @@ DEFAULT_PROMPT_PATH = Path("prompts/investigator.md")
 class FigureResponse(BaseModel):
     """A claim's figure as the model gives it, the shape of
     `answer.FIGURE_SCHEMA` (#148). `value` isn't checked here, so a malformed
-    one is dropped by `resolve_claims` instead of failing the answer."""
+    one is dropped by `resolve_claims` instead of failing the answer. A `kind`
+    or `scale` outside its enum fails validation, as `importance` does."""
 
     kind: Literal["level", "growth", "ratio"]
     value: str
