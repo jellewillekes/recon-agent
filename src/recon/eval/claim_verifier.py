@@ -65,7 +65,7 @@ def _verify(
     figure: ClaimFigure | None,
 ) -> ClaimVerification:
     """`verify_claim` before the claim text is attached to the result."""
-    usable = [_as_percent(row) for row in rows if _is_usable(row)]
+    usable = _as_percent([row for row in rows if _is_usable(row)])
     try:
         if (why := needs_judgement(text)) is not None:
             raise Unreadable(why)
@@ -81,13 +81,23 @@ def _verify(
         return _result(claim_id, "UNVERIFIABLE", str(unreadable))
 
 
-def _as_percent(row: Row) -> Row:
+def _as_percent(rows: list[Row]) -> list[Row]:
     """EDGAR files rates as a fraction in unit `pure` (0.109), where claims
-    state a percentage (10.9%). Such a row is read as `PCT`. A `pure` value
-    beyond ±1 is a multiple or a count, not a fraction, and stays as it is."""
-    if row.get("unit") != "pure" or abs(row["value"]) > 1:
-        return row
-    return {**row, "unit": "PCT", "value": row["value"] * 100}
+    state a percentage (10.9%). A concept is read as `PCT` only when every
+    one of its `pure` rows is within ±1; one outlying row (a multiple or a
+    count, not a fraction) keeps the whole concept in `pure`, so a growth or
+    ratio over it never mixes a converted period with an unconverted one."""
+    not_fractional = {
+        row["concept"]
+        for row in rows
+        if row.get("unit") == "pure" and abs(row["value"]) > 1
+    }
+    return [
+        {**row, "unit": "PCT", "value": row["value"] * 100}
+        if row.get("unit") == "pure" and row["concept"] not in not_fractional
+        else row
+        for row in rows
+    ]
 
 
 def _is_usable(row: Row) -> bool:

@@ -197,3 +197,18 @@ def test_a_text_ratio_of_rows_in_different_units_is_unverifiable() -> None:
     ]
     result = verify_claim("c", "Margin was 2.4% of revenue in FY2024.", rows)
     assert result.verdict == "UNVERIFIABLE"
+
+
+def test_a_growth_claim_over_a_concept_with_one_non_fraction_row_stays_consistent() -> (
+    None
+):
+    """A tax rate of 1.5 in FY2023 isn't a fraction, so it stays `pure`. The
+    0.109 row for FY2024 must then also stay `pure` rather than convert to
+    `PCT`, or the growth would divide mismatched scales and read a true claim
+    as CONTRADICTED."""
+    rows = [
+        _row(1.5, year=2023, concept="tax_rate", unit="pure"),
+        _row(0.109, year=2024, concept="tax_rate", unit="pure"),
+    ]
+    result = verify_claim("c", "Tax rate fell from FY2023 to FY2024 by 92.7%.", rows)
+    assert result.verdict == "SUPPORTED"

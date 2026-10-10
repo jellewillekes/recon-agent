@@ -100,7 +100,7 @@ def read_claim(text: str, rows: list[Row]) -> Reading:
     if len(concepts) == 2 and _PERCENT_OF.search(text) and len(percents) == 1:
         ratio_units = {units[concept] for concept in concepts}
         if len(ratio_units) != 1 or "PCT" in ratio_units:
-            raise Unreadable("A ratio needs both rows in one currency unit.")
+            raise Unreadable("A ratio needs both rows in the same unit.")
         figure = Figure(*percents[0])
         return Reading("ratio", concepts, _one(periods), figure, 1, 1.0)
     if len(concepts) != 1:
