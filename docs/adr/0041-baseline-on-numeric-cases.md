@@ -26,6 +26,10 @@ times. Which run would become the baseline was declared before the runs: the fir
   is UNVERIFIABLE landed under that version after the runs, before version 3 reached
   `main`. It changes one claim, in the third run, from CONTRADICTED to UNVERIFIABLE. Bumping
   the version would have made all three runs incomparable with later ones for that claim.
+- Two more changes landed under version 3 after the runs. A `pure` concept is converted per
+  concept, not per row, and a change in a converted rate is UNVERIFIABLE. Neither changes
+  a run's verdict: every claim on a `pure` row cites one row within ±1, and the one claim
+  about the change in a rate was already UNVERIFIABLE.
 - `claim_bad_rate_noise_band` stays unset. The three runs had no real bad claim, so there
   is no spread to set it from.
 
