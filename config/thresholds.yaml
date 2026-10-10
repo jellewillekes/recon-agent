@@ -9,7 +9,8 @@ gate:
   # #77). Set by the user on 2026-10-07; it replaced a 2% relative drop, which
   # failed an unchanged repeat of the baseline. Raised to 0.12 by the user on
   # 2026-10-11 (ADR 0042): estimate_noise over the three runs on the 6 numeric
-  # cases gives ±0.12 at 95%, so an unchanged agent no longer fails on noise.
+  # cases gives ±0.117 at 95%, so an unchanged agent is less likely to fail on
+  # noise.
   answer_score_noise_band: 0.12
   # ...or when more than this many cases stop completing. One case dropped
   # between the two identical runs (#77).

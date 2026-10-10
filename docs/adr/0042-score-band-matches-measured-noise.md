@@ -19,7 +19,10 @@ scores swing more, by up to 0.30.
 
 ## Consequences
 
-- An unchanged agent no longer fails the gate on noise, and `compare` stops warning about
-  the band for the baseline's settings.
+- An unchanged agent is less likely to fail the gate on noise, and `compare` stops warning
+  about the band for the baseline's settings. A 95% band still lets about one rerun in 20
+  fall outside it.
+- The margin is small: 0.12 against a measured 0.117. One more stored repeat with a little
+  more spread per case would bring the `compare` warning back.
 - A real drop in the answer score smaller than 0.12 passes the gate unnoticed.
 - The band rests on three runs. More repeats, or more cases, would narrow the estimate.
