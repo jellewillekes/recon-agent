@@ -71,8 +71,9 @@ difference between two runs' `answer_score_mean`, and a 95% band of **about ±0.
 
 That is wider than the gate's fixed ±0.10 (ADR 0028). If it holds, the risk is the gate
 failing an unchanged candidate, not missing a real drop. One pair is a thin sample, and two
-cases that moved by 0.47 and −0.43 carry most of it. The gate still uses ±0.10, which is the
-owner's value. `compare` prints the measured band as a warning next to it.
+cases that moved by 0.47 and −0.43 carry most of it. The gate kept ±0.10 at the time, the
+owner's value. It is now ±0.12 (ADR 0042). `compare` prints a measured band wider than
+the gate's as a warning next to it.
 
 Reaching a ±0.10 band by averaging alone would take roughly 5 times as many cases as the
 7 (the band shrinks with the square root of the cases), or more repeat runs to measure it
@@ -120,10 +121,9 @@ figure questions.
 
 ## Not done here
 
-- The gate now treats a drop of up to 0.10 in the answer score, or one case in task
-  completion, as noise (ADR 0028). Both values are the user's. The two runs above used
-  the earlier 300k-token budget, so the band isn't remeasured for the
-  current baseline's config.
+- The gate treats a drop of up to 0.12 in the answer score, or one case in task
+  completion, as noise. Both values are the user's. The band was 0.10 (ADR 0028), and
+  became 0.12 to match the noise measured on the numeric cases below (ADR 0042).
 - Two runs give one difference per metric. A real band needs more runs, which cost
   about €1.30 each on these cases.
 

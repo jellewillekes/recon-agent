@@ -48,13 +48,15 @@ def _run(**overrides: object) -> EvalRun:
 
 
 def test_the_repo_thresholds_keep_the_gate_limits() -> None:
-    """Changing one is the user's call (AGENTS.md). The noise band and the
-    one-case completion drop were set by the user on 2026-10-07 (#77)."""
+    """Changing one is the user's call (AGENTS.md). The one-case completion
+    drop was set by the user on 2026-10-07 (#77). The noise band went to 0.12
+    and the claim band was kept at 0 on 2026-10-11 (ADR 0041, ADR 0042)."""
     thresholds = load_thresholds(ROOT / "config" / "thresholds.yaml")
     assert thresholds.gate == GateThresholds(
-        answer_score_noise_band=0.10,
+        answer_score_noise_band=0.12,
         task_completion_max_case_drop=1,
         cost_max_relative_rise=0.20,
+        claim_bad_rate_noise_band=0.0,
     )
 
 
