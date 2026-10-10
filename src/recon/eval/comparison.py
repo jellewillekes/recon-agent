@@ -8,7 +8,7 @@ the reasons instead of verdicts (ADR 0018).
 from pydantic import BaseModel
 
 from recon.contracts import EvalRun
-from recon.eval.claim_gate import skip_note, version_failures
+from recon.eval.claim_gate import measured, skip_note, version_failures
 from recon.eval.gate import (
     comparability_failures,
     incomplete_run_failures,
@@ -81,6 +81,8 @@ def _setting(run: EvalRun, name: str) -> str:
     value = getattr(run, name)
     if name == "routing":
         return "on" if value else "off"
+    if name == "verifier_version" and not measured(run):
+        return "not verified"
     return str(value)
 
 

@@ -68,8 +68,9 @@ runs. Nothing in the rest of the story needs a live call.
 6. Click `eval-20261007T081821Z` in the table to show its per-case results: the failure class and run path per case, including the one case that didn't complete and why (a token-budget runtime error).
 
 The panel opens on multi mode with routing off against routing on once a
-routing-on run is recorded. Until then it opens on the two newest runs, which
-the gate refuses to compare, so pick the pairs above.
+routing-on run is recorded. Until then it opens on the two newest runs, two
+repeats of the numeric baseline (`eval-20261010T210005Z` and
+`eval-20261010T210644Z`), which compare with every verdict "same".
 
 ### 4. Feedback closes the loop (1 min)
 

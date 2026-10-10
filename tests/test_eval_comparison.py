@@ -164,3 +164,13 @@ def test_the_verifier_version_is_a_setting() -> None:
     [row] = [row for row in comparison.settings if row.name == "verifier_version"]
     assert (row.baseline, row.candidate) == ("3:tol=0", "3:tol=0")
     assert comparison.comparable
+
+
+@pytest.mark.unit
+def test_an_unverified_candidate_against_a_verified_baseline_is_refused() -> None:
+    comparison = compare_runs(_verified("3:tol=0"), _run(), LIMITS)
+
+    assert not comparison.comparable
+    assert any("verified its claims" in reason for reason in comparison.reasons)
+    [row] = [row for row in comparison.settings if row.name == "verifier_version"]
+    assert row.candidate == "not verified"

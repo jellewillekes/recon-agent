@@ -165,4 +165,4 @@ checked claim: the agent answers them from filing text although the fact rows ho
 figures.
 
 With no real bad claim in three runs, `claim_bad_rate_noise_band` can't be measured from
-the spread. It stays unset.
+the spread. The user kept it at 0 (ADR 0041), so any new bad claim fails a candidate.
