@@ -189,6 +189,26 @@ def test_growth_in_a_percentage_concept_is_unverifiable() -> None:
 
 
 @pytest.mark.unit
+def test_growth_over_a_fully_fractional_pure_concept_is_still_read() -> None:
+    """Unlike a concept EDGAR files as `PCT` outright, a `pure` rate that the
+    verifier converts to a percentage (#145) isn't ambiguous between a
+    relative and a percentage-point change: it was a plain scale-free
+    fraction before the conversion, so its growth figure still reads."""
+    rows = [
+        _row("EffectiveIncomeTaxRateContinuingOperations", 0.109, unit="pure"),
+        _row(
+            "EffectiveIncomeTaxRateContinuingOperations",
+            0.15,
+            year=2023,
+            unit="pure",
+        ),
+    ]
+    figure = {"kind": "growth", "value": "-27.3", "scale": "percent"}
+    [verification] = verify_claims([_claim(figure, rows)], rows).claims
+    assert verification.verdict == "SUPPORTED"
+
+
+@pytest.mark.unit
 def test_growth_between_a_quarter_and_a_year_is_unverifiable() -> None:
     rows = [_row(REVENUE, 120e6, period="Q3"), _row(REVENUE, 400e6, year=2023)]
     figure = {"kind": "growth", "value": "-70.0", "scale": "percent"}

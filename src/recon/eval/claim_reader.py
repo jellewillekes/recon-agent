@@ -109,6 +109,13 @@ def read_claim(text: str, rows: list[Row]) -> Reading:
         if sign or len(percents) != 1:
             raise Unreadable("A change in a percentage concept isn't read.")
         return Reading("level", concepts, _one(periods), Figure(*percents[0]), 1, 1.0)
+    # `PCT_FRACTION` is a `pure` fraction read as a percentage (ADR 0034's
+    # rule 3), not a concept EDGAR itself files as already-a-percentage. A
+    # level claim over it reads the same as `PCT`; a growth or ratio claim
+    # isn't ambiguous the way a true `PCT` change is, so it falls through to
+    # the generic handling below, same as it did while still in `pure`.
+    if units[concepts[0]] == "PCT_FRACTION" and not sign and len(percents) == 1:
+        return Reading("level", concepts, _one(periods), Figure(*percents[0]), 1, 1.0)
     if sign and len(percents) == 1 and not amounts:
         if len(periods) > 2 or not periods:
             raise Unreadable("A growth claim needs one or two periods.")

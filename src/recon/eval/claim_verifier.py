@@ -83,17 +83,25 @@ def _verify(
 
 def _as_percent(rows: list[Row]) -> list[Row]:
     """EDGAR files rates as a fraction in unit `pure` (0.109), where claims
-    state a percentage (10.9%). A concept is read as `PCT` only when every
-    one of its `pure` rows is within ±1; one outlying row (a multiple or a
-    count, not a fraction) keeps the whole concept in `pure`, so a growth or
-    ratio over it never mixes a converted period with an unconverted one."""
+    state a percentage (10.9%). A concept is read as `PCT_FRACTION` only when
+    every one of its `pure` rows is within ±1; one outlying row (a multiple
+    or a count, not a fraction) keeps the whole concept in `pure`, so a
+    growth or ratio over it never mixes a converted period with an
+    unconverted one.
+
+    `PCT_FRACTION` is kept distinct from a concept EDGAR files as `PCT`
+    outright (a margin already stated as 10.9, not 0.109). Both read a level
+    claim the same way, but only a true `PCT` concept is ambiguous between a
+    relative and a percentage-point change: a converted rate was a plain
+    scale-free fraction before this function touched it, so its growth and
+    ratio claims read the same way they did in `pure`."""
     not_fractional = {
         row["concept"]
         for row in rows
         if row.get("unit") == "pure" and abs(row["value"]) > 1
     }
     return [
-        {**row, "unit": "PCT", "value": row["value"] * 100}
+        {**row, "unit": "PCT_FRACTION", "value": row["value"] * 100}
         if row.get("unit") == "pure" and row["concept"] not in not_fractional
         else row
         for row in rows
@@ -193,7 +201,7 @@ def _claimed_and_allowance(
     """The claimed figure and how far a recomputed one may differ, both in the
     unit `_compute` returns."""
     half_step = 0.5 * 10**-reading.figure.decimals
-    if reading.kind != "level" or unit == "PCT":
+    if reading.kind != "level" or unit in ("PCT", "PCT_FRACTION"):
         return reading.figure.value * reading.sign, half_step + extra
     per_unit = _UNIT_DOLLARS.get(unit or "")
     if per_unit is None:

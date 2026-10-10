@@ -61,6 +61,9 @@ def reading_from_figure(figure: ClaimFigure, rows: list[Row], text: str) -> Read
     if figure.kind == "growth":
         if len(concepts) != 1 or len(periods) != 2:
             raise Unreadable("A growth figure must cite one concept in two periods.")
+        # `PCT_FRACTION` (a `pure` fraction read as a percentage, ADR 0034's
+        # rule 3) isn't ambiguous this way: it stays a plain relative change,
+        # same as it was in `pure` before the verifier converted it.
         if "PCT" in units:
             raise Unreadable(
                 "A change in a percentage concept isn't read: it may be meant in "
@@ -87,7 +90,7 @@ def _level(
     periods: list[Period],
     rows: list[Row],
 ) -> Reading:
-    percent_row = rows[0].get("unit") == "PCT"
+    percent_row = rows[0].get("unit") in ("PCT", "PCT_FRACTION")
     if (figure.scale == "percent") != percent_row:
         raise Unreadable(
             f"The figure's scale {figure.scale!r} doesn't fit the row's unit "

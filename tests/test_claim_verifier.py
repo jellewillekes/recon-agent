@@ -212,3 +212,17 @@ def test_a_growth_claim_over_a_concept_with_one_non_fraction_row_stays_consisten
     ]
     result = verify_claim("c", "Tax rate fell from FY2023 to FY2024 by 92.7%.", rows)
     assert result.verdict == "SUPPORTED"
+
+
+def test_a_growth_claim_over_a_fully_fractional_pure_concept_is_still_read() -> None:
+    """When every `pure` row for a concept is within ±1, the concept converts
+    to a percentage for level claims. That conversion must not also trip the
+    "a change in a percentage concept isn't read" guard: the underlying
+    figure is still a plain, scale-free rate, so its growth reads the same
+    way it did while the concept stayed in `pure`."""
+    rows = [
+        _row(0.15, year=2023, concept="tax_rate", unit="pure"),
+        _row(0.109, year=2024, concept="tax_rate", unit="pure"),
+    ]
+    result = verify_claim("c", "Tax rate fell from FY2023 to FY2024 by 27.3%.", rows)
+    assert result.verdict == "SUPPORTED"

@@ -45,7 +45,11 @@ Rules:
   `CONTRADICTED` (wrong period). With no such match it is `UNSUPPORTED`.
 - Rows in a unit other than `USD` or `USD_M`, or a percentage concept with a change
   ("rose 1 point to 42%"), are `UNVERIFIABLE`. Since #145, a row in unit `pure`
-  (EDGAR's fraction, 0.109) is read as a percentage (10.9%).
+  (EDGAR's fraction, 0.109) is read as a percentage (10.9%) for a level claim. A growth
+  or ratio over such a row isn't held to the percentage-concept-with-a-change rule: it
+  was a plain scale-free fraction before the conversion, so it reads the same way it did
+  in `pure`. Only a concept EDGAR itself files as already-a-percentage is ambiguous that
+  way.
 
 The labelled set is `evals/verification-claims.yaml`: claims with inline rows, a scope
 (`numeric` or `llm`) and the expected verdict. Claims in the `llm` scope must come back
