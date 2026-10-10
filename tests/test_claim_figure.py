@@ -107,6 +107,10 @@ def test_a_figure_that_looks_like_a_year_isnt_stripped_as_a_period() -> None:
     [
         "Revenue for the year ended December 31, 2024 was $450 million.",
         "Revenue for the year ended December 31 2024 was $450 million.",
+        "Revenue for the year ended 31 December 2024 was $450 million.",
+        "Revenue for the year ended 2024-12-31 was $450 million.",
+        "Revenue for the year ended 12/31/2024 was $450 million.",
+        "Revenue for the year ended June 30 was $450 million.",
         "For the fiscal year ended Dec. 31, 2024, revenue was $450 million.",
     ],
 )

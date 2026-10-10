@@ -25,14 +25,17 @@ _SCALE_DOLLARS = {"units": 1.0, "thousands": 1e3, "millions": 1e6, "billions": 1
 _TEXT_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
 # Periods name rows, not figures, so their digits aren't compared. A bare
 # year counts as a period only when no "$", scale word or % marks it as an
-# amount: "$2024 million" is a figure. A full calendar date ("December 31,
-# 2024") is stripped whole, so its day-of-month doesn't leak out on its own.
+# amount: "$2024 million" is a figure. A calendar date ("December 31, 2024",
+# "31 December 2024", "June 30", "2024-12-31", "12/31/2024") is stripped
+# whole, so its day and month numbers don't leak out on their own.
 _MONTH = (
     r"Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?"
     r"|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?"
 )
 _TEXT_PERIOD = re.compile(
-    rf"\b(?:{_MONTH})\.?\s+\d{{1,2}},?\s*(?:19|20)\d{{2}}\b"
+    rf"\b(?:{_MONTH})\b\.?\s+\d{{1,2}}\b(?:,?\s*(?:19|20)\d{{2}}\b)?"
+    rf"|\b\d{{1,2}}\s+(?:{_MONTH})\b\.?(?:,?\s*(?:19|20)\d{{2}}\b)?"
+    r"|\b(?:19|20)\d{2}-\d{1,2}-\d{1,2}\b|\b\d{1,2}/\d{1,2}/(?:19|20)?\d{2}\b"
     r"|\b(?:Q[1-4]|H[12])\b|\b(?:FY|fiscal(?:\s+year)?)\s*\d{4}\b"
     r"|(?<![$\d.,])\b(?:19|20)\d{2}\b"
     r"(?!\s*(?:%|(?:percent|trillion|billion|million|thousand|units?|bn|mm|[kmb])\b))(?![.,]\d)",
