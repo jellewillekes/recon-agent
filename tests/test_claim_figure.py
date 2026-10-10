@@ -103,6 +103,27 @@ def test_a_figure_that_looks_like_a_year_isnt_stripped_as_a_period() -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
+    "text",
+    [
+        "Revenue for the year ended December 31, 2024 was $450 million.",
+        "Revenue for the year ended December 31 2024 was $450 million.",
+        "Revenue for the year ended 31 December 2024 was $450 million.",
+        "Revenue for the year ended 2024-12-31 was $450 million.",
+        "Revenue for the year ended 12/31/2024 was $450 million.",
+        "Revenue for the year ended June 30 was $450 million.",
+        "For the fiscal year ended Dec. 31, 2024, revenue was $450 million.",
+    ],
+)
+def test_a_calendar_dates_day_isnt_read_as_a_stated_number(text: str) -> None:
+    """A full date names a period's end, so its day-of-month mustn't leak
+    past the stripper and read as a second stated number."""
+    row = _row(REVENUE, 450e6)
+    figure = {"kind": "level", "value": "450", "scale": "millions"}
+    assert _verdict(figure, [row], text=text) == "SUPPORTED"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
     ("text", "value"),
     [
         ("Revenue was $700 million in FY2024.", "450"),
