@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from recon.api.schemas import EvalList, EvalSummary
 from recon.contracts import EvalRun
-from recon.eval.claim_gate import verdict_counts
+from recon.eval.claim_gate import measured, verdict_counts
 from recon.eval.comparison import Comparison, compare_runs
 from recon.eval.gate import incomplete_reasons
 from recon.eval.thresholds import load_thresholds
@@ -57,6 +57,7 @@ def _summary(run: EvalRun) -> EvalSummary:
         cost_per_correct_answer_eur=run.aggregate.get("cost_per_correct_answer_eur"),
         incomplete=incomplete_reasons(run),
         claim_verdicts=verdict_counts(run),
+        verifier_version=run.verifier_version if measured(run) else None,
     )
 
 

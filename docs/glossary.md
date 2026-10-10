@@ -232,6 +232,9 @@ agent's fact calls to get those rows back and stores a verdict per claim. The pr
 gate fails a candidate whose share of unsupported and contradicted claims rises
 ([ADR 0035](adr/0035-verification-report-and-claim-gate.md),
 [ADR 0038](adr/0038-verify-claims-by-replaying-fact-calls.md)).
+A claim can state its figure as data (its kind, value and scale), so the verifier checks it
+against the cited rows without reading the text
+([ADR 0040](adr/0040-structured-claim-figures.md)).
 
 ### Faithfulness
 
@@ -252,7 +255,9 @@ retrieval, reasoning, tool use, budget or runtime error, or none for a correct a
 
 The committed eval run that new runs are compared against,
 [`evals/baseline.json`](../evals/baseline.json). A change that makes the agent worse shows
-up as a drop against it.
+up as a drop against it. It runs on the 6 cases in
+[`evals/numeric-cases.txt`](../evals/numeric-cases.txt), whose answers rest on fact rows
+([ADR 0041](adr/0041-baseline-on-numeric-cases.md)).
 
 ### Smoke set
 

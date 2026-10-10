@@ -623,6 +623,8 @@ export interface components {
             timestamp_utc: string;
             /** Total Cost Eur */
             total_cost_eur: number;
+            /** Verifier Version */
+            verifier_version?: string | null;
         };
         /**
          * Evidence

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from recon.contracts import CaseScore, EvalRun
+from recon.contracts import CaseScore, ClaimVerification, EvalRun
 from recon.eval.comparison import compare_runs
 from recon.eval.thresholds import GateThresholds
 
@@ -125,3 +125,52 @@ def test_compare_warns_when_the_claim_check_is_skipped() -> None:
     """#145: an unverified baseline skips the claim check; say so."""
     result = compare_runs(_run(), _run(run_id="eval-new"), LIMITS)
     assert any("claim check not run" in warning for warning in result.warnings)
+
+
+def _verified(version: str) -> EvalRun:
+    case = _score("a").model_copy(
+        update={
+            "verifications": [
+                ClaimVerification(
+                    claim_id="claim-1",
+                    text="t",
+                    verdict="SUPPORTED",
+                    evidence_refs=["E1"],
+                    claimed_value=1.0,
+                    recomputed_value=1.0,
+                    tolerance=0.05,
+                    reasoning="r",
+                )
+            ]
+        }
+    )
+    return _run(case_scores=[case, _score("b")], verifier_version=version)
+
+
+@pytest.mark.unit
+def test_runs_with_different_verifier_versions_are_refused_like_in_the_gate() -> None:
+    """The gate refuses claim verdicts from two verifier versions. Compare
+    mustn't call the same pair comparable."""
+    comparison = compare_runs(_verified("3:tol=0"), _verified("4:tol=0"), LIMITS)
+
+    assert not comparison.comparable
+    assert any("verifier_version" in reason for reason in comparison.reasons)
+
+
+@pytest.mark.unit
+def test_the_verifier_version_is_a_setting() -> None:
+    comparison = compare_runs(_verified("3:tol=0"), _verified("3:tol=0"), LIMITS)
+
+    [row] = [row for row in comparison.settings if row.name == "verifier_version"]
+    assert (row.baseline, row.candidate) == ("3:tol=0", "3:tol=0")
+    assert comparison.comparable
+
+
+@pytest.mark.unit
+def test_an_unverified_candidate_against_a_verified_baseline_is_refused() -> None:
+    comparison = compare_runs(_verified("3:tol=0"), _run(), LIMITS)
+
+    assert not comparison.comparable
+    assert any("verified its claims" in reason for reason in comparison.reasons)
+    [row] = [row for row in comparison.settings if row.name == "verifier_version"]
+    assert row.candidate == "not verified"

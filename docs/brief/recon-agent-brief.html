@@ -36,7 +36,7 @@
 <p class="note">An agent answers analyst questions with tools over SEC EDGAR data. The harness scores the answer and the path taken: the harness is the product, the agent is what it measures. "Reconciliation" here means checking each claim against tool output really returned in that run, and comparing a candidate run with a committed baseline. It is not ledger or bank reconciliation.</p>
 
 <h2>Business problem</h2>
-<p>Analysts want agents that answer questions from filings: revenue, margins, segment figures, risk-factor text. A wrong or unsupported number in research is costly, and a new model, prompt or tool can lower accuracy or raise cost without anyone noticing. recon-agent runs each candidate on fixed benchmark questions and checks it against the baseline before it ships, prices each useful answer, and traces claims to source data. On the current baseline a case scoring at least 0.5 costs about €0.20, judge cost included.</p>
+<p>Analysts want agents that answer questions from filings: revenue, margins, segment figures, risk-factor text. A wrong or unsupported number in research is costly, and a new model, prompt or tool can lower accuracy or raise cost without anyone noticing. recon-agent runs each candidate on fixed benchmark questions and checks it against the baseline before it ships, prices each useful answer, and traces claims to source data. On the current baseline a case scoring at least 0.5 costs about €0.12, judge cost included.</p>
 
 <h2>System architecture</h2>
 <svg viewBox="0 0 700 198" role="img" aria-label="System architecture">
@@ -139,8 +139,8 @@
       <text x="362" y="38" font-weight="600">1. Agent cites tool rows</text>
       <text x="362" y="52" font-size="9">Each claim lists the refs of the rows it rests on.</text>
       <rect x="352" y="70" width="346" height="38" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
-      <text x="362" y="86" font-weight="600">2. Server checks every citation</text>
-      <text x="362" y="100" font-size="9">Verified only if a tool returned that row in this run.</text>
+      <text x="362" y="86" font-weight="600">2. Server checks citations and figures</text>
+      <text x="362" y="100" font-size="9">Cited rows must be real; stated figures are recomputed.</text>
       <rect x="352" y="118" width="346" height="38" rx="5" fill="#eef2ef" stroke="#c9d0cc"/>
       <text x="362" y="134" font-weight="600">3. Judge scores the answer</text>
       <text x="362" y="148" font-size="9">Correctness, grounding, tool efficiency.</text>
@@ -149,7 +149,7 @@
       <text x="362" y="196" font-size="9">First: same rubric, dataset, data snapshot and case set.</text>
       <text x="362" y="209" font-size="9">Then fails if task completion drops by more than one case,</text>
       <text x="362" y="222" font-size="9">the answer score by more than 0.10, or cost rises over</text>
-      <text x="362" y="235" font-size="9">20% without better completion.</text>
+      <text x="362" y="235" font-size="9">20% without better completion, or a claim turns bad.</text>
     </g>
     <g stroke="#59635e" stroke-width="1.2" marker-end="url(#b)">
       <line x1="525" y1="60" x2="525" y2="68"/>
@@ -163,18 +163,18 @@
 <h2>Current results</h2>
 <table>
   <thead><tr><th>Runtime, mode</th><th>Cases</th><th>Task completion</th><th>Answer score</th><th>Cited rows returned</th><th>Key claims cite a returned row</th><th>Total cost</th></tr></thead>
-  <tbody><tr><td>Agent SDK, single</td><td class="num">7</td><td class="num">1.000</td><td class="num">0.772</td><td class="num">1.000</td><td class="num">0.786</td><td class="num">€1.42</td></tr></tbody>
+  <tbody><tr><td>Agent SDK, single</td><td class="num">6</td><td class="num">1.000</td><td class="num">0.801</td><td class="num">1.000</td><td class="num">1.000</td><td class="num">€0.69</td></tr></tbody>
 </table>
-<p class="small">The committed baseline: 7 cases that need filing text, judged on Haiku 4.5. Task completion means a non-empty answer without a runtime error, not a correct one. Multi mode and LangGraph are not yet measured on the current rubric.</p>
+<p class="small">The committed baseline: 6 cases answered from fact rows, judged on Haiku 4.5. The verifier checked 16 of its 31 claims, and all 16 were supported. Task completion means a non-empty answer without a runtime error, not a correct one. Multi mode and LangGraph are not yet measured on the current rubric.</p>
 
 <h2>Known limits</h2>
 <ul>
-  <li>The citation check confirms a cited row was returned, not that it supports the claim. Case 731403050270 scored 0.944 with grounding rated 1.0, yet none of its key claims cites a returned row and its filing-text faithfulness is 0.0.</li>
-  <li>The baseline covers 7 cases. The gate treats a change of up to 0.10 in answer score, or one case in completion, as run-to-run noise, so smaller effects can't be confirmed.</li>
+  <li>The verifier checks a claim only when it states one figure from the rows it cites. In the baseline 16 of 31 claims qualified. Claims from filing text, or built from three rows such as a free-cash-flow margin, are not checked.</li>
+  <li>The baseline covers 6 cases. The gate treats a change of up to 0.10 in answer score, or one case in completion, as run-to-run noise, so smaller effects can't be confirmed.</li>
   <li>LangGraph has not been run: it needs a metered API key, and the project runs on a Claude subscription only.</li>
 </ul>
 
-<footer>Source: github.com/jellewillekes/recon-agent, README, docs/architecture.md and evals/baseline.json (run eval-20261007T175852Z, rubric version 4).</footer>
+<footer>Source: github.com/jellewillekes/recon-agent, README, docs/architecture.md and evals/baseline.json (run eval-20261010T205308Z, rubric version 4).</footer>
 </div>
 </body>
 </html>
