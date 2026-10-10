@@ -44,5 +44,8 @@ structured figures instead (#148).
   That is a separate, paid step, since the prompts are pinned by the baseline.
 - Text claims are read exactly as before, from their rows in evidence order, so the
   labelled claim set is unaffected.
+- A ratio stated as a multiple (a turnover of 6.49 times) matches the quotient, not the
+  percentage. It is UNVERIFIABLE, not CONTRADICTED, since the gate fails on a
+  CONTRADICTED claim (#145).
 - A ratio is the first cited row over the second. A correct ratio cited in the wrong
   order is CONTRADICTED. The prompts in the next step must say which row comes first.

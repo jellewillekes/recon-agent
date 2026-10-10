@@ -242,6 +242,15 @@ def _judge(
         return _result(
             claim_id, "STALE", reasoning, refs=then_refs, recomputed=now, **numbers
         )
+    if reading.kind == "ratio" and abs(now / 100 - claimed) <= allowed + _EPSILON:
+        # A turnover of 6.49 times is the quotient itself, not 6.49%. It
+        # can't be checked as a percentage, but it isn't wrong either.
+        return _result(
+            claim_id,
+            "UNVERIFIABLE",
+            f"The claim states the ratio as a multiple ({claimed:.4g}), not as a "
+            f"percentage ({now:.4g}%).",
+        )
     reasoning = f"The rows give {now:.4g}, the claim says {claimed:.4g}."
     reasoning += _elsewhere(reading, rows, claimed, allowed)
     return _result(
