@@ -75,7 +75,7 @@ The sdk single row is the baseline, run `eval-20261010T205308Z`, judged on Haiku
 a 450k-token and 150 s budget per case. All 6 cases completed, in 31 s per case on average.
 Task completion means a non-empty answer without a runtime error, not a right one. The answer
 score blends answer correctness (mean 0.653) with tool efficiency and evidence grounding.
-The cost is €0.55 for the agent and €0.15 for the judges, so €0.12 per case scoring at
+The cost is €0.54 for the agent and €0.15 for the judges, so €0.12 per case scoring at
 least 0.5, judge cost included.
 
 "Claims checked" counts the claims the numeric verifier could recompute from the fact rows
