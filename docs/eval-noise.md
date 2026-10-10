@@ -126,3 +126,43 @@ figure questions.
   current baseline's config.
 - Two runs give one difference per metric. A real band needs more runs, which cost
   about €1.30 each on these cases.
+
+## The numeric cases, three runs (2026-10-10)
+
+The 6 cases in `evals/numeric-cases.txt` (#145) were run three times on sdk/single with the
+figure prompts (ADR 0040). The first run was declared the baseline before any ran (ADR 0041).
+
+| Run | Answer score | Claims | Checked | Bad | Bad share (95% Wilson) | Cost (€) |
+|---|---|---|---|---|---|---|
+| `eval-20261010T205308Z` (baseline) | 0.801 | 31 | 16 | 0 | 0.00 (0.00 to 0.19) | 0.69 |
+| `eval-20261010T210005Z` | 0.797 | 33 | 14 | 0 | 0.00 (0.00 to 0.22) | 0.60 |
+| `eval-20261010T210644Z` | 0.789 | 38 | 21 | 1 | 0.05 (0.01 to 0.23) | 0.70 |
+
+The answer score moved by 0.012 across the three runs, far less than on the text cases.
+Per case it moved by up to 0.30, on `caf4be73b29f`, and by 0.25 on `1e6fcc9bda5d`.
+
+The one bad claim is not a real error. The agent gave an inventory turnover of 6.49 times
+as a ratio figure. The verifier read a ratio as a percentage and compared 6.49 with 648.5.
+The rule added after the runs makes such a claim UNVERIFIABLE (ADR 0040), so under it all
+three runs have 0 bad claims. The stored result still shows the earlier verdict.
+
+Checked claims, out of the claims made, per case and run:
+
+| Case | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| `ed95ff9ff29c` | 2 of 3 | 0 of 3 | 2 of 3 |
+| `1e6fcc9bda5d` | 9 of 13 | 9 of 13 | 13 of 16 |
+| `9e7e8a3f7139` | 3 of 5 | 3 of 4 | 4 of 5 |
+| `135cf3369c99` | 0 of 3 | 0 of 6 | 0 of 6 |
+| `fd98327e142d` | 2 of 3 | 2 of 3 | 2 of 3 |
+| `caf4be73b29f` | 0 of 4 | 0 of 4 | 0 of 5 |
+
+Of the 51 unchecked claims, 28 cite only filing text and 10 put a second number in the
+claim's text. Seven give a ratio figure with the wrong rows or scale, and 3 have a text
+that doesn't state the figure. Two give a cause or an outlook, and 1 states a change in a
+percentage concept. Two cases never yield a
+checked claim: the agent answers them from filing text although the fact rows hold the
+figures.
+
+With no real bad claim in three runs, `claim_bad_rate_noise_band` can't be measured from
+the spread. It stays unset.

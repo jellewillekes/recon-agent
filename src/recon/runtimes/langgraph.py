@@ -66,6 +66,17 @@ DEFAULT_MODELS_CONFIG_PATH = Path("config/models.yaml")
 DEFAULT_PROMPT_PATH = Path("prompts/investigator.md")
 
 
+class FigureResponse(BaseModel):
+    """A claim's figure as the model gives it, the shape of
+    `answer.FIGURE_SCHEMA` (#148). `value` isn't checked here, so a malformed
+    one is dropped by `resolve_claims` instead of failing the answer. A `kind`
+    or `scale` outside its enum fails validation, as `importance` does."""
+
+    kind: Literal["level", "growth", "ratio"]
+    value: str
+    scale: Literal["units", "thousands", "millions", "billions", "percent"]
+
+
 class ClaimResponse(BaseModel):
     """One claim in the answer and the refs of the rows it rests on, the
     shape of `answer.CLAIMS_SCHEMA` (ADR 0030)."""
@@ -73,6 +84,7 @@ class ClaimResponse(BaseModel):
     text: str
     importance: Literal["key", "supporting"]
     evidence_refs: list[str]
+    figure: FigureResponse | None = None
 
 
 class AnswerResponse(BaseModel):

@@ -1,6 +1,6 @@
 {
-  "run_id": "eval-20261010T205308Z",
-  "timestamp_utc": "2026-10-10T20:53:08.129599Z",
+  "run_id": "eval-20261010T210005Z",
+  "timestamp_utc": "2026-10-10T21:00:05.359980Z",
   "dataset": "finance-agent-bench@8ba65f81ab75",
   "dataset_license": "MIT",
   "dataset_attribution": "Data from vals-ai/finance-agent (MIT License), Copyright (c) 2025 Vals AI, Inc. https://github.com/vals-ai/finance-agent — benchmark details at https://www.vals.ai/benchmarks/finance_agent",
@@ -21,17 +21,17 @@
     {
       "case_id": "finance-agent-bench:ed95ff9ff29c",
       "task_completion": true,
-      "answer_score": 0.75,
+      "answer_score": 0.875,
       "tool_path_exact": true,
       "tool_path_equivalent": true,
       "tool_call_accuracy": 1.0,
       "rubric_scores": {
         "evidence_grounding": 1.0,
         "tool_efficiency": 1.0,
-        "answer_correctness": 0.5
+        "answer_correctness": 0.75
       },
-      "cost_eur": 0.084601176,
-      "elapsed_ms": 23467,
+      "cost_eur": 0.046421728,
+      "elapsed_ms": 20897,
       "notes": "N/A: no expected_tool_path for this case",
       "tool_names": [
         "list_companies",
@@ -50,38 +50,34 @@
         "recovery": null,
         "efficiency": 1.0,
         "grounding": 1.0,
-        "final_correctness": 0.5
+        "final_correctness": 0.75
       },
       "failure_class": "none",
       "failure_reason": null,
       "verifications": [
         {
           "claim_id": "claim-1",
-          "text": "Palantir FY2022 revenue was 1,905,871,000",
-          "verdict": "SUPPORTED",
-          "evidence_refs": [
-            "Edf62ac8bb44a"
-          ],
-          "claimed_value": 1905871000.0,
-          "recomputed_value": 1905871000.0,
-          "tolerance": 0.5,
-          "reasoning": "Recomputed 1.906e+09, claimed 1.906e+09."
+          "text": "Palantir's FY2022 revenue was 1,905,871 (thousand USD, i.e. ~$1.906B)",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim's text doesn't state its figure '1905.871'."
         },
         {
           "claim_id": "claim-2",
-          "text": "Palantir FY2024 revenue was 2,865,507,000",
-          "verdict": "SUPPORTED",
-          "evidence_refs": [
-            "Efa8b77bca472"
-          ],
-          "claimed_value": 2865507000.0,
-          "recomputed_value": 2865507000.0,
-          "tolerance": 0.5,
-          "reasoning": "Recomputed 2.866e+09, claimed 2.866e+09."
+          "text": "Palantir's FY2024 revenue was 2,865,507 (thousand USD, i.e. ~$2.866B)",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim's text doesn't state its figure '2865.507'."
         },
         {
           "claim_id": "claim-3",
-          "text": "Palantir's 2-year revenue CAGR from FY2022 to FY2024 was approximately 22.6",
+          "text": "Palantir's 2-year revenue CAGR from FY2022 to FY2024 was approximately 22.6%",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
@@ -103,8 +99,8 @@
         "tool_efficiency": 1.0,
         "answer_correctness": 0.8333333333333334
       },
-      "cost_eur": 0.175243992,
-      "elapsed_ms": 51089,
+      "cost_eur": 0.154688248,
+      "elapsed_ms": 54424,
       "notes": "N/A: no expected_tool_path for this case",
       "tool_names": [
         "list_companies",
@@ -112,13 +108,13 @@
         "list_financial_concepts",
         "list_financial_concepts",
         "list_financial_concepts",
+        "get_financial_fact",
+        "get_financial_fact",
+        "get_financial_fact",
         "list_financial_concepts",
-        "get_financial_fact",
-        "get_financial_fact",
-        "get_financial_fact",
         "get_financial_fact"
       ],
-      "claim_support_rate": 1.0,
+      "claim_support_rate": 0.75,
       "citation_precision": 1.0,
       "judge_failed": false,
       "faithfulness_judge_failed": false,
@@ -126,7 +122,7 @@
         "tool_selection": null,
         "argument_correctness": 1.0,
         "retrieval_quality": null,
-        "evidence_sufficiency": 1.0,
+        "evidence_sufficiency": 0.75,
         "recovery": null,
         "efficiency": 1.0,
         "grounding": 1.0,
@@ -137,145 +133,145 @@
       "verifications": [
         {
           "claim_id": "claim-1",
-          "text": "FY2022 CFO was 4,504 (million USD)",
+          "text": "FY2022 CFO was 4,504,000,000",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "E2fe8b3e0522d"
           ],
           "claimed_value": 4504000000.0,
           "recomputed_value": 4504000000.0,
-          "tolerance": 500000.0,
+          "tolerance": 0.5,
           "reasoning": "Recomputed 4.504e+09, claimed 4.504e+09."
         },
         {
           "claim_id": "claim-2",
-          "text": "FY2022 Capex (Payments to Acquire PP&E) was 115 (million USD)",
+          "text": "FY2022 Capex was 115,000,000",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "E74d40e15ce30"
           ],
           "claimed_value": 115000000.0,
           "recomputed_value": 115000000.0,
-          "tolerance": 500000.0,
+          "tolerance": 0.5,
           "reasoning": "Recomputed 1.15e+08, claimed 1.15e+08."
         },
         {
           "claim_id": "claim-3",
-          "text": "FY2022 Revenue was 1,958 (million USD)",
+          "text": "FY2022 Revenue was 1,958,000,000",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "Ef2aa318af23f"
           ],
           "claimed_value": 1958000000.0,
           "recomputed_value": 1958000000.0,
-          "tolerance": 500000.0,
+          "tolerance": 0.5,
           "reasoning": "Recomputed 1.958e+09, claimed 1.958e+09."
         },
         {
           "claim_id": "claim-4",
-          "text": "FY2023 CFO was 354 (million USD)",
+          "text": "FY2022 FCF margin (FCF/Revenue) was approximately 224.2%",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "A ratio must cite two concepts in one period."
+        },
+        {
+          "claim_id": "claim-5",
+          "text": "FY2023 CFO was 354,000,000",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "E5f705b5672da"
           ],
           "claimed_value": 354000000.0,
           "recomputed_value": 354000000.0,
-          "tolerance": 500000.0,
+          "tolerance": 0.5,
           "reasoning": "Recomputed 3.54e+08, claimed 3.54e+08."
         },
         {
-          "claim_id": "claim-5",
-          "text": "FY2023 Capex was 135 (million USD)",
+          "claim_id": "claim-6",
+          "text": "FY2023 Capex was 135,000,000",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "E027d3e95f675"
           ],
           "claimed_value": 135000000.0,
           "recomputed_value": 135000000.0,
-          "tolerance": 500000.0,
+          "tolerance": 0.5,
           "reasoning": "Recomputed 1.35e+08, claimed 1.35e+08."
         },
         {
-          "claim_id": "claim-6",
-          "text": "FY2023 Revenue was 1,945 (million USD)",
+          "claim_id": "claim-7",
+          "text": "FY2023 Revenue was 1,945,000,000",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "Eefc16315b667"
           ],
           "claimed_value": 1945000000.0,
           "recomputed_value": 1945000000.0,
-          "tolerance": 500000.0,
+          "tolerance": 0.5,
           "reasoning": "Recomputed 1.945e+09, claimed 1.945e+09."
         },
         {
-          "claim_id": "claim-7",
-          "text": "FY2024 CFO was 428 (million USD)",
+          "claim_id": "claim-8",
+          "text": "FY2023 FCF margin (FCF/Revenue) was approximately 11.3%",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "A ratio must cite two concepts in one period."
+        },
+        {
+          "claim_id": "claim-9",
+          "text": "FY2024 CFO was 428,000,000",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "Eee32e84e5b7b"
           ],
           "claimed_value": 428000000.0,
           "recomputed_value": 428000000.0,
-          "tolerance": 500000.0,
+          "tolerance": 0.5,
           "reasoning": "Recomputed 4.28e+08, claimed 4.28e+08."
         },
         {
-          "claim_id": "claim-8",
-          "text": "FY2024 Capex was 143 (million USD)",
+          "claim_id": "claim-10",
+          "text": "FY2024 Capex was 143,000,000",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "Ea573657064cb"
           ],
           "claimed_value": 143000000.0,
           "recomputed_value": 143000000.0,
-          "tolerance": 500000.0,
+          "tolerance": 0.5,
           "reasoning": "Recomputed 1.43e+08, claimed 1.43e+08."
         },
         {
-          "claim_id": "claim-9",
-          "text": "FY2024 Revenue was 2,236 (million USD)",
+          "claim_id": "claim-11",
+          "text": "FY2024 Revenue was 2,236,000,000",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "Ea9d7675db226"
           ],
           "claimed_value": 2236000000.0,
           "recomputed_value": 2236000000.0,
-          "tolerance": 500000.0,
+          "tolerance": 0.5,
           "reasoning": "Recomputed 2.236e+09, claimed 2.236e+09."
         },
         {
-          "claim_id": "claim-10",
-          "text": "FY2022 FCF margin (FCF of 4,389M / Revenue 1,958M) was approximately 224.2%",
-          "verdict": "UNVERIFIABLE",
-          "evidence_refs": [],
-          "claimed_value": null,
-          "recomputed_value": null,
-          "tolerance": null,
-          "reasoning": "The claim's text states numbers other than its figure '224.2'."
-        },
-        {
-          "claim_id": "claim-11",
-          "text": "FY2023 FCF margin (FCF of 219M / Revenue 1,945M) was approximately 11.3%",
-          "verdict": "UNVERIFIABLE",
-          "evidence_refs": [],
-          "claimed_value": null,
-          "recomputed_value": null,
-          "tolerance": null,
-          "reasoning": "The claim's text states numbers other than its figure '11.3'."
-        },
-        {
           "claim_id": "claim-12",
-          "text": "FY2024 FCF margin (FCF of 285M / Revenue 2,236M) was approximately 12.7%",
+          "text": "FY2024 FCF margin (FCF/Revenue) was approximately 12.7%",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
           "recomputed_value": null,
           "tolerance": null,
-          "reasoning": "The claim's text states numbers other than its figure '12.7'."
+          "reasoning": "A ratio must cite two concepts in one period."
         },
         {
           "claim_id": "claim-13",
-          "text": "FY2021 CFO was -3,177 (million USD), reflecting Zillow Offers inventory build-up, which explains why FY2022 CFO/FCF margin was anomalously high due to subsequent inventory liquidation",
+          "text": "The FY2022 CFO/FCF margin is abnormally high due to the wind-down of Zillow Offers (iBuying) inventory liquidation boosting operating cash flow in that year, making FY2022 not comparable to FY2023/FY2024 on a core-operations basis.",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
@@ -297,8 +293,8 @@
         "tool_efficiency": 1.0,
         "answer_correctness": 0.8333333333333334
       },
-      "cost_eur": 0.129836104,
-      "elapsed_ms": 25913,
+      "cost_eur": 0.122423848,
+      "elapsed_ms": 20346,
       "notes": "N/A: no expected_tool_path for this case",
       "tool_names": [
         "list_companies",
@@ -363,23 +359,13 @@
         },
         {
           "claim_id": "claim-4",
-          "text": "FY2024 inventory turnover using average inventory was approximately 6.55",
+          "text": "US Steel's FY2024 inventory turnover (COGS / average inventory) was approximately 6.55x",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
           "recomputed_value": null,
           "tolerance": null,
-          "reasoning": "A ratio figure needs the percent scale."
-        },
-        {
-          "claim_id": "claim-5",
-          "text": "FY2024 inventory turnover using ending inventory only was approximately 6.49",
-          "verdict": "UNVERIFIABLE",
-          "evidence_refs": [],
-          "claimed_value": null,
-          "recomputed_value": null,
-          "tolerance": null,
-          "reasoning": "A ratio figure needs the percent scale."
+          "reasoning": "A ratio must cite two concepts in one period."
         }
       ]
     },
@@ -396,8 +382,8 @@
         "answer_correctness": 0.5,
         "faithfulness": 1.0
       },
-      "cost_eur": 0.09820668800000001,
-      "elapsed_ms": 46956,
+      "cost_eur": 0.100659776,
+      "elapsed_ms": 33062,
       "notes": "N/A: no expected_tool_path for this case",
       "tool_names": [
         "list_companies",
@@ -422,7 +408,7 @@
       "verifications": [
         {
           "claim_id": "claim-1",
-          "text": "MSCI's FY2024 10-K reports operating lease payments due of $30,220 thousand in 2025, $30,361 thousand in 2026, and $24,421 thousand in 2027, summing to $85,002 thousand for the next three years",
+          "text": "MSCI's total operating lease obligations as of December 31, 2024 were 165,605",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
@@ -432,7 +418,7 @@
         },
         {
           "claim_id": "claim-2",
-          "text": "Total operating lease obligations as of December 31, 2024 were $165,605 thousand",
+          "text": "Operating lease payments due in 2025 were 30,220",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
@@ -442,7 +428,37 @@
         },
         {
           "claim_id": "claim-3",
-          "text": "The next-three-years amount ($85,002 thousand) represents 51.3% of total operating lease obligations ($165,605 thousand)",
+          "text": "Operating lease payments due in 2026 were 30,361",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-4",
+          "text": "Operating lease payments due in 2027 were 24,421",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-5",
+          "text": "Total operating lease obligations maturing in the next three years (2025-2027) total 85,002",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-6",
+          "text": "Operating leases maturing in the next three years represent 51.3% of total operating lease obligations",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
@@ -464,13 +480,12 @@
         "tool_efficiency": 1.0,
         "answer_correctness": 0.75
       },
-      "cost_eur": 0.143708416,
-      "elapsed_ms": 17402,
+      "cost_eur": 0.09120898399999999,
+      "elapsed_ms": 16664,
       "notes": "N/A: no expected_tool_path for this case",
       "tool_names": [
         "list_companies",
         "list_financial_concepts",
-        "get_financial_fact",
         "get_financial_fact"
       ],
       "claim_support_rate": 1.0,
@@ -492,7 +507,7 @@
       "verifications": [
         {
           "claim_id": "claim-1",
-          "text": "ORCL's FY2024 effective income tax rate was 10.9%",
+          "text": "ORCL's effective income tax rate for FY2024 (ended 5/31/2024) was 10.9%",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "Ebde0aa56f024"
@@ -504,7 +519,7 @@
         },
         {
           "claim_id": "claim-2",
-          "text": "ORCL's FY2023 effective income tax rate was 6.8%",
+          "text": "ORCL's effective income tax rate for FY2023 (ended 5/31/2023) was 6.8%",
           "verdict": "SUPPORTED",
           "evidence_refs": [
             "E858f5384d96f"
@@ -516,31 +531,31 @@
         },
         {
           "claim_id": "claim-3",
-          "text": "Delta: 410bps increase from FY2023 to FY2024",
+          "text": "Delta: 410bps",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
           "recomputed_value": null,
           "tolerance": null,
-          "reasoning": "The claim's text doesn't state its figure '4.1'."
+          "reasoning": "A change in a percentage concept isn't read: it may be meant in points or in relative terms."
         }
       ]
     },
     {
       "case_id": "finance-agent-bench:caf4be73b29f",
       "task_completion": true,
-      "answer_score": 0.6,
+      "answer_score": 0.45,
       "tool_path_exact": true,
       "tool_path_equivalent": true,
       "tool_call_accuracy": 1.0,
       "rubric_scores": {
-        "evidence_grounding": 0.5,
+        "evidence_grounding": 0.0,
         "tool_efficiency": 1.0,
         "answer_correctness": 0.5,
         "faithfulness": 1.0
       },
-      "cost_eur": 0.061107136000000006,
-      "elapsed_ms": 20038,
+      "cost_eur": 0.08011599200000001,
+      "elapsed_ms": 19776,
       "notes": "N/A: no expected_tool_path for this case",
       "tool_names": [
         "list_companies",
@@ -558,15 +573,15 @@
         "evidence_sufficiency": 1.0,
         "recovery": null,
         "efficiency": 1.0,
-        "grounding": 0.5,
+        "grounding": 0.0,
         "final_correctness": 0.5
       },
-      "failure_class": "none",
-      "failure_reason": null,
+      "failure_class": "reasoning",
+      "failure_reason": "the tools returned data, but the answer scored 0.45, below 0.5",
       "verifications": [
         {
           "claim_id": "claim-1",
-          "text": "WBD had incurred $4.7 billion in cumulative pre-tax Merger-related restructuring charges as of December 31, 2024.",
+          "text": "WBD had incurred approximately $4.7 billion in pre-tax restructuring charges related to the 2022 Merger as of December 31, 2024.",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
@@ -576,7 +591,7 @@
         },
         {
           "claim_id": "claim-2",
-          "text": "Management's original estimate for total expected pre-tax restructuring charges from the Merger was $4.1-$5.3 billion.",
+          "text": "WBD originally expected to incur approximately $4.1 - $5.3 billion in pre-tax restructuring charges related to the Merger.",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
@@ -596,7 +611,7 @@
         },
         {
           "claim_id": "claim-4",
-          "text": "As a comparison point, by December 31, 2023 WBD had incurred $4.2 billion of the cumulative pre-tax restructuring charges, implying roughly $0.5 billion was incurred during 2024.",
+          "text": "As of December 31, 2023, WBD had incurred $4.2 billion of the total expected pre-tax restructuring charges.",
           "verdict": "UNVERIFIABLE",
           "evidence_refs": [],
           "claimed_value": null,
@@ -610,25 +625,26 @@
   "aggregate": {
     "case_count": 6.0,
     "task_completion_rate": 1.0,
-    "answer_score_mean": 0.8013888888888889,
+    "answer_score_mean": 0.7972222222222222,
     "tool_call_accuracy_mean": 1.0,
-    "elapsed_ms_mean": 30810.833333333332,
+    "elapsed_ms_mean": 27528.166666666668,
     "tool_path_applicable_count": 0.0,
-    "agent_cost_eur": 0.544819952,
-    "judge_cost_eur": 0.14788356000000002,
-    "claim_support_rate_mean": 1.0,
+    "agent_cost_eur": 0.419876776,
+    "judge_cost_eur": 0.17564180000000001,
+    "claim_support_rate_mean": 0.9583333333333334,
     "citation_precision_mean": 1.0,
     "citation_scored_cases": 6.0,
-    "failure_none_count": 6.0,
+    "failure_none_count": 5.0,
+    "failure_reasoning_count": 1.0,
     "failure_classified_cases": 6.0,
     "faithfulness_mean": 1.0,
     "faithfulness_scored_cases": 2.0,
     "tool_efficiency_mean": 1.0,
-    "evidence_grounding_mean": 0.9166666666666666,
-    "answer_correctness_mean": 0.6527777777777778,
-    "cost_per_correct_answer_eur": 0.11545058533333334
+    "answer_correctness_mean": 0.6944444444444445,
+    "evidence_grounding_mean": 0.8333333333333334,
+    "cost_per_correct_answer_eur": 0.1191037152
   },
-  "total_cost_eur": 0.692703512,
+  "total_cost_eur": 0.595518576,
   "tool_data_snapshot": "20260928-173c57a28fbf-keb7c46d7bfe6-sb9f40bee",
   "retrieval_labels_hash": null,
   "routing": false,
