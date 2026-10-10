@@ -12,7 +12,8 @@ Rows are the dicts `get_financial_fact` returns. When several rows describe one
 period, the latest `filed` is current and an earlier one is a superseded value.
 """
 
-from recon.contracts import ClaimVerification, Verdict
+from recon.contracts import ClaimFigure, ClaimVerification, Verdict
+from recon.eval.claim_figure import reading_from_figure
 from recon.eval.claim_reader import (
     Period,
     Reading,
@@ -26,7 +27,8 @@ from recon.eval.claim_reader import (
 _UNIT_DOLLARS = {"USD": 1.0, "USD_M": 1e6}
 _EPSILON = 1e-9
 # Bump when a rule changes what a claim's verdict is (ADR 0034, 0035).
-VERIFIER_RULES = "1"
+# "2": claims can state their figure as data (#148).
+VERIFIER_RULES = "2"
 
 
 def verifier_version(tolerance: float = 0.0) -> str:
@@ -36,19 +38,30 @@ def verifier_version(tolerance: float = 0.0) -> str:
 
 
 def verify_claim(
-    claim_id: str, text: str, rows: list[Row], tolerance: float = 0.0
+    claim_id: str,
+    text: str,
+    rows: list[Row],
+    tolerance: float = 0.0,
+    figure: ClaimFigure | None = None,
 ) -> ClaimVerification:
-    """Check `text` against `rows` and return a verdict.
+    """Check `text` against `rows` and return a verdict. With `figure`, its
+    kind and number are checked against `rows` instead of reading `text`
+    (#148). The text's cause and outlook rules still apply.
 
     A figure matches when it equals the recomputed value rounded to the
     precision the claim states ("8.3%" allows 0.05 points). `tolerance` adds
     to that allowance, in percentage points or in the row's unit.
     """
-    return _verify(claim_id, text, rows, tolerance).model_copy(update={"text": text})
+    verified = _verify(claim_id, text, rows, tolerance, figure)
+    return verified.model_copy(update={"text": text})
 
 
 def _verify(
-    claim_id: str, text: str, rows: list[Row], tolerance: float
+    claim_id: str,
+    text: str,
+    rows: list[Row],
+    tolerance: float,
+    figure: ClaimFigure | None,
 ) -> ClaimVerification:
     """`verify_claim` before the claim text is attached to the result."""
     usable = [row for row in rows if _is_usable(row)]
@@ -57,7 +70,11 @@ def _verify(
             raise Unreadable(why)
         if not usable:
             return _result(claim_id, "UNSUPPORTED", "The claim cites no usable rows.")
-        reading = read_claim(text, usable)
+        reading = (
+            read_claim(text, usable)
+            if figure is None
+            else reading_from_figure(figure, usable, text)
+        )
         return _check(claim_id, reading, usable, tolerance)
     except Unreadable as unreadable:
         return _result(claim_id, "UNVERIFIABLE", str(unreadable))

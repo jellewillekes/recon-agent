@@ -114,12 +114,27 @@ class Evidence(BaseModel):
     content_hash: str | None = None
 
 
+class ClaimFigure(BaseModel):
+    """The one figure a claim states, as data (#148). The concept and the
+    periods come from the rows the claim cites, never from here. `value` is
+    the number as the claim writes it ("6,811", "-12.5"); its decimals set
+    the rounding allowance. A level cites one fact row, growth two periods of
+    one concept, and a ratio its numerator row, then its denominator row."""
+
+    kind: Literal["level", "growth", "ratio"]
+    value: str = Field(pattern=r"^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$")
+    scale: Literal["units", "thousands", "millions", "billions", "percent"]
+
+
 class Claim(BaseModel):
     """A statement in the answer and the evidence refs it rests on."""
 
     text: str
     importance: Literal["key", "supporting"]
     evidence_refs: list[str]
+    # #148: the claim's figure as data, checked against the cited rows
+    # without reading `text`. None for a claim read from its text.
+    figure: ClaimFigure | None = None
 
 
 Verdict = Literal[

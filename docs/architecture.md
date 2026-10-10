@@ -298,3 +298,4 @@ tooling, not the agent under evaluation. See [`github-agents.md`](github-agents.
 | [0037](adr/0037-architecture-view-as-a-tab.md) | The architecture page is a tab, written from what exists |
 | [0038](adr/0038-verify-claims-by-replaying-fact-calls.md) | The harness verifies claims by replaying fact calls |
 | [0039](adr/0039-claim-gate-fails-when-nothing-is-checkable.md) | The claim gate fails a candidate it can't check |
+| [0040](adr/0040-structured-claim-figures.md) | Claims can state their figure as data |

@@ -48,8 +48,8 @@ def verify_answer(agent_result: AgentResult, facts: Facts) -> list[ClaimVerifica
     if not agent_result.claims:
         return []
     rows = replayed_rows(agent_result, facts)
-    report = verify_claims(agent_result.claims, rows)
     not_numeric = _verified_non_fact_refs(agent_result)
+    report = verify_claims(agent_result.claims, rows, non_fact_refs=not_numeric)
     return [
         _unverifiable(verification)
         if claim.evidence_refs and set(claim.evidence_refs) <= not_numeric
