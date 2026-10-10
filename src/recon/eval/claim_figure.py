@@ -75,7 +75,7 @@ def reading_from_figure(figure: ClaimFigure, rows: list[Row], text: str) -> Read
         raise Unreadable("A ratio must cite two concepts in one period.")
     if len(units) != 1 or "PCT" in units:
         raise Unreadable(
-            f"A ratio needs both rows in one currency unit; they are in {sorted(map(str, units))}."
+            f"A ratio needs both rows in the same unit; they are in {sorted(map(str, units))}."
         )
     return Reading("ratio", concepts, periods, number, 1, 1.0)
 
