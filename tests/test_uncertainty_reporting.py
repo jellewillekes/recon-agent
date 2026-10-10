@@ -14,7 +14,7 @@ from recon.contracts import CaseScore, EvalRun
 from recon.eval.comparison import compare_runs
 from recon.eval.gate import noise_rule
 from recon.eval.report import render_markdown
-from recon.eval.thresholds import GateThresholds
+from recon.eval.thresholds import GateThresholds, load_thresholds
 
 LIMITS = GateThresholds(
     answer_score_noise_band=0.10,
@@ -152,7 +152,8 @@ async def test_the_compare_endpoint_returns_intervals_and_warnings(
         )
     body = resp.json()
     assert resp.status_code == 200
-    assert "0.10" in body["noise_rule"]
+    band = load_thresholds().gate.answer_score_noise_band
+    assert f"±{band:.2f}" in body["noise_rule"]
     assert body["warnings"]
     score = next(m for m in body["metrics"] if m["name"] == "answer_score_mean")
     assert score["baseline_interval"]["low"] < score["baseline_interval"]["high"]

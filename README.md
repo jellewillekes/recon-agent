@@ -91,9 +91,9 @@ records (single `eval-20261007T081821Z`: 0.857 completion, 0.660 answer score; m
 `eval-20261007T084001Z`: 0.857, 0.433) scored different prompts on a different rubric, so
 they aren't comparable with the row above, and the gate refuses to compare them.
 
-The [gate](docs/glossary.md#promotion-gate) treats a change of up to 0.10 in the answer
+The [gate](docs/glossary.md#promotion-gate) treats a change of up to 0.12 in the answer
 score, or one case in task completion, as noise ([run-to-run noise](docs/eval-noise.md),
-ADR 0028). LangGraph isn't run: it needs a metered API key, and this project runs on the
+ADR 0028, ADR 0042). LangGraph isn't run: it needs a metered API key, and this project runs on the
 Claude subscription only (ADR 0027).
 
 ## Quickstart

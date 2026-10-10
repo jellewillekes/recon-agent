@@ -148,7 +148,7 @@
       <text x="362" y="182" font-weight="600">4. Gate compares with the baseline</text>
       <text x="362" y="196" font-size="9">First: same rubric, dataset, data snapshot and case set.</text>
       <text x="362" y="209" font-size="9">Then fails if task completion drops by more than one case,</text>
-      <text x="362" y="222" font-size="9">the answer score by more than 0.10, or cost rises over</text>
+      <text x="362" y="222" font-size="9">the answer score by more than 0.12, or cost rises over</text>
       <text x="362" y="235" font-size="9">20% without better completion, or a claim turns bad.</text>
     </g>
     <g stroke="#59635e" stroke-width="1.2" marker-end="url(#b)">
@@ -170,7 +170,7 @@
 <h2>Known limits</h2>
 <ul>
   <li>The verifier checks a claim only when it states one figure from the rows it cites. In the baseline 16 of 31 claims qualified. Claims from filing text, or built from three rows such as a free-cash-flow margin, are not checked.</li>
-  <li>The baseline covers 6 cases. The gate treats a change of up to 0.10 in answer score, or one case in completion, as run-to-run noise, so smaller effects can't be confirmed.</li>
+  <li>The baseline covers 6 cases. The gate treats a change of up to 0.12 in answer score, or one case in completion, as run-to-run noise, so smaller effects can't be confirmed.</li>
   <li>LangGraph has not been run: it needs a metered API key, and the project runs on a Claude subscription only.</li>
 </ul>
 

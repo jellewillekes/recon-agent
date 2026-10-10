@@ -354,7 +354,7 @@ Two runs are compared only when they share `rubric_version`, `dataset`, `tool_da
 A comparable new prompt version or model configuration is rejected when:
 
 - `task_completion` drops by more than one case, or
-- weighted `answer_score` drops by more than 0.10 (absolute), or
+- weighted `answer_score` drops by more than 0.12 (absolute), or
 - `total_cost_eur` rises by more than 20% without a rise in task completion
 
 The first two allow for run-to-run noise, measured in `docs/eval-noise.md` (#77, ADR

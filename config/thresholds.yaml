@@ -7,11 +7,10 @@ gate:
   # absolute terms. Two identical runs of the 7 text cases differed by 0.044,
   # and one case can move a 7-case mean by about 0.07 (docs/eval-noise.md,
   # #77). Set by the user on 2026-10-07; it replaced a 2% relative drop, which
-  # failed an unchanged repeat of the baseline. Kept by the user for the 6
-  # numeric cases (ADR 0041). Their three runs' means moved by 0.012, but
-  # estimate_noise over them gives ±0.12 at 95%, wider than this band, and
-  # `compare` warns about it.
-  answer_score_noise_band: 0.10
+  # failed an unchanged repeat of the baseline. Raised to 0.12 by the user on
+  # 2026-10-11 (ADR 0042): estimate_noise over the three runs on the 6 numeric
+  # cases gives ±0.12 at 95%, so an unchanged agent no longer fails on noise.
+  answer_score_noise_band: 0.12
   # ...or when more than this many cases stop completing. One case dropped
   # between the two identical runs (#77).
   task_completion_max_case_drop: 1

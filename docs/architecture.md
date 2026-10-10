@@ -175,7 +175,7 @@ flowchart TB
     CAP -- all cases done --> AGG
 
     AGG[EvalRun<br/>aggregates, rubric version,<br/>prompt + model config hashes,<br/>tool data snapshot] --> FILE[(evals/results/*.json + .md)]
-    AGG --> THR{"Gate, with --baseline:<br/>task completion drop ≤ 1 case<br/>answer_score drop ≤ 0.10<br/>cost rise ≤ 20% unless completion rose"}
+    AGG --> THR{"Gate, with --baseline:<br/>task completion drop ≤ 1 case<br/>answer_score drop ≤ 0.12<br/>cost rise ≤ 20% unless completion rose"}
     THR -- pass --> PROMO([promotable])
     THR -- fail --> REG([regression, exit ≠ 0])
 ```
@@ -300,3 +300,4 @@ tooling, not the agent under evaluation. See [`github-agents.md`](github-agents.
 | [0039](adr/0039-claim-gate-fails-when-nothing-is-checkable.md) | The claim gate fails a candidate it can't check |
 | [0040](adr/0040-structured-claim-figures.md) | Claims can state their figure as data |
 | [0041](adr/0041-baseline-on-numeric-cases.md) | The baseline moves to the numeric cases |
+| [0042](adr/0042-score-band-matches-measured-noise.md) | The answer score band matches the measured noise |
