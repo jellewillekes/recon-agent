@@ -62,7 +62,8 @@ rows as data the verifier checks against them (ADR 0030, ADR 0040).
 | Runtime | Mode | Task completion | Answer score | Claims checked | Bad claims | Total cost (€) | Cases |
 |---|---|---|---|---|---|---|---|
 | sdk | single | 1.000 | 0.801 | 16 of 31 | 0 | 0.69 | 6 (numeric cases) |
-| sdk | multi | not run on rubric 4 | | | | | — |
+| sdk | multi | 1.000 | 0.600 | 5 of 24 | 0 | 1.10 | 6 (numeric cases) |
+| sdk | multi, routing on | 0.833 | 0.339 | 0 of 10 | 0 | 1.06 | 6 (numeric cases) |
 | langgraph | single | not run | | | | | — |
 | langgraph | multi | not run | | | | | — |
 
@@ -86,10 +87,18 @@ filing text (`evals/text-cases.txt`, run `eval-20261007T175852Z`), scored 0.772 
 figure prompts those cases scored 0.496, and none of their 17 claims could be checked
 (`eval-20261008T190759Z`). That drop isn't gated (ADR 0041).
 
-Multi mode and the routing comparison (#113) aren't measured on rubric 4 yet. The rubric-3
-records (single `eval-20261007T081821Z`: 0.857 completion, 0.660 answer score; multi
-`eval-20261007T084001Z`: 0.857, 0.433) scored different prompts on a different rubric, so
-they aren't comparable with the row above, and the gate refuses to compare them.
+The multi rows ran on the baseline's prompts, rubric, verifier, tool data and cases. Their
+model config hash differs because multi mode also hashes `config/roles.yaml`. Multi mode
+scored 0.600 (`eval-20261012T081602Z`), 0.20 below single mode, at €1.10 and 87 s per case.
+Its 95% interval runs from 0.40 to 0.804, so it still reaches the baseline's 0.801. With the decompose step
+routed to the local model (ADR 0029), it scored 0.339 (`eval-20261012T082051Z`) at €1.06.
+The gate counts that cost as the same.
+
+Most of the multi loss is in cases whose worker tool calls failed and never succeeded on
+retry. That was 1 case with routing off and 3 with it on, and the agents' answers call them
+permission errors. One more case with routing on hit an 8-turn limit. The records don't say
+which calls failed or why, so the cause is still open. The two runs overlapped for most of
+their time on one machine, so running them apart is the first check.
 
 The [gate](docs/glossary.md#promotion-gate) treats a change of up to 0.12 in the answer
 score, or one case in task completion, as noise ([run-to-run noise](docs/eval-noise.md),
