@@ -90,7 +90,7 @@ figure prompts those cases scored 0.496, and none of their 17 claims could be ch
 The multi rows ran on the baseline's prompts, rubric, verifier, tool data and cases. Their
 model config hash differs because multi mode also hashes `config/roles.yaml`. Multi mode
 scored 0.600 (`eval-20261012T081602Z`), 0.20 below single mode, at €1.10 and 87 s per case.
-Its 95% interval runs from 0.40 to 0.804, so it still reaches the baseline's 0.801. With the decompose step
+That drop is larger than the gate's 0.12 noise band. With the decompose step
 routed to the local model (ADR 0029), it scored 0.339 (`eval-20261012T082051Z`) at €1.06.
 The gate counts that cost as the same.
 
