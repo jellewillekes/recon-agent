@@ -1,0 +1,570 @@
+{
+  "run_id": "eval-20261012T081602Z",
+  "timestamp_utc": "2026-10-12T08:16:02.098757Z",
+  "dataset": "finance-agent-bench@8ba65f81ab75",
+  "dataset_license": "MIT",
+  "dataset_attribution": "Data from vals-ai/finance-agent (MIT License), Copyright (c) 2025 Vals AI, Inc. https://github.com/vals-ai/finance-agent — benchmark details at https://www.vals.ai/benchmarks/finance_agent",
+  "runtime": "agent_sdk",
+  "mode": "multi",
+  "model_config_hash": "3b6280a5e87b728b55de12c0b0e38e6ceb7d827de6c497421cc4bb131cd9fc55",
+  "prompt_hashes": {
+    "critic": "3d8af43bed199f8f6ce5d412d6b4f3d63ef3c1a3bf238504c5a6d15c8a9e477c",
+    "investigator": "cc2b912889fbb739951b88d8d624287deffa13c723bb4b8f29f938330436611e",
+    "judge_faithfulness": "1a4f47d7ed4703d42435b171b7ee68db65d4f04b44bdeb49cbeed3e06f2bceb8",
+    "supervisor": "8db8cb7940aa455d060dcb48fa095ae9b12a159d17c44a54b41fb0aee754ad8f",
+    "supervisor_langgraph": "7ae7bc94de5bed1617326689263a16f3c7ff505392dfdfda292fa6d9a8808388",
+    "worker_facts": "354fc782beb5d7ecae903ebd608d30876c3f99b13c8548f851d91de830831572",
+    "worker_lookup": "a31de5324e4af1eb371a638214fc2ce08b08ff2b5448ab9f159a1f7ba9fab80b"
+  },
+  "rubric_version": "4",
+  "case_scores": [
+    {
+      "case_id": "finance-agent-bench:ed95ff9ff29c",
+      "task_completion": true,
+      "answer_score": 0.675,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 0.6,
+      "rubric_scores": {
+        "evidence_grounding": 1.0,
+        "tool_efficiency": 0.0,
+        "answer_correctness": 0.75
+      },
+      "cost_eur": 0.18874683199999998,
+      "elapsed_ms": 70693,
+      "notes": "N/A: no expected_tool_path for this case",
+      "tool_names": [
+        "list_companies",
+        "list_financial_concepts",
+        "list_companies",
+        "list_companies",
+        "list_companies",
+        "list_financial_concepts",
+        "get_financial_fact",
+        "get_financial_fact",
+        "get_financial_fact",
+        "get_financial_fact"
+      ],
+      "claim_support_rate": 1.0,
+      "citation_precision": 1.0,
+      "judge_failed": false,
+      "faithfulness_judge_failed": false,
+      "trajectory": {
+        "tool_selection": null,
+        "argument_correctness": 1.0,
+        "retrieval_quality": null,
+        "evidence_sufficiency": 1.0,
+        "recovery": 0.0,
+        "efficiency": 0.6,
+        "grounding": 1.0,
+        "final_correctness": 0.75
+      },
+      "failure_class": "none",
+      "failure_reason": null,
+      "verifications": [
+        {
+          "claim_id": "claim-1",
+          "text": "PLTR FY2022 total revenue was $1,905,871,000",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim's text doesn't state its figure '1905.871'."
+        },
+        {
+          "claim_id": "claim-2",
+          "text": "PLTR FY2024 total revenue was $2,865,507,000",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim's text doesn't state its figure '2865.507'."
+        },
+        {
+          "claim_id": "claim-3",
+          "text": "The 2-year revenue CAGR from FY2022 to FY2024 was approximately 22.62%",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim's text states numbers other than its figure '22.62'."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-agent-bench:1e6fcc9bda5d",
+      "task_completion": true,
+      "answer_score": 0.23333333333333334,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 0.7272727272727273,
+      "rubric_scores": {
+        "evidence_grounding": 0.5,
+        "tool_efficiency": 0.0,
+        "answer_correctness": 0.16666666666666666
+      },
+      "cost_eur": 0.11737360000000001,
+      "elapsed_ms": 77130,
+      "notes": "N/A: no expected_tool_path for this case",
+      "tool_names": [
+        "list_companies",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_companies",
+        "list_companies",
+        "list_companies"
+      ],
+      "claim_support_rate": 0.0,
+      "citation_precision": 1.0,
+      "judge_failed": false,
+      "faithfulness_judge_failed": false,
+      "trajectory": {
+        "tool_selection": null,
+        "argument_correctness": 1.0,
+        "retrieval_quality": null,
+        "evidence_sufficiency": 0.0,
+        "recovery": 0.0,
+        "efficiency": 0.7272727272727273,
+        "grounding": 0.5,
+        "final_correctness": 0.16666666666666666
+      },
+      "failure_class": "tool_use",
+      "failure_reason": "3 failed tool call(s) never succeeded on retry",
+      "verifications": [
+        {
+          "claim_id": "claim-1",
+          "text": "Zillow Group, Inc. (company_id: ZG) was identified as the company in question.",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-2",
+          "text": "Relevant concepts for CFO, Capex, and Revenue were identified for ZG but no actual values were retrieved.",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-3",
+          "text": "No FY2022, FY2023, or FY2024 figures for CFO, Capex, or Revenue were obtained due to a tool-access/permissions failure, so Free Cash Flow and FCF margin could not be calculated and no trend can be stated.",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim also asserts a cause or an outlook."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-agent-bench:9e7e8a3f7139",
+      "task_completion": true,
+      "answer_score": 0.7166666666666667,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 0.5,
+      "rubric_scores": {
+        "evidence_grounding": 1.0,
+        "tool_efficiency": 0.0,
+        "answer_correctness": 0.8333333333333334
+      },
+      "cost_eur": 0.17526202400000002,
+      "elapsed_ms": 92095,
+      "notes": "N/A: no expected_tool_path for this case",
+      "tool_names": [
+        "list_companies",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_companies",
+        "list_companies",
+        "list_companies",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "get_financial_fact",
+        "get_financial_fact",
+        "get_financial_fact",
+        "list_financial_concepts"
+      ],
+      "claim_support_rate": 1.0,
+      "citation_precision": 1.0,
+      "judge_failed": false,
+      "faithfulness_judge_failed": false,
+      "trajectory": {
+        "tool_selection": null,
+        "argument_correctness": 1.0,
+        "retrieval_quality": null,
+        "evidence_sufficiency": 1.0,
+        "recovery": 0.0,
+        "efficiency": 0.8333333333333334,
+        "grounding": 1.0,
+        "final_correctness": 0.8333333333333334
+      },
+      "failure_class": "none",
+      "failure_reason": null,
+      "verifications": [
+        {
+          "claim_id": "claim-1",
+          "text": "FY2024 Cost of Goods and Services Sold was $14,060 million",
+          "verdict": "SUPPORTED",
+          "evidence_refs": [
+            "E3e6f7343ddb6"
+          ],
+          "claimed_value": 14060000000.0,
+          "recomputed_value": 14060000000.0,
+          "tolerance": 500000.0,
+          "reasoning": "Recomputed 1.406e+10, claimed 1.406e+10."
+        },
+        {
+          "claim_id": "claim-2",
+          "text": "FY2024 ending Inventory, Net was $2,168 million",
+          "verdict": "SUPPORTED",
+          "evidence_refs": [
+            "E7a37d959933a"
+          ],
+          "claimed_value": 2168000000.0,
+          "recomputed_value": 2168000000.0,
+          "tolerance": 500000.0,
+          "reasoning": "Recomputed 2.168e+09, claimed 2.168e+09."
+        },
+        {
+          "claim_id": "claim-3",
+          "text": "FY2023 ending Inventory, Net was $2,128 million",
+          "verdict": "SUPPORTED",
+          "evidence_refs": [
+            "E07ff54e25dbd"
+          ],
+          "claimed_value": 2128000000.0,
+          "recomputed_value": 2128000000.0,
+          "tolerance": 500000.0,
+          "reasoning": "Recomputed 2.128e+09, claimed 2.128e+09."
+        },
+        {
+          "claim_id": "claim-4",
+          "text": "Average inventory for FY2024 was $2,148 million",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "A level must cite one row, or versions of one row."
+        },
+        {
+          "claim_id": "claim-5",
+          "text": "US Steel's FY2024 inventory turnover (COGS / average inventory) was approximately 6.55x",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "A ratio must cite two concepts in one period."
+        },
+        {
+          "claim_id": "claim-6",
+          "text": "Using year-end inventory only, FY2024 inventory turnover would be approximately 6.49x",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim states the ratio as a multiple (6.49), not as a percentage (648.5%)."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-agent-bench:135cf3369c99",
+      "task_completion": true,
+      "answer_score": 0.65,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 1.0,
+      "rubric_scores": {
+        "evidence_grounding": 1.0,
+        "tool_efficiency": 0.5,
+        "answer_correctness": 0.5,
+        "faithfulness": 1.0
+      },
+      "cost_eur": 0.271537448,
+      "elapsed_ms": 129734,
+      "notes": "N/A: no expected_tool_path for this case",
+      "tool_names": [
+        "list_companies",
+        "list_financial_concepts",
+        "search_filings",
+        "search_knowledge",
+        "search_knowledge",
+        "search_knowledge"
+      ],
+      "claim_support_rate": 1.0,
+      "citation_precision": 1.0,
+      "judge_failed": false,
+      "faithfulness_judge_failed": false,
+      "trajectory": {
+        "tool_selection": null,
+        "argument_correctness": 1.0,
+        "retrieval_quality": null,
+        "evidence_sufficiency": 1.0,
+        "recovery": null,
+        "efficiency": 1.0,
+        "grounding": 1.0,
+        "final_correctness": 0.5
+      },
+      "failure_class": "none",
+      "failure_reason": null,
+      "verifications": [
+        {
+          "claim_id": "claim-1",
+          "text": "2025 operating lease payments due are $30,220 thousand",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-2",
+          "text": "2026 operating lease payments due are $30,361 thousand",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-3",
+          "text": "2027 operating lease payments due are $24,421 thousand",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-4",
+          "text": "The total value of MSCI's operating leases maturing in the next three years (2025-2027) is $85,002 thousand",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-5",
+          "text": "Total operating lease obligations across all years are $165,605 thousand",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-6",
+          "text": "The next-three-years operating lease payments represent 51.3% of total operating lease obligations",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-agent-bench:fd98327e142d",
+      "task_completion": true,
+      "answer_score": 0.775,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 0.625,
+      "rubric_scores": {
+        "evidence_grounding": 1.0,
+        "tool_efficiency": 0.5,
+        "answer_correctness": 0.75
+      },
+      "cost_eur": 0.22054184799999998,
+      "elapsed_ms": 80816,
+      "notes": "N/A: no expected_tool_path for this case",
+      "tool_names": [
+        "list_companies",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "list_financial_concepts",
+        "get_financial_fact"
+      ],
+      "claim_support_rate": 1.0,
+      "citation_precision": 1.0,
+      "judge_failed": false,
+      "faithfulness_judge_failed": false,
+      "trajectory": {
+        "tool_selection": null,
+        "argument_correctness": 1.0,
+        "retrieval_quality": null,
+        "evidence_sufficiency": 1.0,
+        "recovery": 0.0,
+        "efficiency": 0.75,
+        "grounding": 1.0,
+        "final_correctness": 0.75
+      },
+      "failure_class": "none",
+      "failure_reason": null,
+      "verifications": [
+        {
+          "claim_id": "claim-1",
+          "text": "ORCL's effective tax rate for FY2024 (ended 5/31/2024) was 10.9%",
+          "verdict": "SUPPORTED",
+          "evidence_refs": [
+            "Ebde0aa56f024"
+          ],
+          "claimed_value": 10.9,
+          "recomputed_value": 10.9,
+          "tolerance": 0.05,
+          "reasoning": "Recomputed 10.9, claimed 10.9."
+        },
+        {
+          "claim_id": "claim-2",
+          "text": "ORCL's effective tax rate for FY2023 (ended 5/31/2023) was 6.8%",
+          "verdict": "SUPPORTED",
+          "evidence_refs": [
+            "E858f5384d96f"
+          ],
+          "claimed_value": 6.8,
+          "recomputed_value": 6.800000000000001,
+          "tolerance": 0.05,
+          "reasoning": "Recomputed 6.8, claimed 6.8."
+        },
+        {
+          "claim_id": "claim-3",
+          "text": "Delta: 410bps increase from FY2023 to FY2024",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "A change in a percentage concept isn't read: it may be meant in points or in relative terms."
+        }
+      ]
+    },
+    {
+      "case_id": "finance-agent-bench:caf4be73b29f",
+      "task_completion": true,
+      "answer_score": 0.55,
+      "tool_path_exact": true,
+      "tool_path_equivalent": true,
+      "tool_call_accuracy": 0.5,
+      "rubric_scores": {
+        "evidence_grounding": 1.0,
+        "tool_efficiency": 0.0,
+        "answer_correctness": 0.5,
+        "faithfulness": 1.0
+      },
+      "cost_eur": 0.130254336,
+      "elapsed_ms": 69771,
+      "notes": "N/A: no expected_tool_path for this case",
+      "tool_names": [
+        "list_companies",
+        "list_financial_concepts",
+        "list_companies",
+        "list_financial_concepts",
+        "search_knowledge",
+        "list_financial_concepts"
+      ],
+      "claim_support_rate": 1.0,
+      "citation_precision": 1.0,
+      "judge_failed": false,
+      "faithfulness_judge_failed": false,
+      "trajectory": {
+        "tool_selection": null,
+        "argument_correctness": 1.0,
+        "retrieval_quality": null,
+        "evidence_sufficiency": 1.0,
+        "recovery": 0.0,
+        "efficiency": 0.6666666666666666,
+        "grounding": 1.0,
+        "final_correctness": 0.5
+      },
+      "failure_class": "none",
+      "failure_reason": null,
+      "verifications": [
+        {
+          "claim_id": "claim-1",
+          "text": "WBD had incurred approximately $4.7 billion in cumulative pre-tax restructuring charges related to the 2022 Merger as of December 31, 2024",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-2",
+          "text": "WBD originally expected to incur approximately $4.1-$5.3 billion in pre-tax restructuring charges from the Merger, with total expected cash expenditures of $1.0-$1.5 billion",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        },
+        {
+          "claim_id": "claim-3",
+          "text": "The Merger-related restructuring program was substantially completed by the end of 2024",
+          "verdict": "UNVERIFIABLE",
+          "evidence_refs": [],
+          "claimed_value": null,
+          "recomputed_value": null,
+          "tolerance": null,
+          "reasoning": "The claim cites only rows the numeric verifier can't read, such as filing text."
+        }
+      ]
+    }
+  ],
+  "aggregate": {
+    "case_count": 6.0,
+    "task_completion_rate": 1.0,
+    "answer_score_mean": 0.6,
+    "tool_call_accuracy_mean": 0.6587121212121212,
+    "elapsed_ms_mean": 86706.5,
+    "tool_path_applicable_count": 0.0,
+    "agent_cost_eur": 0.955457168,
+    "judge_cost_eur": 0.14825892000000007,
+    "claim_support_rate_mean": 0.8333333333333334,
+    "citation_precision_mean": 1.0,
+    "citation_scored_cases": 6.0,
+    "failure_none_count": 5.0,
+    "failure_tool_use_count": 1.0,
+    "failure_classified_cases": 6.0,
+    "faithfulness_mean": 1.0,
+    "faithfulness_scored_cases": 2.0,
+    "tool_efficiency_mean": 0.16666666666666666,
+    "evidence_grounding_mean": 0.9166666666666666,
+    "answer_correctness_mean": 0.5833333333333334,
+    "cost_per_correct_answer_eur": 0.2207432176
+  },
+  "total_cost_eur": 1.103716088,
+  "tool_data_snapshot": "20260928-173c57a28fbf-keb7c46d7bfe6-sb9f40bee",
+  "retrieval_labels_hash": null,
+  "routing": false,
+  "verifier_version": "3:tol=0"
+}
